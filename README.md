@@ -1,54 +1,23 @@
-# Setup
 
-This implementation uses the Chisel hardware construction language:
+## Setup
 
-https://chisel.eecs.berkeley.edu/
+Install ScalaCLI: <https://scala-cli.virtuslab.org/install/> \\
+Install Verilator: <https://verilator.org/guide/latest/install.html>
 
-## Required Software
+## Building
 
-- GCC-4.8+/Apple Clang 4.2+
-- J2SE 7.0+
-- SBT 0.13.0+ (http://www.scala-sbt.org/)
-- ImageMagick
+To run tests:
 
-SBT (Scala build tool) will automatically download and install the remaining 
-dependencies, including Scala and the Chisel library.
+    scala-cli test hardware
 
-## Set up on Linux
+To run the full design in simulation
 
-sudo apt-get install gcc g++ openjdk-7-jre sbt imagemagick
+    scala-cli run hardware -- --sim
 
-## Set up on MacOS
+The output waveform dump is in hardware/gen/simulation/Counter/test/wave.fst
 
-Download and install Java from here:
+To generate synthesizable code
 
-https://java.com/en/download/help/mac_install.xml
+    scala-cli run hardware -- --syn
 
-If the system compiler is not already installed:
-
-xcode-select --install
-
-Finally:
-
-sudo port install sbt imagemagick
-
-# Running
-
-To run the whole design in simualtion:
-
-    cd hardware
-    make run
-
-Output framebuffer is written to 'output.png'
-The simulator writes a waveform trace to 'trace.vcd'
-
-To run unit tests:
-
-    make tests
-    
-To synthesize:
- 
-    make verilog
-    
-The result will be in hardware/generated_verilog/
-
+The resulting RTL will be in hardware/gen/synthesis
