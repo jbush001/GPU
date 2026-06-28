@@ -1,54 +1,39 @@
-# Setup
 
-This implementation uses the Chisel hardware construction language:
+## Setup
 
-https://chisel.eecs.berkeley.edu/
+This uses the Spinal Hardware Description Language
+<https://spinalhdl.github.io/SpinalDoc-RTD/master/index.html>,
+which compiles into Verilog. Simulation is done using Verilator.
 
-## Required Software
+Install ScalaCLI: <https://scala-cli.virtuslab.org/install/> \\
+Install Verilator: <https://verilator.org/guide/latest/install.html>
 
-- GCC-4.8+/Apple Clang 4.2+
-- J2SE 7.0+
-- SBT 0.13.0+ (http://www.scala-sbt.org/)
-- ImageMagick
+## Building and Running
 
-SBT (Scala build tool) will automatically download and install the remaining 
-dependencies, including Scala and the Chisel library.
+**To run all automated tests:**
 
-## Set up on Linux
+    scala-cli test hardware
 
-sudo apt-get install gcc g++ openjdk-7-jre sbt imagemagick
+**To run a specific test:**
 
-## Set up on MacOS
+    scala-cli test hardware -- -z "<name, as passed to test()>"
 
-Download and install Java from here:
+**To enable dumping waveform files:**
 
-https://java.com/en/download/help/mac_install.xml
+    scala-cli test hardware --java-prop trace=true
 
-If the system compiler is not already installed:
+When the simulation begins running, it will print the following line:
 
-xcode-select --install
+    [Progress] Simulation workspace in <some path>
 
-Finally:
+The output waveform will be written to <some path>/test/wave.fst
 
-sudo port install sbt imagemagick
+**To run the full design in simulation (currently this doesn't do anything)**
 
-# Running
+    scala-cli run hardware -- --sim
 
-To run the whole design in simualtion:
+**To generate synthesizable code**
 
-    cd hardware
-    make run
+    scala-cli run hardware -- --syn
 
-Output framebuffer is written to 'output.png'
-The simulator writes a waveform trace to 'trace.vcd'
-
-To run unit tests:
-
-    make tests
-    
-To synthesize:
- 
-    make verilog
-    
-The result will be in hardware/generated_verilog/
-
+The resulting RTL will be in hardware/gen/synthesis

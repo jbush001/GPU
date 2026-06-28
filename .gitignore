@@ -1,9 +1,5 @@
-.DS_Store
 *.vcd
-*.bin
-*.png
-hardware/project
-hardware/target
-hardware/generated_cpp
-hardware/generated_verilog
-hardware/simulator
+.bsp/
+.scala-build/
+hardware/gen/
+simWorkspace/

@@ -1,0 +1,32 @@
+name: CI Hardware Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Simulation Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Java (GraalVM / OpenJDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17' # Java 17 works optimally with Scala 2.13.x toolchains
+
+      - name: Setup Scala CLI
+        uses: VirtusLab/scala-cli-setup@v1
+
+      # Using the prebuilt setup-verilator action avoids a slow 15-minute local engine compile step
+      - name: Install Verilator Backend
+        uses: veryl-lang/setup-verilator@v1
+
+      - name: Run SpinalSim Test Matrix
+        run: scala-cli test hardware
