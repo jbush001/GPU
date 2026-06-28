@@ -110,8 +110,8 @@ class TileBuffer(tileSize: Int) extends Module {
     colorReadVal(resolveBank).toPackedBits,
     B"8'x00" ##depthReadVal(resolveBank));
 
-  // This is always delayed one cycle
-  io.resolveData.valid := RegNext(resolveActive).init(false)
+  val resolveDataValid = Reg(Bool()).init(false)
+  io.resolveData.valid := resolveDataValid
 
   // Resolve state handling.
   when(io.startResolve) {
@@ -120,8 +120,10 @@ class TileBuffer(tileSize: Int) extends Module {
   } elsewhen(resolveActive && resolveCounter.andR && io.resolveData.ready) {
     // Last cycle of resolve transfer
     resolveActive := False
+    resolveDataValid := False
   } elsewhen(resolveActive) {
     resolveCounter := resolveCounterNext;
+    resolveDataValid := True
   }
 
   // Pipelined quad address registers
@@ -249,6 +251,7 @@ class TileBufferSpec extends AnyFunSuite {
     cd.waitSampling()
     dut.io.startResolve #= false
     dut.io.resolveData.ready #= true
+    assert(!dut.io.resolveData.valid.toBoolean)
 
     // Add a few cycles to the count here to account for startup latency
     val totalPixels = tileSizePixels * tileSizePixels
@@ -258,6 +261,11 @@ class TileBufferSpec extends AnyFunSuite {
         dut.io.resolveData.ready.toBoolean) {
         results += dut.io.resolveData.payload.toInt
       }
+    }
+
+    for (_ <- 0 until 5) {
+      cd.waitSampling()
+      assert(!dut.io.resolveData.valid.toBoolean)
     }
 
     results.toSeq
