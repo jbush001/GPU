@@ -5,7 +5,7 @@ This uses the Spinal Hardware Description Language
 <https://spinalhdl.github.io/SpinalDoc-RTD/master/index.html>,
 which compiles into Verilog. Simulation is done using Verilator.
 
-Install ScalaCLI: <https://scala-cli.virtuslab.org/install/> \\
+Install ScalaCLI: <https://scala-cli.virtuslab.org/install/>\
 Install Verilator: <https://verilator.org/guide/latest/install.html>
 
 ## Building and Running

@@ -77,12 +77,7 @@ class TileBuffer(tileSize: Int) extends Module {
   // The memory address references quads, but we need pixels.
   // During a resolve after cycle 0, there is an invariant that resolveCounter
   // always corresponds to the data on the read port of the SRAMs.
-  // resolveCounterNext is used to generate the read address, and resolveCounter
-  // always registers resolveCounterNext.
-  // Note the +3 on the resolve counter width. Two bits are added because we're
-  // counting pixels not quads, and we and an extra bit to check when we've
-  // finished iteration.
-  val resolveCounter = Reg(UInt((memoryAddrBits + 3) bits));
+  val resolveCounter = Reg(UInt((memoryAddrBits + 2) bits));
   val resolveCounterNext = Mux(io.resolveData.valid && io.resolveData.ready,
     resolveCounter + 1, resolveCounter)
 
@@ -123,7 +118,7 @@ class TileBuffer(tileSize: Int) extends Module {
     resolveActive := True
     resolveCounter := 0
   } elsewhen(resolveActive && resolveCounter.andR && io.resolveData.ready) {
-    // End of resolve transfer
+    // Last cycle of resolve transfer
     resolveActive := False
   } elsewhen(resolveActive) {
     resolveCounter := resolveCounterNext;
