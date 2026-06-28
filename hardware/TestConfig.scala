@@ -18,15 +18,21 @@ package gpu
 
 import spinal.core._
 import spinal.core.sim._
+import spinal.lib._
+
 
 object TestConfig {
   val outputDir = "hardware/gen/test";
 
   val rtlConfig = SpinalConfig(targetDirectory = outputDir)
   def testSim: SpinalSimConfig = {
-    SimConfig
+    val sim = SimConfig
       .withConfig(rtlConfig)
       .workspacePath(outputDir)
-      .withFstWave
+    if (System.getProperty("trace", "false").toBoolean) {
+      sim.withFstWave
+    } else {
+      sim
+    }
   }
 }
