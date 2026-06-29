@@ -24,13 +24,12 @@
 //
 // Constraints:
 // - Currently assumes pre-multiplied alpha
-// - 32 bpp output
+// - 32 bpp output, ABGR format
 // - The same quad location cannot be written twice within 2 cycles
 // - There must be 3 cycles after the last write before a flush to flush
 //   pipeline
 //
 // Open Questions/To do:
-// - Implement clear logic
 // - Stencil buffers
 // - How does early-Z connect with this module?
 // - Implement configurable blend modes and depth checks
@@ -41,13 +40,11 @@ package gpu
 
 import spinal.core._
 import spinal.lib._
-import spinal.lib.fsm._
-import spinal.lib.bus.amba4.axi._
 import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
 import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Queue
 import scala.util.Random
-import scala.collection.mutable
 
 class TileBuffer(tileSize: Int) extends Module {
   val tileSizeQuads = tileSize / 2
@@ -302,7 +299,7 @@ class TileBufferSpec extends AnyFunSuite {
   }
 
   // For test setup, manually force framebuffer to a known state
-  def clearBuffers(dut: TileBuffer, tileSizePixels: Int) {
+  def clearBuffers(dut: TileBuffer, tileSizePixels: Int) = {
     val tileSizeQuads = tileSizePixels / 2
     for (i <- 0 until (tileSizeQuads * tileSizeQuads)) {
       for (pixel <- 0 until 4) {
@@ -393,7 +390,7 @@ class TileBufferSpec extends AnyFunSuite {
 
       // Perform some random writes (the sequence is fixed because we use a known seed)
       val rng = new Random(42)
-      val coordHistory = mutable.Queue[(Int, Int)]()
+      val coordHistory = Queue[(Int, Int)]()
       for (_ <- 0 until 1000) {
         var quadX = 0
         var quadY = 0
@@ -461,8 +458,6 @@ class TileBufferSpec extends AnyFunSuite {
       val colorActual = this.getBufferContent(dut, 32, 0)
       val colorFlush = flush(dut, cd, tileSizePixels, 0)
       assert(colorActual == colorFlush)
-
-      val afterColor = this.getBufferContent(dut, 32, 0)
 
       // Check that the buffer is clear now
       assert(this.getBufferContent(dut, 32, 0).forall(_ == 0xabcdef12))

@@ -17,7 +17,6 @@
 package gpu
 
 import spinal.core._
-import org.scalatest.funsuite.AnyFunSuite
 
 class RgbaColor extends Bundle {
   val numChannels = 4;
@@ -50,7 +49,7 @@ class RgbaColor extends Bundle {
     res
   }
 
-  def toPackedBits(): Bits = {
+  def toPackedBits: Bits = {
     this.channels.asBits
   }
 
