@@ -33,10 +33,10 @@ import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
 
 class TriangleSetup() extends Bundle {
-  val bbLeft = UInt(16 bits)
-  val bbTop = UInt(16 bits)
-  val bbRight = UInt(16 bits)
-  val bbBottom = UInt(16 bits)
+  val bbLeft = ScreenCoord()
+  val bbTop = ScreenCoord()
+  val bbRight = ScreenCoord()
+  val bbBottom = ScreenCoord()
   val initialValue = Vec(SInt(32 bits), 3)
   val xStep = Vec(SInt(32 bits), 3)
   val yStep = Vec(SInt(32 bits), 3)
@@ -47,8 +47,8 @@ class TriangleSetup() extends Bundle {
 //  2 3
 // x and y are the quad coordinates of the upper left corner
 class QuadOutput() extends Bundle {
-  val x = UInt(16 bits)
-  val y = UInt(16 bits)
+  val x = ScreenCoord()
+  val y = ScreenCoord()
   val mask = Bits(4 bits)
 }
 
@@ -64,8 +64,8 @@ class Rasterizer extends Component {
 
   val stepCommand = StepCommand()
 
-  val x = Reg(UInt(16 bits))
-  val y = Reg(UInt(16 bits))
+  val x = Reg(ScreenCoord())
+  val y = Reg(ScreenCoord())
 
   // We compute the visibility of four pixels in the quad in parallel.
   val pixelCheck = B(for (pixel <- 0 until 4) yield {
