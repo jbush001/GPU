@@ -446,9 +446,15 @@ class TileBufferSpec extends AnyFunSuite {
       cd.forkStimulus(period = 10)
       cd.waitSampling() // Ensure we are out of reset.
 
-      writeQuad(dut, cd, 0, 0, 0xf,
-        Seq(0xff0080ff, 0xff0080ff, 0xff0080ff, 0xff0080ff),
-        Seq(2, 2, 2, 2))
+      // Fill the framebuffer with random data
+      val rng = new Random(42)
+      for (y <- 0 until tileSizePixels / 2) {
+        for (x <- 0 until tileSizePixels / 2) {
+          val colors = Seq.fill(4) { rng.nextInt() }
+          val depths = Seq.fill(4) { rng.nextInt(0xffffff) }
+          writeQuad(dut, cd, x, y, 0xf, colors, depths)
+        }
+      }
 
       // Flush pipeline
       cd.waitSampling(4)
