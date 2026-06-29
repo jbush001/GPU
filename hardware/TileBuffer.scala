@@ -52,8 +52,8 @@ import scala.collection.mutable
 class TileBuffer(tileSize: Int) extends Module {
   val tileSizeQuads = tileSize / 2
   val tileCoordBits = log2Up(tileSizeQuads)
-  val depthBits = 24;
-  val pixelsPerQuad = 4;
+  val depthBits = 24
+  val pixelsPerQuad = 4
 
   val io = new Bundle {
     val valid = in(Bool())
@@ -70,16 +70,16 @@ class TileBuffer(tileSize: Int) extends Module {
     val clearDepth = in(UInt(depthBits bits))
   }
 
-  assert((tileSize & (tileSize - 1)) == 0); // Must be power of two tile
+  assert((tileSize & (tileSize - 1)) == 0) // Must be power of two tile
 
   val memorySize = tileSizeQuads * tileSizeQuads
   val memoryAddrBits = log2Up(memorySize)
-  val resolveActive = Reg(Bool()) init(False);
+  val resolveActive = Reg(Bool()) init(False)
 
   // The memory address references quads, but we need pixels.
   // During a resolve after cycle 0, there is an invariant that resolveCounter
   // always corresponds to the data on the read port of the SRAMs.
-  val resolveCounter = Reg(UInt((memoryAddrBits + 2) bits));
+  val resolveCounter = Reg(UInt((memoryAddrBits + 2) bits))
   val resolveCounterNext = Mux(io.resolveData.valid && io.resolveData.ready,
     resolveCounter + 1, resolveCounter)
 
@@ -90,7 +90,7 @@ class TileBuffer(tileSize: Int) extends Module {
   // Each quad stores its pixels across four banks, but during a resolve, we
   // need to send them to memory in linear raster order. These do the bit
   // twiddling to flatten them.
-  val coordBits = log2Up(tileSize);
+  val coordBits = log2Up(tileSize)
   val resolveX = resolveCounterNext(coordBits - 1 downto 0)
   val resolveY = resolveCounterNext(coordBits * 2 - 1 downto coordBits)
   val resolveAddress = Cat(resolveY >> 1, resolveX >> 1).asUInt
@@ -102,7 +102,7 @@ class TileBuffer(tileSize: Int) extends Module {
   // (which are never happening at the same time)
   val inputQuadAddress = Cat(io.quadY(tileCoordBits - 1 downto 0),
     io.quadX(tileCoordBits - 1 downto 0)).asUInt
-  val readAddress = Mux(resolveActive, resolveAddress, inputQuadAddress);
+  val readAddress = Mux(resolveActive, resolveAddress, inputQuadAddress)
   val colorReadVal = colorMemory.map(_.readSync(readAddress, io.valid
     || resolveActive))
   val depthReadVal = depthMemory.map(_.readSync(readAddress, io.valid
@@ -120,26 +120,27 @@ class TileBuffer(tileSize: Int) extends Module {
 
   // Clear writes are delayed one cycle after reads.
   val clearAddress = RegNext(resolveAddress)
-
   writeAddress := Mux(resolveActive, clearAddress, quadAddressStage2)
 
-  // TODO This code is a mess right now and needs some refactoring.
-  val clearMask = U(1) << resolveBank;
-  val colorWriteMask = UInt(pixelsPerQuad bits)
-  val depthWriteMask = UInt(pixelsPerQuad bits)
-  colorWriteMask := resolveActive ? ((io.resolveSelect === 0 && io.resolveData.valid && io.resolveData.ready)
-    ? clearMask | U(0)) | quadWriteLanes
-  depthWriteMask := resolveActive ? ((io.resolveSelect === 1 && io.resolveData.valid && io.resolveData.ready)
-    ? clearMask | U(0)) | quadWriteLanes
+  val clearMask = U(1) << resolveBank
+  val resolveFiring = io.resolveData.valid && io.resolveData.ready
+
+  val colorClearMask = Mux(io.resolveSelect === 0 && resolveFiring, clearMask, U(0))
+  val depthClearMask = Mux(io.resolveSelect === 1 && resolveFiring, clearMask, U(0))
+
+  val colorWriteMask = Mux(resolveActive, colorClearMask, quadWriteLanes)
+  val depthWriteMask = Mux(resolveActive, depthClearMask, quadWriteLanes)
 
   for (pixel <- 0 until pixelsPerQuad) {
-    colorMemory(pixel).write(writeAddress, (resolveActive ? io.clearColor | colorWriteVal(pixel)), colorWriteMask(pixel));
-    depthMemory(pixel).write(writeAddress, (resolveActive ? io.clearDepth | depthWriteVal(pixel)), depthWriteMask(pixel));
+    val colorData = Mux(resolveActive, io.clearColor, colorWriteVal(pixel))
+    val depthData = Mux(resolveActive, io.clearDepth, depthWriteVal(pixel))
+    colorMemory(pixel).write(writeAddress, colorData, colorWriteMask(pixel))
+    depthMemory(pixel).write(writeAddress, depthData, depthWriteMask(pixel))
   }
 
   io.resolveData.payload := Mux(io.resolveSelect === 0,
     colorReadVal(resolveBank).toPackedBits,
-    B"8'x00" ##depthReadVal(resolveBank));
+    B"8'x00" ##depthReadVal(resolveBank))
 
   val resolveDataValid = Reg(Bool()).init(false)
   io.resolveData.valid := resolveDataValid
@@ -153,7 +154,7 @@ class TileBuffer(tileSize: Int) extends Module {
     resolveActive := False
     resolveDataValid := False
   } elsewhen(resolveActive) {
-    resolveCounter := resolveCounterNext;
+    resolveCounter := resolveCounterNext
     resolveDataValid := True
   }
 
@@ -345,9 +346,9 @@ class TileBufferSpec extends AnyFunSuite {
   }
 
   test("alpha blend") {
-    val tileSizePixels = 4;
+    val tileSizePixels = 4
     this.setUpDut(tileSizePixels).doSim { dut =>
-      this.clearBuffers(dut, tileSizePixels);
+      this.clearBuffers(dut, tileSizePixels)
 
       dut.io.valid #= false
       dut.io.startResolve #= false
@@ -379,11 +380,11 @@ class TileBufferSpec extends AnyFunSuite {
   }
 
   test("random tile write") {
-    val tileSizePixels = 32;
+    val tileSizePixels = 32
     this.setUpDut(tileSizePixels).doSim { dut =>
       val reference = new TileBufferReference(tileSizePixels)
 
-      this.clearBuffers(dut, tileSizePixels);
+      this.clearBuffers(dut, tileSizePixels)
 
       dut.io.valid #= false
       dut.io.startResolve #= false
@@ -430,9 +431,9 @@ class TileBufferSpec extends AnyFunSuite {
   }
 
   test("resolve") {
-    val tileSizePixels = 32;
+    val tileSizePixels = 32
     this.setUpDut(tileSizePixels).doSim { dut =>
-      this.clearBuffers(dut, tileSizePixels);
+      this.clearBuffers(dut, tileSizePixels)
 
       dut.io.valid #= false
       dut.io.startResolve #= false
@@ -456,7 +457,7 @@ class TileBufferSpec extends AnyFunSuite {
       val colorResolve = resolve(dut, cd, tileSizePixels, 0)
       assert(colorActual == colorResolve)
 
-      val afterColor = this.getBufferContent(dut, 32, 0);
+      val afterColor = this.getBufferContent(dut, 32, 0)
 
       // Check that the buffer is clear now
       assert(this.getBufferContent(dut, 32, 0).forall(_ == 0xabcdef12))
