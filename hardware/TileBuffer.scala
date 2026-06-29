@@ -19,14 +19,14 @@
 // small square portion of the framebuffer (a tile).  It performs alpha
 // blending stencil checks, and depth checks. It has a three stage pipeline
 // and can accept one 2x2 quad per cycle. When rendering is finished for the
-// tile, this can be commanded to go into a resolve phase to flush its contents
+// tile, this can be commanded to go into a flush phase to copy its contents
 // to memory.
 //
 // Constraints:
 // - Currently assumes pre-multiplied alpha
 // - 32 bpp output
 // - The same quad location cannot be written twice within 2 cycles
-// - There must be 3 cycles after the last write before a resolve to flush
+// - There must be 3 cycles after the last write before a flush to flush
 //   pipeline
 //
 // Open Questions/To do:
@@ -34,7 +34,7 @@
 // - Stencil buffers
 // - How does early-Z connect with this module?
 // - Implement configurable blend modes and depth checks
-// - On resolve, support different formats, e.g. abgr, bgra, rgba
+// - On flush, support different formats, e.g. abgr, bgra, rgba
 //
 
 package gpu
@@ -63,9 +63,9 @@ class TileBuffer(tileSize: Int) extends Module {
     val colors = in(Vec(new RgbaColor(), pixelsPerQuad))
     val depths = in(Vec(UInt(depthBits bits), pixelsPerQuad))
 
-    val startResolve = in(Bool())
-    val resolveSelect = in(UInt(1 bits)) // depth or color buffer
-    val resolveData = master(Stream(Bits(32 bits)))
+    val startFlush = in(Bool())
+    val flushBufferSel = in(UInt(1 bits)) // depth or color buffer
+    val flushData = master(Stream(Bits(32 bits)))
     val clearColor = in(new RgbaColor())
     val clearDepth = in(UInt(depthBits bits))
   }
@@ -74,39 +74,39 @@ class TileBuffer(tileSize: Int) extends Module {
 
   val memorySize = tileSizeQuads * tileSizeQuads
   val memoryAddrBits = log2Up(memorySize)
-  val resolveActive = Reg(Bool()) init(False)
+  val flushActive = Reg(Bool()) init(False)
 
   // The memory address references quads, but we need pixels.
-  // During a resolve after cycle 0, there is an invariant that resolveCounter
+  // During a flush after cycle 0, there is an invariant that flushCounter
   // always corresponds to the data on the read port of the SRAMs.
-  val resolveCounter = Reg(UInt((memoryAddrBits + 2) bits))
-  val resolveCounterNext = Mux(io.resolveData.valid && io.resolveData.ready,
-    resolveCounter + 1, resolveCounter)
+  val flushCounter = Reg(UInt((memoryAddrBits + 2) bits))
+  val flushCounterNext = Mux(io.flushData.valid && io.flushData.ready,
+    flushCounter + 1, flushCounter)
 
   // Memory is divided into four banks, one per pixel in the quad
   val colorMemory = Seq.fill(pixelsPerQuad)(Mem(new RgbaColor(), wordCount = memorySize))
   val depthMemory = Seq.fill(pixelsPerQuad)(Mem(UInt(depthBits bits), wordCount = memorySize))
 
-  // Each quad stores its pixels across four banks, but during a resolve, we
+  // Each quad stores its pixels across four banks, but during a flush, we
   // need to send them to memory in linear raster order. These do the bit
   // twiddling to flatten them.
   val coordBits = log2Up(tileSize)
-  val resolveX = resolveCounterNext(coordBits - 1 downto 0)
-  val resolveY = resolveCounterNext(coordBits * 2 - 1 downto coordBits)
-  val resolveAddress = Cat(resolveY >> 1, resolveX >> 1).asUInt
+  val flushX = flushCounterNext(coordBits - 1 downto 0)
+  val flushY = flushCounterNext(coordBits * 2 - 1 downto coordBits)
+  val flushAddress = Cat(flushY >> 1, flushX >> 1).asUInt
 
-  // Note: we delay resolve bank a cycle so it arrives with the data from memory
-  val resolveBank = RegNext(Cat(resolveY(0), resolveX(0)).asUInt)
+  // Note: we delay flush bank a cycle so it arrives with the data from memory
+  val flushBank = RegNext(Cat(flushY(0), flushX(0)).asUInt)
 
-  // The memory read ports are shared between resolve and pixel operations
+  // The memory read ports are shared between flush and pixel operations
   // (which are never happening at the same time)
   val inputQuadAddress = Cat(io.quadY(tileCoordBits - 1 downto 0),
     io.quadX(tileCoordBits - 1 downto 0)).asUInt
-  val readAddress = Mux(resolveActive, resolveAddress, inputQuadAddress)
+  val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
   val colorReadVal = colorMemory.map(_.readSync(readAddress, io.valid
-    || resolveActive))
+    || flushActive))
   val depthReadVal = depthMemory.map(_.readSync(readAddress, io.valid
-    || resolveActive))
+    || flushActive))
 
   // Pipelined quad address registers
   val quadAddressStage1 = RegNext(readAddress)
@@ -119,43 +119,42 @@ class TileBuffer(tileSize: Int) extends Module {
   val depthWriteVal = Vec(UInt(depthBits bits), pixelsPerQuad)
 
   // Clear writes are delayed one cycle after reads.
-  val clearAddress = RegNext(resolveAddress)
-  writeAddress := Mux(resolveActive, clearAddress, quadAddressStage2)
+  val clearAddress = RegNext(flushAddress)
+  writeAddress := Mux(flushActive, clearAddress, quadAddressStage2)
 
-  val clearMask = U(1) << resolveBank
-  val resolveFiring = io.resolveData.valid && io.resolveData.ready
-
-  val colorClearMask = Mux(io.resolveSelect === 0 && resolveFiring, clearMask, U(0))
-  val depthClearMask = Mux(io.resolveSelect === 1 && resolveFiring, clearMask, U(0))
-
-  val colorWriteMask = Mux(resolveActive, colorClearMask, quadWriteLanes)
-  val depthWriteMask = Mux(resolveActive, depthClearMask, quadWriteLanes)
+  // Compute write
+  val clearMask = U(1) << flushBank
+  val flushAdvance = io.flushData.valid && io.flushData.ready
+  val colorClearMask = Mux(io.flushBufferSel === 0 && flushAdvance, clearMask, U(0))
+  val depthClearMask = Mux(io.flushBufferSel === 1 && flushAdvance, clearMask, U(0))
+  val colorWriteMask = Mux(flushActive, colorClearMask, quadWriteLanes)
+  val depthWriteMask = Mux(flushActive, depthClearMask, quadWriteLanes)
 
   for (pixel <- 0 until pixelsPerQuad) {
-    val colorData = Mux(resolveActive, io.clearColor, colorWriteVal(pixel))
-    val depthData = Mux(resolveActive, io.clearDepth, depthWriteVal(pixel))
+    val colorData = Mux(flushActive, io.clearColor, colorWriteVal(pixel))
+    val depthData = Mux(flushActive, io.clearDepth, depthWriteVal(pixel))
     colorMemory(pixel).write(writeAddress, colorData, colorWriteMask(pixel))
     depthMemory(pixel).write(writeAddress, depthData, depthWriteMask(pixel))
   }
 
-  io.resolveData.payload := Mux(io.resolveSelect === 0,
-    colorReadVal(resolveBank).toPackedBits,
-    B"8'x00" ##depthReadVal(resolveBank))
+  io.flushData.payload := Mux(io.flushBufferSel === 0,
+    colorReadVal(flushBank).toPackedBits,
+    B"8'x00" ##depthReadVal(flushBank))
 
-  val resolveDataValid = Reg(Bool()).init(false)
-  io.resolveData.valid := resolveDataValid
+  val flushDataValid = Reg(Bool()).init(false)
+  io.flushData.valid := flushDataValid
 
-  // Resolve state handling.
-  when(io.startResolve) {
-    resolveActive := True
-    resolveCounter := 0
-  } elsewhen(resolveActive && resolveCounter.andR && io.resolveData.ready) {
-    // Last cycle of resolve transfer
-    resolveActive := False
-    resolveDataValid := False
-  } elsewhen(resolveActive) {
-    resolveCounter := resolveCounterNext
-    resolveDataValid := True
+  // Flush state handling.
+  when(io.startFlush) {
+    flushActive := True
+    flushCounter := 0
+  } elsewhen(flushActive && flushCounter.andR && io.flushData.ready) {
+    // Last cycle of flush transfer
+    flushActive := False
+    flushDataValid := False
+  } elsewhen(flushActive) {
+    flushCounter := flushCounterNext
+    flushDataValid := True
   }
 
   // Pixel processing pipeline
@@ -173,9 +172,9 @@ class TileBuffer(tileSize: Int) extends Module {
     val newDepthStage2 = RegNext(newDepthStage1)
     val maskStage2 = RegNext(maskStage1 && (newDepthStage1 < depthReadVal(pixel))).init(false)
 
-    // Stage 3: Blend, writeback.
+    // Stage 3: Blend, flush.
     val blended = oldWeightedColorStage2 +| newColorStage2
-    quadWriteLanes(pixel) := maskStage2 && !resolveActive
+    quadWriteLanes(pixel) := maskStage2 && !flushActive
     colorWriteVal(pixel) := blended
     depthWriteVal(pixel) := newDepthStage2
   }
@@ -271,32 +270,32 @@ class TileBufferSpec extends AnyFunSuite {
     dut.io.valid #= false
   }
 
-  def resolve(dut: TileBuffer, cd: ClockDomain, tileSizePixels: Int, select: Int): Seq[Int] = {
+  def flush(dut: TileBuffer, cd: ClockDomain, tileSizePixels: Int, select: Int): Seq[Int] = {
     val results = ArrayBuffer[Int]()
-    dut.io.startResolve #= true
-    dut.io.resolveSelect #= select
+    dut.io.startFlush #= true
+    dut.io.flushBufferSel #= select
     cd.waitSampling()
-    dut.io.startResolve #= false
-    dut.io.resolveData.ready #= false
-    assert(!dut.io.resolveData.valid.toBoolean)
+    dut.io.startFlush #= false
+    dut.io.flushData.ready #= false
+    assert(!dut.io.flushData.valid.toBoolean)
 
     val rng = new Random(42)
     val totalPixels = tileSizePixels * tileSizePixels
     while (results.length < totalPixels) {
       // Add random delays
-      dut.io.resolveData.ready #= rng.nextBoolean()
-      dut.io.resolveData.ready #= true
+      dut.io.flushData.ready #= rng.nextBoolean()
+      dut.io.flushData.ready #= true
 
       cd.waitSampling()
-      if (dut.io.resolveData.valid.toBoolean &&
-        dut.io.resolveData.ready.toBoolean) {
-        results += dut.io.resolveData.payload.toInt
+      if (dut.io.flushData.valid.toBoolean &&
+        dut.io.flushData.ready.toBoolean) {
+        results += dut.io.flushData.payload.toInt
       }
     }
 
     for (_ <- 0 until 5) {
       cd.waitSampling()
-      assert(!dut.io.resolveData.valid.toBoolean)
+      assert(!dut.io.flushData.valid.toBoolean)
     }
 
     results.toSeq
@@ -313,7 +312,7 @@ class TileBufferSpec extends AnyFunSuite {
     }
   }
 
-  // Read directly from the buffer memory to check it, bypassing the resolve
+  // Read directly from the buffer memory to check it, bypassing the flush
   // mechanism.
   def getBufferContent(dut: TileBuffer, tileSizePixels: Int, bufferSelect: Int): Seq[Int] = {
     val results = ArrayBuffer[Int]()
@@ -351,7 +350,7 @@ class TileBufferSpec extends AnyFunSuite {
       this.clearBuffers(dut, tileSizePixels)
 
       dut.io.valid #= false
-      dut.io.startResolve #= false
+      dut.io.startFlush #= false
       val cd = dut.clockDomain.get
       cd.forkStimulus(period = 10)
       cd.waitSampling() // Ensure we are out of reset.
@@ -387,7 +386,7 @@ class TileBufferSpec extends AnyFunSuite {
       this.clearBuffers(dut, tileSizePixels)
 
       dut.io.valid #= false
-      dut.io.startResolve #= false
+      dut.io.startFlush #= false
       val cd = dut.clockDomain.get
       cd.forkStimulus(period = 10)
       cd.waitSampling() // Ensure we are out of reset.
@@ -430,13 +429,13 @@ class TileBufferSpec extends AnyFunSuite {
     }
   }
 
-  test("resolve") {
+  test("flush") {
     val tileSizePixels = 32
     this.setUpDut(tileSizePixels).doSim { dut =>
       this.clearBuffers(dut, tileSizePixels)
 
       dut.io.valid #= false
-      dut.io.startResolve #= false
+      dut.io.startFlush #= false
       dut.io.clearColor.channels(0) #= 0x12
       dut.io.clearColor.channels(1) #= 0xef
       dut.io.clearColor.channels(2) #= 0xcd
@@ -460,8 +459,8 @@ class TileBufferSpec extends AnyFunSuite {
       cd.waitSampling(4)
 
       val colorActual = this.getBufferContent(dut, 32, 0)
-      val colorResolve = resolve(dut, cd, tileSizePixels, 0)
-      assert(colorActual == colorResolve)
+      val colorFlush = flush(dut, cd, tileSizePixels, 0)
+      assert(colorActual == colorFlush)
 
       val afterColor = this.getBufferContent(dut, 32, 0)
 
@@ -469,8 +468,8 @@ class TileBufferSpec extends AnyFunSuite {
       assert(this.getBufferContent(dut, 32, 0).forall(_ == 0xabcdef12))
 
       val depthActual = this.getBufferContent(dut, 32, 1)
-      val depthResolve = resolve(dut, cd, tileSizePixels, 1)
-      assert(depthActual == depthResolve)
+      val depthFlush = flush(dut, cd, tileSizePixels, 1)
+      assert(depthActual == depthFlush)
 
       // Check that the buffer is clear now
       assert(this.getBufferContent(dut, 32, 1).forall(_ == 0x654321))
