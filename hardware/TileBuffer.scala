@@ -46,6 +46,10 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Queue
 import scala.util.Random
 
+object RenderBuffer extends SpinalEnum {
+  val Color, Depth = newElement()
+}
+
 class TileBuffer(tileSize: Int) extends Module {
   val tileSizeQuads = tileSize / 2
   val tileCoordBits = log2Up(tileSizeQuads)
@@ -61,7 +65,7 @@ class TileBuffer(tileSize: Int) extends Module {
     val depths = in(Vec(UInt(depthBits bits), pixelsPerQuad))
 
     val startFlush = in(Bool())
-    val flushBufferSel = in(UInt(1 bits)) // depth or color buffer
+    val flushBufferSel = in(RenderBuffer()) // depth or color buffer
     val flushData = master(Stream(Bits(32 bits)))
     val clearColor = in(new RgbaColor())
     val clearDepth = in(UInt(depthBits bits))
@@ -122,8 +126,8 @@ class TileBuffer(tileSize: Int) extends Module {
   // Compute write
   val clearMask = U(1) << flushBank
   val flushAdvance = io.flushData.valid && io.flushData.ready
-  val colorClearMask = Mux(io.flushBufferSel === 0 && flushAdvance, clearMask, U(0))
-  val depthClearMask = Mux(io.flushBufferSel === 1 && flushAdvance, clearMask, U(0))
+  val colorClearMask = Mux(io.flushBufferSel === RenderBuffer.Color && flushAdvance, clearMask, U(0))
+  val depthClearMask = Mux(io.flushBufferSel === RenderBuffer.Depth && flushAdvance, clearMask, U(0))
   val colorWriteMask = Mux(flushActive, colorClearMask, quadWriteLanes)
   val depthWriteMask = Mux(flushActive, depthClearMask, quadWriteLanes)
 
@@ -134,10 +138,10 @@ class TileBuffer(tileSize: Int) extends Module {
     depthMemory(pixel).write(writeAddress, depthData, depthWriteMask(pixel))
   }
 
-  io.flushData.payload := Mux(io.flushBufferSel === 0,
-    colorReadVal(flushBank).toPackedBits,
-    B"8'x00" ##depthReadVal(flushBank))
-
+  io.flushData.payload := io.flushBufferSel.mux(
+    RenderBuffer.Color -> colorReadVal(flushBank).toPackedBits,
+    RenderBuffer.Depth -> (B"8'x00" ## depthReadVal(flushBank)),
+  )
   val flushDataValid = Reg(Bool()).init(false)
   io.flushData.valid := flushDataValid
 
@@ -267,7 +271,7 @@ class TileBufferSpec extends AnyFunSuite {
     dut.io.valid #= false
   }
 
-  def flush(dut: TileBuffer, cd: ClockDomain, tileSizePixels: Int, select: Int): Seq[Int] = {
+  def flush(dut: TileBuffer, cd: ClockDomain, tileSizePixels: Int, select: RenderBuffer.E): Seq[Int] = {
     val results = ArrayBuffer[Int]()
     dut.io.startFlush #= true
     dut.io.flushBufferSel #= select
@@ -456,14 +460,14 @@ class TileBufferSpec extends AnyFunSuite {
       cd.waitSampling(4)
 
       val colorActual = this.getBufferContent(dut, 32, 0)
-      val colorFlush = flush(dut, cd, tileSizePixels, 0)
+      val colorFlush = flush(dut, cd, tileSizePixels, RenderBuffer.Color)
       assert(colorActual == colorFlush)
 
       // Check that the buffer is clear now
       assert(this.getBufferContent(dut, 32, 0).forall(_ == 0xabcdef12))
 
       val depthActual = this.getBufferContent(dut, 32, 1)
-      val depthFlush = flush(dut, cd, tileSizePixels, 1)
+      val depthFlush = flush(dut, cd, tileSizePixels, RenderBuffer.Depth)
       assert(depthActual == depthFlush)
 
       // Check that the buffer is clear now

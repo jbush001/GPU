@@ -16,10 +16,12 @@
 
 //
 // Given a triangle, the rasterizer determines which pixels it covers.
-// This sweeps over the triangle in a fashion similar to that
-// described by Pineda "A parallel algorithm for polygon rasterization"
-// (SIGGRAPH 88), Figure 4. It outputs 2x2 aligned quads with one bit per pixel
-// to indicate coverage.
+// This sweeps over the triangle in a fashion similar to that described by
+// Pineda "A parallel algorithm for polygon rasterization" (SIGGRAPH 88).
+// It outputs 2x2 aligned quads with one bit per pixel to indicate coverage.
+//
+// TODO to support MSAA, which would return an N Bit mask for each of the
+// quads.
 //
 
 package gpu
@@ -57,7 +59,7 @@ class Rasterizer extends Component {
   }
 
   object StepCommand extends SpinalEnum {
-    val stepReset, stepRight, stepDown, stepLeft, stepWait = newElement()
+    val Reset, Right, Down, Left, Wait = newElement()
   }
 
   val stepCommand = StepCommand()
@@ -73,7 +75,7 @@ class Rasterizer extends Component {
       // is on the inside of all three triangle edges, then it is inside the triangle.
       val edgeValue = Reg(SInt(32 bits))
       switch(stepCommand) {
-        is(StepCommand.stepReset) {
+        is(StepCommand.Reset) {
           pixel match {
             case 0 => edgeValue := io.input.initialValue(edge)
             case 1 => edgeValue := io.input.initialValue(edge) + io.input.xStep(edge)
@@ -82,13 +84,13 @@ class Rasterizer extends Component {
                 + io.input.yStep(edge))
           }
         }
-        is(StepCommand.stepRight) {
+        is(StepCommand.Right) {
           edgeValue := edgeValue + (io.input.xStep(edge) << 1).resize(32 bits)
         }
-        is(StepCommand.stepDown) {
+        is(StepCommand.Down) {
           edgeValue := edgeValue + (io.input.yStep(edge) << 1).resize(32 bits)
         }
-        is(StepCommand.stepLeft) {
+        is(StepCommand.Left) {
           edgeValue := edgeValue - (io.input.xStep(edge) << 1).resize(32 bits)
         }
       }
@@ -108,13 +110,13 @@ class Rasterizer extends Component {
 
     io.input.ready := False
     io.output.valid := False
-    stepCommand := StepCommand.stepWait;
+    stepCommand := StepCommand.Wait;
 
     // Waiting to start a new triangle
     IDLE.whenIsActive {
       io.input.ready := True
       when(io.input.valid) {
-        stepCommand := StepCommand.stepReset
+        stepCommand := StepCommand.Reset
         x := io.input.bbLeft
         y := io.input.bbTop
         goto(STEP_RIGHT)
@@ -128,12 +130,12 @@ class Rasterizer extends Component {
           when (y === io.input.bbBottom) {
             goto(IDLE)
           }.otherwise {
-            stepCommand := StepCommand.stepDown;
+            stepCommand := StepCommand.Down;
             y := y + 1
             goto(STEP_LEFT)
           }
         }.otherwise {
-          stepCommand := StepCommand.stepRight;
+          stepCommand := StepCommand.Right;
           x := x + 1
         }
       }
@@ -146,12 +148,12 @@ class Rasterizer extends Component {
           when (y === io.input.bbBottom) {
             goto(IDLE)
           }.otherwise {
-            stepCommand := StepCommand.stepDown;
+            stepCommand := StepCommand.Down;
             y := y + 1
             goto(STEP_RIGHT)
           }
         }.otherwise {
-          stepCommand := StepCommand.stepLeft;
+          stepCommand := StepCommand.Left;
           x := x - 1
         }
       }
