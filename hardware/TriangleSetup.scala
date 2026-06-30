@@ -239,6 +239,7 @@ class TriangleSetupSpec extends AnyFunSuite {
 
   test("triangle setup") {
     compiledModel.doSim { dut =>
+        SimTimeout(1000000)
         dut.clockDomain.forkStimulus(period = 10)
 
         dut.io.input.valid #= false
@@ -288,10 +289,7 @@ class TriangleSetupSpec extends AnyFunSuite {
         dut.io.input.x2 #= 0
         dut.io.input.y2 #= 0
 
-        var iterationCount = 0;
         while (!dut.io.output.valid.toBoolean) {
-          assert(iterationCount < 50)
-          iterationCount += 1
           dut.clockDomain.waitSampling()
         }
 

@@ -342,6 +342,7 @@ class TileBufferSpec extends AnyFunSuite {
 
   test("alpha blend") {
     compiledModel.doSim { dut =>
+      SimTimeout(1000000)
       this.clearBuffers(dut)
 
       dut.io.valid #= false
@@ -374,6 +375,7 @@ class TileBufferSpec extends AnyFunSuite {
 
   test("random tile write") {
     compiledModel.doSim { dut =>
+      SimTimeout(1000000)
       val reference = new TileBufferReference
 
       this.clearBuffers(dut)
@@ -386,7 +388,7 @@ class TileBufferSpec extends AnyFunSuite {
       // Perform some random writes (the sequence is fixed because we use a known seed)
       val rng = new Random(42)
       val coordHistory = Queue[(Int, Int)]()
-      for (_ <- 0 until 1000) {
+      for (_ <- 0 until 2000) {
         var quadX = 0
         var quadY = 0
 
@@ -423,6 +425,7 @@ class TileBufferSpec extends AnyFunSuite {
 
   test("flush") {
     compiledModel.doSim { dut =>
+      SimTimeout(1000000)
       this.clearBuffers(dut)
 
       dut.io.valid #= false

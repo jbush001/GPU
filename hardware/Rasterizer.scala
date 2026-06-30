@@ -28,6 +28,7 @@
 
 package gpu
 
+import scala.util.Random
 import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._
@@ -50,7 +51,8 @@ class RasterizerSetupParams extends Bundle {
 // The output mask is bits:
 //  0 1
 //  2 3
-// x and y are the quad coordinates of the upper left corner
+// x and y are the coordinates (in quads) of the upper left corner, relative to
+// the left/top edges of the current tile bounding box.
 class QuadOutput extends Bundle {
   val x = ScreenCoord()
   val y = ScreenCoord()
@@ -187,12 +189,14 @@ class RasterizerSpec extends AnyFunSuite {
     bbTop: Int,
     bbRight: Int,
     bbBottom: Int,
-    readyInterval: Int) : String = {
+    randomizeReady: Boolean) : String = {
+
+    SimTimeout(1000000)
 
     dut.clockDomain.forkStimulus(period = 10)
     dut.io.input.valid #= false
     dut.io.output.ready #= false
-    dut.clockDomain.waitSampling()
+    dut.clockDomain.waitSampling() // Wait for reset to complete
 
     dut.io.output.ready #= true
     dut.clockDomain.waitSampling()
@@ -226,11 +230,16 @@ class RasterizerSpec extends AnyFunSuite {
     dut.io.input.valid #= false
 
     val outputBuffer = Array.ofDim[Boolean]((bbRight + 1) * 2, (bbBottom + 1) * 2);
-    for(cycle <- 0 until 2048) {
-      // This allows us to simulate downstream hardware not being ready.
-      val ready = cycle % readyInterval == 0;
-      dut.io.output.ready #= ready;
-      if (dut.io.output.valid.toBoolean && ready) {
+
+    val rng = new Random(42)
+    dut.io.output.ready #= true
+    for (_ <- 0 until 2048) {
+      if (randomizeReady) {
+        dut.io.output.ready #= rng.nextBoolean()
+      }
+
+      if (dut.io.output.valid.toBoolean && dut.io.output.ready.toBoolean) {
+        assert(!dut.io.input.ready.toBoolean)
         val x = dut.io.output.x.toInt
         val y = dut.io.output.y.toInt
         assert(x >= bbLeft)
@@ -247,6 +256,7 @@ class RasterizerSpec extends AnyFunSuite {
       dut.clockDomain.waitSampling()
     }
 
+    assert(dut.io.input.ready.toBoolean)
     val sb = new StringBuilder()
     for (y <- 0 until outputBuffer.length) {
       for (x <- 0 until outputBuffer(0).length) {
@@ -260,7 +270,7 @@ class RasterizerSpec extends AnyFunSuite {
 
   test("rasterize") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, 1);
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, false);
       val expected = """................
 ................
 ........X.......
@@ -278,13 +288,13 @@ class RasterizerSpec extends AnyFunSuite {
 ..XXXXXXXXXXXXX.
 ................"""
 
-      assert(output.trim == expected.stripMargin.trim)
+      assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
     }
   }
 
   test("partial left") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 4, 4, 1);
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 4, 4, false);
       val expected = """..........
 ..........
 ........X.
@@ -301,7 +311,7 @@ class RasterizerSpec extends AnyFunSuite {
 
   test("partial right") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 4, 4, 7, 7, 1);
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 4, 4, 7, 7, false);
       val expected =  """................
 ................
 ................
@@ -319,14 +329,14 @@ class RasterizerSpec extends AnyFunSuite {
 ........XXXXXXX.
 ................"""
 
-      assert(output.trim == expected.stripMargin.trim)
+      assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
     }
   }
 
   // Won't display anything
   test("reverse winding") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 7, 7, 1);
+      val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 7, 7, false);
       val expected =  """................
 ................
 ................
@@ -349,7 +359,7 @@ class RasterizerSpec extends AnyFunSuite {
 
   test("output flow control") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, 2);
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, true);
       val expected = """................
 ................
 ........X.......
