@@ -172,6 +172,8 @@ class Rasterizer extends Component {
 }
 
 class RasterizerSpec extends AnyFunSuite {
+  val compiledModel = TestConfig.testSim.compile(new Rasterizer())
+
   def rasterizeTriangle(dut: Rasterizer,
     x0: Int,
     y0: Int,
@@ -257,7 +259,7 @@ class RasterizerSpec extends AnyFunSuite {
   }
 
   test("rasterize") {
-    TestConfig.testSim.compile(new Rasterizer()).doSim { dut =>
+    compiledModel.doSim { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, 1);
       val expected = """................
 ................
@@ -281,7 +283,7 @@ class RasterizerSpec extends AnyFunSuite {
   }
 
   test("partial left") {
-    TestConfig.testSim.compile(new Rasterizer()).doSim { dut =>
+    compiledModel.doSim { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 4, 4, 1);
       val expected = """..........
 ..........
@@ -298,7 +300,7 @@ class RasterizerSpec extends AnyFunSuite {
   }
 
   test("partial right") {
-    TestConfig.testSim.compile(new Rasterizer()).doSim { dut =>
+    compiledModel.doSim { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 4, 4, 7, 7, 1);
       val expected =  """................
 ................
@@ -323,7 +325,7 @@ class RasterizerSpec extends AnyFunSuite {
 
   // Won't display anything
   test("reverse winding") {
-    TestConfig.testSim.compile(new Rasterizer()).doSim { dut =>
+    compiledModel.doSim { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 7, 7, 1);
       val expected =  """................
 ................
@@ -346,7 +348,7 @@ class RasterizerSpec extends AnyFunSuite {
   }
 
   test("output flow control") {
-    TestConfig.testSim.compile(new Rasterizer()).doSim { dut =>
+    compiledModel.doSim { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, 2);
       val expected = """................
 ................

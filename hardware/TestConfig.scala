@@ -26,6 +26,7 @@ object TestConfig {
   def testSim: SpinalSimConfig = {
     val sim = SimConfig
       .withConfig(rtlConfig)
+      .withIVerilog
       .workspacePath(outputDir)
     if (System.getProperty("trace", "false").toBoolean) {
       sim.withFstWave

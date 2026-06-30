@@ -25,8 +25,13 @@ jobs:
         uses: VirtusLab/scala-cli-setup@v1
 
       # Using the prebuilt setup-verilator action avoids a slow 15-minute local engine compile step
-      - name: Install Verilator Backend
-        uses: veryl-lang/setup-verilator@v1
+      #- name: Install Verilator Backend
+      #  uses: veryl-lang/setup-verilator@v1
+
+      - name: Install Icarus Verilog
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
 
       - name: Run SpinalSim Test Matrix
         run: scala-cli test hardware

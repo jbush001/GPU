@@ -246,6 +246,16 @@ class TileBufferReference {
 
 // Test suite
 class TileBufferSpec extends AnyFunSuite {
+  val compiledModel = TestConfig.testSim.compile({
+    new TileBuffer {
+      // This is requred for getBufferContent
+      for (pixel <- 0 until 4) {
+        colorMemory(pixel).setName(s"colorMemory_$pixel").simPublic()
+        depthMemory(pixel).setName(s"depthMemory_$pixel").simPublic()
+      }
+    }
+  })
+
   // Push a quad through the DUT pipeline.
   def writeQuad(dut: TileBuffer, cd: ClockDomain, x: Int, y: Int, mask: Int, colors: Seq[Int],
     depths: Seq[Int]) = {
@@ -328,20 +338,8 @@ class TileBufferSpec extends AnyFunSuite {
     results.toSeq
   }
 
-  def setUpDut: SimCompiled[TileBuffer] = {
-    TestConfig.testSim.compile({
-      new TileBuffer {
-        // This is requred for getBufferContent
-        for (pixel <- 0 until 4) {
-          colorMemory(pixel).setName(s"colorMemory_$pixel").simPublic()
-          depthMemory(pixel).setName(s"depthMemory_$pixel").simPublic()
-        }
-      }
-    })
-  }
-
   test("alpha blend") {
-    this.setUpDut.doSim { dut =>
+    compiledModel.doSim { dut =>
       this.clearBuffers(dut)
 
       dut.io.valid #= false
@@ -374,7 +372,7 @@ class TileBufferSpec extends AnyFunSuite {
   }
 
   test("random tile write") {
-    this.setUpDut.doSim { dut =>
+    compiledModel.doSim { dut =>
       val reference = new TileBufferReference
 
       this.clearBuffers(dut)
@@ -424,7 +422,7 @@ class TileBufferSpec extends AnyFunSuite {
   }
 
   test("flush") {
-    this.setUpDut.doSim { dut =>
+    compiledModel.doSim { dut =>
       this.clearBuffers(dut)
 
       dut.io.valid #= false

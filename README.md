@@ -7,6 +7,7 @@ which compiles into Verilog. Simulation is done using Verilator.
 
 Install ScalaCLI: <https://scala-cli.virtuslab.org/install/>\
 Install Verilator: <https://verilator.org/guide/latest/install.html>
+Install Icarus Verilog: <https://steveicarus.github.io/iverilog/>
 
 ## Building and Running
 

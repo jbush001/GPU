@@ -214,6 +214,8 @@ class TriangleSetup extends Component {
 }
 
 class TriangleSetupSpec extends AnyFunSuite {
+  val compiledModel = TestConfig.testSim.compile(new TriangleSetup())
+
   def computeExpectedValues(bbLeft: Int, bbTop: Int,
                             x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int) = {
     val xStep0 = y1 - y0
@@ -236,7 +238,7 @@ class TriangleSetupSpec extends AnyFunSuite {
   // TODO test input/output handshaking, queuing up multiple requests.
 
   test("triangle setup") {
-    TestConfig.testSim.compile(new TriangleSetup()).doSim { dut =>
+    compiledModel.doSim { dut =>
         val cd = dut.clockDomain.get
         cd.forkStimulus(period = 10)
 
