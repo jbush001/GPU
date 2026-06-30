@@ -28,5 +28,5 @@ object GpuConfig {
 }
 
 object ScreenCoord {
-  def apply(): UInt = UInt(16 bits)
+  def apply(): SInt = SInt(16 bits)
 }

@@ -32,21 +32,24 @@ import spinal.lib.fsm._
 import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
 
-class TriangleSetup() extends Bundle {
+class RasterizerSetupParams extends Bundle {
+  val edgeFunctionBits = 32;
+  val triangleEdges = 3;
+
   val bbLeft = ScreenCoord()
   val bbTop = ScreenCoord()
   val bbRight = ScreenCoord()
   val bbBottom = ScreenCoord()
-  val initialValue = Vec(SInt(32 bits), 3)
-  val xStep = Vec(SInt(32 bits), 3)
-  val yStep = Vec(SInt(32 bits), 3)
+  val initialValue = Vec(SInt(edgeFunctionBits bits), triangleEdges)
+  val xStep = Vec(SInt(edgeFunctionBits bits), triangleEdges)
+  val yStep = Vec(SInt(edgeFunctionBits bits), triangleEdges)
 }
 
 // The output mask is bits:
 //  0 1
 //  2 3
 // x and y are the quad coordinates of the upper left corner
-class QuadOutput() extends Bundle {
+class QuadOutput extends Bundle {
   val x = ScreenCoord()
   val y = ScreenCoord()
   val mask = Bits(4 bits)
@@ -54,8 +57,8 @@ class QuadOutput() extends Bundle {
 
 class Rasterizer extends Component {
   val io = new Bundle {
-    val input  = slave(spinal.lib.Stream(new TriangleSetup()))
-    val output = master(spinal.lib.Stream(new QuadOutput()))
+    val input = slave(spinal.lib.Stream(new RasterizerSetupParams))
+    val output = master(spinal.lib.Stream(new QuadOutput))
   }
 
   object StepCommand extends SpinalEnum {
@@ -63,6 +66,9 @@ class Rasterizer extends Component {
   }
 
   val stepCommand = StepCommand()
+
+  val inParams = RegNextWhen(io.input.payload, io.input.fire)
+  val startRasterize = RegNext(io.input.fire)
 
   val x = Reg(ScreenCoord())
   val y = Reg(ScreenCoord())
@@ -77,21 +83,21 @@ class Rasterizer extends Component {
       switch(stepCommand) {
         is(StepCommand.Reset) {
           pixel match {
-            case 0 => edgeValue := io.input.initialValue(edge)
-            case 1 => edgeValue := io.input.initialValue(edge) + io.input.xStep(edge)
-            case 2 => edgeValue := io.input.initialValue(edge) + io.input.yStep(edge)
-            case 3 => edgeValue := (io.input.initialValue(edge) + io.input.xStep(edge)
-                + io.input.yStep(edge))
+            case 0 => edgeValue := inParams.initialValue(edge)
+            case 1 => edgeValue := inParams.initialValue(edge) + inParams.xStep(edge)
+            case 2 => edgeValue := inParams.initialValue(edge) + inParams.yStep(edge)
+            case 3 => edgeValue := (inParams.initialValue(edge) + inParams.xStep(edge)
+                + inParams.yStep(edge))
           }
         }
         is(StepCommand.Right) {
-          edgeValue := edgeValue + (io.input.xStep(edge) << 1).resize(32 bits)
+          edgeValue := edgeValue + (inParams.xStep(edge) << 1).resize(32 bits)
         }
         is(StepCommand.Down) {
-          edgeValue := edgeValue + (io.input.yStep(edge) << 1).resize(32 bits)
+          edgeValue := edgeValue + (inParams.yStep(edge) << 1).resize(32 bits)
         }
         is(StepCommand.Left) {
-          edgeValue := edgeValue - (io.input.xStep(edge) << 1).resize(32 bits)
+          edgeValue := edgeValue - (inParams.xStep(edge) << 1).resize(32 bits)
         }
       }
 
@@ -115,7 +121,7 @@ class Rasterizer extends Component {
     // Waiting to start a new triangle
     IDLE.whenIsActive {
       io.input.ready := True
-      when(io.input.valid) {
+      when (startRasterize) {
         stepCommand := StepCommand.Reset
         x := io.input.bbLeft
         y := io.input.bbTop
@@ -126,8 +132,8 @@ class Rasterizer extends Component {
     STEP_RIGHT.whenIsActive {
       io.output.valid := pixelCheck =/= 0;
       when (io.output.ready) {
-        when(x === io.input.bbRight) {
-          when (y === io.input.bbBottom) {
+        when(x === inParams.bbRight) {
+          when (y === inParams.bbBottom) {
             goto(IDLE)
           }.otherwise {
             stepCommand := StepCommand.Down;
@@ -144,8 +150,8 @@ class Rasterizer extends Component {
     STEP_LEFT.whenIsActive {
       io.output.valid := pixelCheck =/= 0;
       when (io.output.ready) {
-        when(x === io.input.bbLeft) {
-          when (y === io.input.bbBottom) {
+        when(x === inParams.bbLeft) {
+          when (y === inParams.bbBottom) {
             goto(IDLE)
           }.otherwise {
             stepCommand := StepCommand.Down;
@@ -250,7 +256,7 @@ class RasterizerSpec extends AnyFunSuite {
     sb.toString()
   }
 
-  test("Should rasterize") {
+  test("rasterize") {
     TestConfig.testSim.compile(new Rasterizer()).doSim { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, 1);
       val expected = """................
