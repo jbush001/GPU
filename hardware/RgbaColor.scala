@@ -27,7 +27,7 @@ class RgbaColor extends Bundle {
 
   // Multiply
   def scale(factor: UInt): RgbaColor = {
-    val res = new RgbaColor()
+    val res = RgbaColor()
     for (ch <- 0 until this.numChannels) {
       val prod = this.channels(ch) * factor
 
@@ -41,7 +41,7 @@ class RgbaColor extends Bundle {
 
   // Saturated add
   def +|(that: RgbaColor): RgbaColor = {
-    val res = new RgbaColor()
+    val res = RgbaColor()
     for (ch <- 0 until this.numChannels) {
       res.channels(ch) := this.channels(ch) +| that.channels(ch)
     }
@@ -54,8 +54,23 @@ class RgbaColor extends Bundle {
   }
 
   def fromBits(bits: Bits): RgbaColor = {
-    val res = new RgbaColor()
+    val res = RgbaColor()
     res.channels := Vec(bits.asBools.grouped(channelBits).map(g => Vec(g).asBits.asUInt).toSeq)
     res
+  }
+}
+
+object RgbaColor {
+  def apply(r: Int, g: Int, b: Int, a: Int = 255): RgbaColor = {
+    val c = new RgbaColor()
+    c.channels(0) := b
+    c.channels(1) := g
+    c.channels(2) := r
+    c.channels(3) := a
+    c
+  }
+
+  def apply(): RgbaColor = {
+    new RgbaColor()
   }
 }

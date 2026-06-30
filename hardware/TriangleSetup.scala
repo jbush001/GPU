@@ -239,12 +239,11 @@ class TriangleSetupSpec extends AnyFunSuite {
 
   test("triangle setup") {
     compiledModel.doSim { dut =>
-        val cd = dut.clockDomain.get
-        cd.forkStimulus(period = 10)
+        dut.clockDomain.forkStimulus(period = 10)
 
         dut.io.input.valid #= false
 
-        cd.waitSampling()
+        dut.clockDomain.waitSampling()
 
         val bbLeft = 32
         val bbTop = 96
@@ -270,11 +269,11 @@ class TriangleSetupSpec extends AnyFunSuite {
         dut.io.input.y2 #= y2
 
         while (!dut.io.input.ready.toBoolean) {
-          cd.waitSampling()
+          dut.clockDomain.waitSampling()
         }
 
         // Wait for a clock edge to latch it.
-        cd.waitSampling()
+        dut.clockDomain.waitSampling()
 
         // Clear the inputs to ensure it has latched them properly.
         dut.io.input.valid #= false
@@ -293,7 +292,7 @@ class TriangleSetupSpec extends AnyFunSuite {
         while (!dut.io.output.valid.toBoolean) {
           assert(iterationCount < 50)
           iterationCount += 1
-          cd.waitSampling()
+          dut.clockDomain.waitSampling()
         }
 
         assert(dut.io.output.valid.toBoolean)

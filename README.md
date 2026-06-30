@@ -29,9 +29,11 @@ When the simulation begins running, it will print the following line:
 
 The output waveform will be written to <some path>/test/wave.fst
 
-**To run the full design in simulation (currently this doesn't do anything)**
+**To run the full design in simulation**
 
     scala-cli run hardware -- --sim
+
+This will write the rendered framebuffer into "output.png"
 
 **To generate synthesizable code**
 

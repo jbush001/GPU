@@ -187,11 +187,10 @@ class RasterizerSpec extends AnyFunSuite {
     bbBottom: Int,
     readyInterval: Int) : String = {
 
-    val cd = dut.clockDomain.get
-    cd.forkStimulus(period = 10)
+    dut.clockDomain.forkStimulus(period = 10)
     dut.io.input.valid #= false
     dut.io.output.ready #= false
-    cd.waitSampling()
+    dut.clockDomain.waitSampling()
 
     dut.io.output.ready #= true
     dut.clockDomain.waitSampling()
@@ -226,7 +225,6 @@ class RasterizerSpec extends AnyFunSuite {
 
     val outputBuffer = Array.ofDim[Boolean]((bbRight + 1) * 2, (bbBottom + 1) * 2);
     for(cycle <- 0 until 2048) {
-
       // This allows us to simulate downstream hardware not being ready.
       val ready = cycle % readyInterval == 0;
       dut.io.output.ready #= ready;

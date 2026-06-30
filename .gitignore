@@ -1,4 +1,4 @@
-*.vcd
+*.png
 .bsp/
 .scala-build/
 hardware/gen/

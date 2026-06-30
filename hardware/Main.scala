@@ -17,7 +17,6 @@
 package gpu
 
 import spinal.core._
-import spinal.core.sim._
 
 object Main {
   def main(args: Array[String]): Unit = {
@@ -25,18 +24,8 @@ object Main {
     val hasSyn = args.contains("--syn")
     val hasSim = args.contains("--sim")
 
-    // Check if the user passed "sim" as an argument
     if (hasSim && !hasSyn) {
-      println("Running Simulation")
-      SimConfig
-        .withFstWave
-        .workspacePath("hardware/gen/simulation")
-        .compile(new Rasterizer())
-        .doSim { dut =>
-          dut.clockDomain.forkStimulus(period = 10)
-          dut.clockDomain.waitSampling(100)
-          println("Simulation complete.")
-        }
+      Simulation.run()
     } else if (hasSyn && !hasSim) {
       println("Generating Synthesizable RTL")
 
