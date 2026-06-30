@@ -14,6 +14,15 @@
 //   limitations under the License.
 //
 
+//
+// This computes the edge equation coefficients used by the rasterizer.
+// It takes 28 cycles to set up the next triangle. This has an output buffer
+// so the computation for the next triangle overlaps rasterization
+// of the current one.
+// To optimize area, this runs a small microsequencer that performs the
+// calculations (rather than just doing it all in parallel).
+//
+
 package gpu
 
 import spinal.core._
@@ -36,58 +45,56 @@ class TriangleSetupParams extends Bundle {
 
 class TriangleSetup extends Component {
   val io = new Bundle {
-    val input = slave(spinal.lib.Stream(new TriangleSetupParams()))
-    val output = master(spinal.lib.Stream(new RasterizerSetupParams()))
+    val input = slave(spinal.lib.Stream(new TriangleSetupParams))
+    val output = master(spinal.lib.Stream(new RasterizerSetupParams))
   }
 
   // Register incoming parameters
   val inParams = RegNextWhen(io.input.payload, io.input.fire)
 
-  val inputReady = Reg(Bool()) init(True)
-  io.input.ready := inputReady
-
   // Here is where we accumulate values as we compute them
   val setupResult = Reg(new RasterizerSetupParams())
-  val setupResultValid = Reg(Bool()) init(False)
+  val outputResultPending = Reg(Bool()) init(False)
 
   val internalStream = Stream(new RasterizerSetupParams())
   internalStream.payload := setupResult
-  internalStream.valid := setupResultValid
+  internalStream.valid := outputResultPending
 
   // This adds an additional buffer, which lets us get one triangle ahead
   // of the rasterizer, overlapping execution.
   io.output << internalStream.stage()
 
   val halt = Bool()
-  val halted = Reg(Bool()) init(True)
+  val computing = Reg(Bool()) init(False)
+  io.input.ready := !computing && !outputResultPending
 
   // This state machine handles start and finishing computations and
   // handshaking with upstream and downstream components.
-  when (io.input.fire) {
-    inputReady := False
-    setupResult.bbLeft := io.input.bbLeft
-    setupResult.bbRight := io.input.bbRight
-    setupResult.bbTop := io.input.bbTop
-    setupResult.bbBottom := io.input.bbBottom
-  } elsewhen (!inputReady) {
-    when (halt) { // XXX check for completion
-      setupResultValid := True
-      halted := True
-    } otherwise {
-      halted := False
+  when (computing) {
+    when (halt) {
+      outputResultPending := True
+      computing := False
     }
-
-
-    when (internalStream.fire) {
-      // Client consumed, reset and prepare to set up another.
-      inputReady := True
-      setupResultValid := False
+  } otherwise {
+    when (io.input.fire) {
+      setupResult.bbLeft := io.input.bbLeft
+      setupResult.bbRight := io.input.bbRight
+      setupResult.bbTop := io.input.bbTop
+      setupResult.bbBottom := io.input.bbBottom
+      computing := True
     }
   }
 
+  when (internalStream.fire) {
+    outputResultPending := False
+  }
+
+  // Source/Destination operand (scratchpad registers)
   val A0 = 1
   val A1 = 2
   val A2 = 3
+
+  // Source operand constants
   val S_X0 = 4
   val S_X1 = 5
   val S_X2 = 6
@@ -97,6 +104,7 @@ class TriangleSetup extends Component {
   val S_BL = 10
   val S_BT = 11
 
+  // Destination operand constants
   val D_XS0 = 4
   val D_YS0 = 5
   val D_IV0 = 6
@@ -107,6 +115,7 @@ class TriangleSetup extends Component {
   val D_YS2 = 11
   val D_IV2 = 12
 
+  // Operation codes
   val SUB = 0
   val MUL = 1
 
@@ -158,10 +167,10 @@ class TriangleSetup extends Component {
   val aSelect = uInst(7 downto 4)
   val bSelect = uInst(3 downto 0)
 
-  when (halted) {
-    upc := 0
-  } otherwise {
+  when (computing) {
     upc := upc + 1
+  } otherwise {
+    upc := 0
   }
 
   // Scratchpad registers for interim results.
@@ -169,6 +178,7 @@ class TriangleSetup extends Component {
   val acc1 = Reg(SInt(32 bits))
   val acc2 = Reg(SInt(32 bits))
 
+  // Source operand multiplexers
   val operands = Vec(
     S(0, 16 bits),
     acc0,
@@ -204,6 +214,27 @@ class TriangleSetup extends Component {
 }
 
 class TriangleSetupSpec extends AnyFunSuite {
+  def computeExpectedValues(bbLeft: Int, bbTop: Int,
+                            x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int) = {
+    val xStep0 = y1 - y0
+    val yStep0 = x0 - x1
+    val initialValue0 = ((bbLeft * 2) - x0) * (y1 - y0) - ((bbTop * 2) - y0) * (x1 - x0)
+
+    val xStep1 = y2 - y1
+    val yStep1 = x1 - x2
+    val initialValue1 = ((bbLeft * 2) - x1) * (y2 - y1) - ((bbTop * 2) - y1) * (x2 - x1)
+
+    val xStep2 = y0 - y2
+    val yStep2 = x2 - x0
+    val initialValue2 = ((bbLeft * 2) - x2) * (y0 - y2) - ((bbTop * 2) - y2) * (x0 - x2)
+
+    (xStep0, yStep0, initialValue0,
+      xStep1, yStep1, initialValue1,
+      xStep2, yStep2, initialValue2)
+  }
+
+  // TODO test input/output handshaking, queuing up multiple requests.
+
   test("triangle setup") {
     TestConfig.testSim.compile(new TriangleSetup()).doSim { dut =>
         val cd = dut.clockDomain.get
@@ -265,18 +296,19 @@ class TriangleSetupSpec extends AnyFunSuite {
 
         assert(dut.io.output.valid.toBoolean)
 
-        assert(dut.io.output.xStep(0).toInt == y1 - y0)
-        assert(dut.io.output.yStep(0).toInt == x0 - x1)
-        assert(dut.io.output.initialValue(0).toInt
-          == ((bbLeft * 2) - x0) * (y1 - y0) - ((bbTop * 2) - y0) * (x1 - x0))
-        assert(dut.io.output.xStep(1).toInt == y2 - y1)
-        assert(dut.io.output.yStep(1).toInt == x1 - x2)
-        assert(dut.io.output.initialValue(1).toInt
-          == ((bbLeft * 2) - x1) * (y2 - y1) - ((bbTop * 2) - y1) * (x2 - x1))
-        assert(dut.io.output.xStep(2).toInt == y0 - y2)
-        assert(dut.io.output.yStep(2).toInt == x2 - x0)
-        assert(dut.io.output.initialValue(2).toInt
-          == ((bbLeft * 2) - x2) * (y0 - y2) - ((bbTop * 2) - y2) * (x0 - x2))
+        val (xStep0, yStep0, initialValue0,
+          xStep1, yStep1, initialValue1,
+          xStep2, yStep2, initialValue2) = computeExpectedValues(bbLeft, bbTop,
+            x0, y0, x1, y1, x2, y2)
+        assert(dut.io.output.xStep(0).toInt == xStep0)
+        assert(dut.io.output.yStep(0).toInt == yStep0)
+        assert(dut.io.output.initialValue(0).toInt == initialValue0)
+        assert(dut.io.output.xStep(1).toInt == xStep1)
+        assert(dut.io.output.yStep(1).toInt == yStep1)
+        assert(dut.io.output.initialValue(1).toInt == initialValue1)
+        assert(dut.io.output.xStep(2).toInt == xStep2)
+        assert(dut.io.output.yStep(2).toInt == yStep2)
+        assert(dut.io.output.initialValue(2).toInt == initialValue2)
         assert(dut.io.output.bbLeft.toInt == bbLeft)
         assert(dut.io.output.bbTop.toInt == bbTop)
         assert(dut.io.output.bbRight.toInt == bbRight)
