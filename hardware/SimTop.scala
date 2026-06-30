@@ -24,6 +24,8 @@ import java.io.File
 import javax.imageio.ImageIO
 import scala.collection.mutable.ArrayBuffer
 
+// This is a bit of a hack, as the components won't connect exactly like this
+// in a real configuration, but demonstrates things working end-to-end.
 class SimTop extends Component {
   val io = new Bundle {
     val inputTriangle = slave(spinal.lib.Stream(new TriangleSetupParams))
@@ -49,7 +51,7 @@ class SimTop extends Component {
   tileBuffer.io.clearColor := RgbaColor(0, 0, 0, 0)
   tileBuffer.io.clearDepth := U(0xffffff, GpuConfig.depthBits bits)
   tileBuffer.io.startFlush := io.startFlush
-  tileBuffer.io.flushBufferSel := RenderBuffer.Color
+  tileBuffer.io.flushBufferSel := RenderBufferId.Color
   io.flushData << tileBuffer.io.flushData
   setup.io.input << io.inputTriangle
 }
@@ -95,6 +97,7 @@ object Simulation {
         // Read out the final data
         val fbData = resolve(dut)
 
+        // Write an image file
         val canvas = new BufferedImage(GpuConfig.tileSizePixels, GpuConfig.tileSizePixels,
           BufferedImage.TYPE_INT_ARGB)
         canvas.setRGB(0, 0, GpuConfig.tileSizePixels, GpuConfig.tileSizePixels, fbData.toArray, 0,

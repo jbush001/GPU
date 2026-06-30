@@ -20,8 +20,10 @@
 // Pineda "A parallel algorithm for polygon rasterization" (SIGGRAPH 88).
 // It outputs 2x2 aligned quads with one bit per pixel to indicate coverage.
 //
-// TODO to support MSAA, which would return an N Bit mask for each of the
-// quads.
+// TODO
+// - Support MSAA, which would return an N Bit mask for each of the quads.
+// - This is inefficient in some cases because it sweeps over the entire tile
+//   rather than to the edges of the triangle or recursing.
 //
 
 package gpu

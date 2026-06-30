@@ -18,6 +18,9 @@ package gpu
 
 import spinal.core._
 
+//
+// Global configuration parameters
+//
 object GpuConfig {
   val depthBits: Int = 24
   val tileSizePixels: Int = 64;
@@ -27,6 +30,13 @@ object GpuConfig {
   assert((GpuConfig.tileSizePixels & (GpuConfig.tileSizePixels - 1)) == 0) // Must be power of two tile
 }
 
+// TODO:
+// - this currently is used for both quad coordinates and pixel coordinates
+//   in different places.
+// - This doesn't provide any type safety, as it is just a wrapper to produce
+//   a consistent type.
+// - This should probably be a fixed point value (maybe 14.4) to rasterize
+//   accurately.
 object ScreenCoord {
   def apply(): SInt = SInt(16 bits)
 }

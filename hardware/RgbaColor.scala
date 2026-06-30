@@ -49,10 +49,13 @@ class RgbaColor extends Bundle {
     res
   }
 
+  // TODO this implicity assumes ARGB format. Make this take a format parameter
+  // and swizzle.
   def toPackedBits: Bits = {
     this.channels.asBits
   }
 
+  // Same as above
   def fromBits(bits: Bits): RgbaColor = {
     val res = RgbaColor()
     res.channels := Vec(bits.asBools.grouped(channelBits).map(g => Vec(g).asBits.asUInt).toSeq)
