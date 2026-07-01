@@ -29,6 +29,7 @@ import spinal.core._
 import spinal.lib._
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.core.sim._
+import scala.collection.mutable.ListBuffer
 
 class TriangleSetupParams extends Bundle {
     val bbLeft = ScreenCoord()
@@ -41,6 +42,62 @@ class TriangleSetupParams extends Bundle {
     val y1 = ScreenCoord()
     val x2 = ScreenCoord()
     val y2 = ScreenCoord()
+}
+
+// TODO some registers can be used as sources, some as destinations, some both.
+// I don't check that here for simplicity, but there are a number of ways to do
+// this at either compile or runtime.
+object MicrocodeCompiler {
+  class Program {
+    val uops = ListBuffer[Int]()
+  }
+
+  sealed trait Expression
+  case class SubExpr(op1: Operand, op2: Operand) extends Expression
+  case class MulExpr(op1: Operand, op2: Operand) extends Expression
+
+  sealed abstract class Operand(val index: Int) {
+    def -(op2: Operand): Expression = SubExpr(this, op2)
+    def *(op2: Operand): Expression = MulExpr(this, op2)
+    def :=(expr: Expression)(implicit program: Program) = {
+      expr match {
+        case SubExpr(op1, op2) => program.uops += packInstruction(0, this.index, op1.index, op2.index)
+        case MulExpr(op1, op2) => program.uops += packInstruction(1, this.index, op1.index, op2.index)
+      }
+    }
+  }
+
+  case object temp0 extends Operand(1)
+  case object temp1 extends Operand(2)
+  case object temp2 extends Operand(3)
+  case object x0 extends Operand(4)
+  case object x1 extends Operand(5)
+  case object x2 extends Operand(6)
+  case object y0 extends Operand(7)
+  case object y1 extends Operand(8)
+  case object y2 extends Operand(9)
+  case object bbleft extends Operand(10)
+  case object bbtop extends Operand(11)
+  case object xs0 extends Operand(4)
+  case object ys0 extends Operand(5)
+  case object iv0 extends Operand(6)
+  case object xs1 extends Operand(7)
+  case object ys1 extends Operand(8)
+  case object iv1 extends Operand(9)
+  case object xs2 extends Operand(10)
+  case object ys2 extends Operand(11)
+  case object iv2 extends Operand(12)
+
+  def packInstruction(op: Int, dest: Int, op1: Int, op2: Int): Int = {
+    return ((op << 12) | (dest << 8) | (op1 << 4) | op2)
+  }
+
+  def assemble(function: Program => Unit): List[Int] = {
+    val program = new Program()
+    function(program)
+    program.uops += (1 << 13) // Set halt bit
+    program.uops.toList
+  }
 }
 
 class TriangleSetup extends Component {
@@ -89,77 +146,44 @@ class TriangleSetup extends Component {
     outputResultPending := False
   }
 
-  // Source/Destination operand (scratchpad registers)
-  val A0 = 1
-  val A1 = 2
-  val A2 = 3
 
-  // Source operand constants
-  val S_X0 = 4
-  val S_X1 = 5
-  val S_X2 = 6
-  val S_Y0 = 7
-  val S_Y1 = 8
-  val S_Y2 = 9
-  val S_BL = 10
-  val S_BT = 11
+  val microcode = MicrocodeCompiler.assemble { implicit program =>
+    import MicrocodeCompiler._
 
-  // Destination operand constants
-  val D_XS0 = 4
-  val D_YS0 = 5
-  val D_IV0 = 6
-  val D_XS1 = 7
-  val D_YS1 = 8
-  val D_IV1 = 9
-  val D_XS2 = 10
-  val D_YS2 = 11
-  val D_IV2 = 12
+    temp0 := bbleft - x0
+    temp1 := y1 - y0
+    temp2 := temp0 * temp1
+    temp0 := bbtop - y0
+    temp1 := x1 - x0
+    temp0 := temp0 * temp1
+    iv0 := temp2 - temp0
+    xs0 := y1 - y0
+    ys0 := x0 - x1
 
-  // Operation codes
-  val SUB = 0
-  val MUL = 1
+    temp0 := bbleft - x1
+    temp1 := y2 - y1
+    temp2 := temp0 * temp1
+    temp0 := bbtop - y1
+    temp1 := x2 - x1
+    temp0 := temp0 * temp1
+    iv1 := temp2 - temp0
+    xs1 := y2 - y1
+    ys1 := x1 - x2
 
-  val microcode = Array(
-    // Edge 0->1
-    (0, SUB, A0, S_BL, S_X0),
-    (0, SUB, A1, S_Y1, S_Y0),
-    (0, MUL, A2, A0, A1),
-    (0, SUB, A0, S_BT, S_Y0),
-    (0, SUB, A1, S_X1, S_X0),
-    (0, MUL, A0, A0, A1),
-    (0, SUB, D_IV0, A2, A0),
-    (0, SUB, D_XS0, S_Y1, S_Y0),
-    (0, SUB, D_YS0, S_X0, S_X1),
-
-    // Edge 1->2
-    (0, SUB, A0, S_BL, S_X1),
-    (0, SUB, A1, S_Y2, S_Y1),
-    (0, MUL, A2, A0, A1),
-    (0, SUB, A0, S_BT, S_Y1),
-    (0, SUB, A1, S_X2, S_X1),
-    (0, MUL, A0, A0, A1),
-    (0, SUB, D_IV1, A2, A0),
-    (0, SUB, D_XS1, S_Y2, S_Y1),
-    (0, SUB, D_YS1, S_X1, S_X2),
-
-    // Edge 2->0
-    (0, SUB, A0, S_BL, S_X2),
-    (0, SUB, A1, S_Y0, S_Y2),
-    (0, MUL, A2, A0, A1),
-    (0, SUB, A0, S_BT, S_Y2),
-    (0, SUB, A1, S_X0, S_X2),
-    (0, MUL, A0, A0, A1),
-    (0, SUB, D_IV2, A2, A0),
-    (0, SUB, D_XS2, S_Y0, S_Y2),
-    (0, SUB, D_YS2, S_X2, S_X0),
-
-    (1, 0, 0, 0, 0) // Halt
-  )
+    temp0 := bbleft - x2
+    temp1 := y0 - y2
+    temp2 := temp0 * temp1
+    temp0 := bbtop - y2
+    temp1 := x0 - x2
+    temp0 := temp0 * temp1
+    iv2 := temp2 - temp0
+    xs2 := y0 - y2
+    ys2 := x2 - x0
+  }
 
   // Control path
   val upc = Reg(UInt(log2Up(microcode.length) bits)) init(0)
-  val microcodeRom = Mem(UInt(18 bits),
-    initialContent = microcode.map(x => U(((x._1 << 13) | (x._2 << 12) | (x._3 << 8) | (x._4 << 4) | x._5), 18 bits)))
+  val microcodeRom = Mem(UInt(18 bits), initialContent = microcode.map(x => U(x, 18 bits)))
   val uInst = microcodeRom(upc)
   halt := uInst(13)
   val operation = uInst(12)
