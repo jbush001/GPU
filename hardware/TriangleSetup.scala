@@ -44,12 +44,44 @@ class TriangleSetupParams extends Bundle {
     val y2 = ScreenCoord()
 }
 
+class UInst extends Bundle {
+  val halt = Bool()
+  val opcode = UInt(1 bits)
+  val dest = UInt(4 bits)
+  val src1 = UInt(4 bits)
+  val src2 = UInt(4 bits)
+}
+
+object UInst {
+  def apply(opcode: Int, dest: Int, src1: Int, src2: Int): UInst = {
+    val result = new UInst()
+    result.halt := False
+    result.opcode := opcode
+    result.dest := dest
+    result.src1 := src1
+    result.src2 := src2
+    result
+  }
+
+  def apply() = new UInst()
+
+  def HALT: UInst = {
+    val result = new UInst()
+    result.halt := True
+    result.opcode := 0
+    result.dest := 0
+    result.src1 := 0
+    result.src2 := 0
+    result
+  }
+}
+
 // TODO some registers can be used as sources, some as destinations, some both.
 // I don't check that here for simplicity, but there are a number of ways to do
 // this at either compile or runtime.
 object MicrocodeCompiler {
   class Program {
-    val uops = ListBuffer[Int]()
+    val uops = ListBuffer[UInst]()
   }
 
   sealed trait Expression
@@ -61,8 +93,8 @@ object MicrocodeCompiler {
     def *(op2: Operand): Expression = MulExpr(this, op2)
     def :=(expr: Expression)(implicit program: Program) = {
       expr match {
-        case SubExpr(op1, op2) => program.uops += packInstruction(0, this.index, op1.index, op2.index)
-        case MulExpr(op1, op2) => program.uops += packInstruction(1, this.index, op1.index, op2.index)
+        case SubExpr(op1, op2) => program.uops += UInst(0, this.index, op1.index, op2.index)
+        case MulExpr(op1, op2) => program.uops += UInst(1, this.index, op1.index, op2.index)
       }
     }
   }
@@ -88,14 +120,10 @@ object MicrocodeCompiler {
   case object ys2 extends Operand(11)
   case object iv2 extends Operand(12)
 
-  def packInstruction(op: Int, dest: Int, op1: Int, op2: Int): Int = {
-    return ((op << 12) | (dest << 8) | (op1 << 4) | op2)
-  }
-
-  def assemble(function: Program => Unit): List[Int] = {
+  def assemble(function: Program => Unit): List[UInst] = {
     val program = new Program()
     function(program)
-    program.uops += (1 << 13) // Set halt bit
+    program.uops += UInst.HALT
     program.uops.toList
   }
 }
@@ -146,7 +174,6 @@ class TriangleSetup extends Component {
     outputResultPending := False
   }
 
-
   val microcode = MicrocodeCompiler.assemble { implicit program =>
     import MicrocodeCompiler._
 
@@ -183,13 +210,9 @@ class TriangleSetup extends Component {
 
   // Control path
   val upc = Reg(UInt(log2Up(microcode.length) bits)) init(0)
-  val microcodeRom = Mem(UInt(18 bits), initialContent = microcode.map(x => U(x, 18 bits)))
+  val microcodeRom = Mem(UInst(), initialContent = microcode)
   val uInst = microcodeRom(upc)
-  halt := uInst(13)
-  val operation = uInst(12)
-  val destSelect = uInst(11 downto 8)
-  val aSelect = uInst(7 downto 4)
-  val bSelect = uInst(3 downto 0)
+  halt := uInst.halt
 
   when (computing) {
     upc := upc + 1
@@ -218,23 +241,23 @@ class TriangleSetup extends Component {
     (inParams.bbTop << 1).resize(32)
   )
 
-  val operand1 = operands(aSelect)
-  val operand2 = operands(bSelect)
+  val operand1 = operands(uInst.src1)
+  val operand2 = operands(uInst.src2)
 
-  val result = Mux(operation, (operand1(15 downto 0) * operand2(15 downto 0)), operand1 - operand2)
+  val result = Mux(uInst.opcode.asBool, (operand1(15 downto 0) * operand2(15 downto 0)), operand1 - operand2)
 
-  when (destSelect === 1) { acc0 := result }
-  when (destSelect === 2) { acc1 := result }
-  when (destSelect === 3) { acc2 := result }
-  when (destSelect === 4) { setupResult.xStep(0) := result }
-  when (destSelect === 5) { setupResult.yStep(0) := result }
-  when (destSelect === 6) { setupResult.initialValue(0) := result }
-  when (destSelect === 7) { setupResult.xStep(1) := result }
-  when (destSelect === 8) { setupResult.yStep(1) := result }
-  when (destSelect === 9) { setupResult.initialValue(1) := result }
-  when (destSelect === 10) { setupResult.xStep(2) := result }
-  when (destSelect === 11) { setupResult.yStep(2) := result }
-  when (destSelect === 12) { setupResult.initialValue(2) := result }
+  when (uInst.dest === 1) { acc0 := result }
+  when (uInst.dest === 2) { acc1 := result }
+  when (uInst.dest === 3) { acc2 := result }
+  when (uInst.dest === 4) { setupResult.xStep(0) := result }
+  when (uInst.dest === 5) { setupResult.yStep(0) := result }
+  when (uInst.dest === 6) { setupResult.initialValue(0) := result }
+  when (uInst.dest === 7) { setupResult.xStep(1) := result }
+  when (uInst.dest === 8) { setupResult.yStep(1) := result }
+  when (uInst.dest === 9) { setupResult.initialValue(1) := result }
+  when (uInst.dest === 10) { setupResult.xStep(2) := result }
+  when (uInst.dest === 11) { setupResult.yStep(2) := result }
+  when (uInst.dest === 12) { setupResult.initialValue(2) := result }
 }
 
 class TriangleSetupSpec extends AnyFunSuite {
