@@ -63,10 +63,12 @@ object UInst {
   def apply() = new UInst()
 }
 
+// This implements a domain specific language for defining the microcode
+// program to set up the triangle parameters.
 // TODO some registers can be used as sources, some as destinations, some both.
 // I don't check that here for simplicity, but there are a number of ways to do
 // this at either compile or runtime.
-object MicrocodeCompiler {
+object MicrocodeAssembler {
   type Inst = (Int, Int, Int, Int, Boolean, Int, Boolean)
 
   class Program {
@@ -94,6 +96,10 @@ object MicrocodeCompiler {
     def *(op2: Operand): Expression = MulExpr(this, op2)
   }
 
+  // This register ID gets the result of the memory read from the
+  // last cycle.
+  val REG_MEM_RESULT = 7
+
   sealed abstract class RegOperand(val index: Int) extends Operand {
     def :=(expr: Expression)(implicit program: Program) = {
       val (opcode, op1, op2) = expr match {
@@ -109,12 +115,12 @@ object MicrocodeCompiler {
 
         case (RegOperand(a), MemOperand(b)) => {
           program.addLoadOp(b)
-          program.uops += ((opcode, this.index, a, 15, false, 0, false))
+          program.uops += ((opcode, this.index, a, REG_MEM_RESULT, false, 0, false))
         }
 
         case (MemOperand(a), RegOperand(b)) => {
           program.addLoadOp(a)
-          program.uops += ((opcode, this.index, 15, b, false, 0, false))
+          program.uops += ((opcode, this.index, REG_MEM_RESULT, b, false, 0, false))
         }
 
         case _ => throw new IllegalArgumentException("Unsupported configuration")
@@ -222,8 +228,8 @@ class TriangleSetup extends Component {
   val PARAM_X2 = 4
   val PARAM_Y2 = 5
 
-  val microcode = MicrocodeCompiler.assemble { implicit program =>
-    import MicrocodeCompiler._
+  val microcode = MicrocodeAssembler.assemble { implicit program =>
+    import MicrocodeAssembler._
 
     // Edge 1
     temp0 := bbleft - mem(PARAM_X0)
@@ -254,7 +260,6 @@ class TriangleSetup extends Component {
     xs1 := temp0 - mem(PARAM_Y1)
     temp0 := mem(PARAM_X1)
     ys1 := temp0 - mem(PARAM_X2)
-
 
     // Edge 3
     temp0 := bbleft - mem(PARAM_X2)
@@ -301,20 +306,12 @@ class TriangleSetup extends Component {
     acc2,
     (inParams.bbLeft << 1).resize(32),
     (inParams.bbTop << 1).resize(32),
-    S(0),
-    S(0),
-    S(0),
-    S(0),
-    S(0),
-    S(0),
-    S(0),
-    S(0),
-    S(0),
+    S(0, 32 bits),
     io.vpi.readData.intoSInt.resize(32)
   )
 
-  val operand1 = operands(uInst.src1)
-  val operand2 = operands(uInst.src2)
+  val operand1 = operands(uInst.src1(2 downto 0))
+  val operand2 = operands(uInst.src2(2 downto 0))
 
   val result = Mux(uInst.opcode.asBool, (operand1(15 downto 0) * operand2(15 downto 0)), operand1 - operand2)
 
