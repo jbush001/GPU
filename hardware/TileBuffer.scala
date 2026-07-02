@@ -161,22 +161,28 @@ class TileBuffer extends Module {
   for (pixel <- 0 until pixelsPerQuad) {
     // Stage 1: This waits for the read of the old color and depth values above,
     // and passes through the other vlaues.
-    val newColorStage1 = RegNext(io.colors(pixel))
-    val newDepthStage1 = RegNext(io.depths(pixel))
-    val maskStage1 = RegNext(io.mask(pixel) && io.valid).init(false)
+    val stage1 = new Area {
+      val newColor = RegNext(io.colors(pixel))
+      val newDepth = RegNext(io.depths(pixel))
+      val mask = RegNext(io.mask(pixel) && io.valid).init(false)
+    }
 
     // Stage 2: visibility checks, destination blending
-    val oneMinusAlpha = 0xff - newColorStage1.alpha
-    val oldWeightedColorStage2 = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
-    val newColorStage2 = RegNext(newColorStage1)
-    val newDepthStage2 = RegNext(newDepthStage1)
-    val maskStage2 = RegNext(maskStage1 && (newDepthStage1 < depthReadVal(pixel))).init(false)
+    val stage2 = new Area {
+      val oneMinusAlpha = 0xff - stage1.newColor.alpha
+      val oldWeightedColor = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
+      val newColor = RegNext(stage1.newColor)
+      val newDepth = RegNext(stage1.newDepth)
+      val mask = RegNext(stage1.mask && (stage1.newDepth < depthReadVal(pixel))).init(false)
+    }
 
     // Stage 3: Blend, flush.
-    val blended = oldWeightedColorStage2 +| newColorStage2
-    quadWriteLanes(pixel) := maskStage2 && !flushActive
-    colorWriteVal(pixel) := blended
-    depthWriteVal(pixel) := newDepthStage2
+    val _ = new Area {
+      val blended = stage2.oldWeightedColor +| stage2.newColor
+      quadWriteLanes(pixel) := stage2.mask && !flushActive
+      colorWriteVal(pixel) := blended
+      depthWriteVal(pixel) := stage2.newDepth
+    }
   }
 }
 
