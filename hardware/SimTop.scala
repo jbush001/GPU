@@ -31,12 +31,16 @@ class SimTop extends Component {
     val inputTriangle = slave(spinal.lib.Stream(new TriangleSetupParams))
     val startFlush = in(Bool())
     val flushData = master(Stream(Bits(32 bits)))
+    val vpi = master(new VertexParameterInterface())
   }
 
   val setup = new TriangleSetup
   val rasterizer = new Rasterizer
   val tileBuffer = new TileBuffer
   setup.io.output >> rasterizer.io.input
+  io.vpi.readEn := setup.io.vpi.readEn
+  io.vpi.readAddress := setup.io.vpi.readAddress
+  setup.io.vpi.readData := io.vpi.readData
 
   val fillColor = RgbaColor(0xff, 0, 0, 0xff)
   val fillDepth = U(0, GpuConfig.depthBits bits)
@@ -70,6 +74,18 @@ object Simulation {
         dut.clockDomain.forkStimulus(period = 10)
         dut.clockDomain.waitSampling(100)
 
+
+      val vpmData = Array(5, 7, 61, 49, 23, 60)
+
+      fork {
+        while (true) {
+          dut.clockDomain.waitSampling()
+          if (dut.io.vpi.readEn.toBoolean) {
+            dut.io.vpi.readData #= vpmData(dut.io.vpi.readAddress.toInt)
+          }
+        }
+      }
+
         // Run a resolve to clear out the buffer initially
         resolve(dut)
 
@@ -78,12 +94,6 @@ object Simulation {
         dut.io.inputTriangle.bbTop #= 0
         dut.io.inputTriangle.bbRight #= GpuConfig.tileSizeQuads
         dut.io.inputTriangle.bbBottom #= GpuConfig.tileSizeQuads
-        dut.io.inputTriangle.x0 #= 5
-        dut.io.inputTriangle.y0 #= 7
-        dut.io.inputTriangle.x1 #= 61
-        dut.io.inputTriangle.y1 #= 49
-        dut.io.inputTriangle.x2 #= 23
-        dut.io.inputTriangle.y2 #= 60
         dut.io.inputTriangle.valid #= true
         dut.clockDomain.waitSampling()
         dut.io.inputTriangle.valid #= false

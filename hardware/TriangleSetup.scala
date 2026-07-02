@@ -16,9 +16,8 @@
 
 //
 // This computes the edge equation coefficients used by the rasterizer.
-// It takes 28 cycles to set up the next triangle. This has an output buffer
-// so the computation for the next triangle overlaps rasterization
-// of the current one.
+// This has an output buffer so the computation for the next triangle
+// overlaps rasterization of the current one.
 // To optimize area, this runs a small microsequencer that performs the
 // calculations (rather than just doing it all in parallel).
 //
@@ -36,95 +35,135 @@ class TriangleSetupParams extends Bundle {
     val bbTop = ScreenCoord()
     val bbRight = ScreenCoord()
     val bbBottom = ScreenCoord()
-    val x0 = ScreenCoord()
-    val y0 = ScreenCoord()
-    val x1 = ScreenCoord()
-    val y1 = ScreenCoord()
-    val x2 = ScreenCoord()
-    val y2 = ScreenCoord()
 }
 
 class UInst extends Bundle {
-  val halt = Bool()
   val opcode = UInt(1 bits)
   val dest = UInt(4 bits)
   val src1 = UInt(4 bits)
   val src2 = UInt(4 bits)
+  val readEn = Bool()
+  val readAddress = UInt(4 bits)
+  val halt = Bool()
 }
 
 object UInst {
-  def apply(opcode: Int, dest: Int, src1: Int, src2: Int): UInst = {
+  def apply(opcode: Int, dest: Int, src1: Int, src2: Int, readEn: Boolean = false, readAddress: Int = 0, halt: Boolean = false): UInst = {
     val result = new UInst()
-    result.halt := False
     result.opcode := opcode
     result.dest := dest
     result.src1 := src1
     result.src2 := src2
+    result.readEn := Bool(readEn)
+    result.readAddress := readAddress
+    result.halt := Bool(halt)
     result
   }
 
   def apply() = new UInst()
-
-  def HALT: UInst = {
-    val result = new UInst()
-    result.halt := True
-    result.opcode := 0
-    result.dest := 0
-    result.src1 := 0
-    result.src2 := 0
-    result
-  }
 }
 
 // TODO some registers can be used as sources, some as destinations, some both.
 // I don't check that here for simplicity, but there are a number of ways to do
 // this at either compile or runtime.
 object MicrocodeCompiler {
+  type Inst = (Int, Int, Int, Int, Boolean, Int, Boolean)
+
   class Program {
-    val uops = ListBuffer[UInst]()
+    val uops = ListBuffer[Inst]()
+    uops += ((0, 0, 0, 0, false, 0, false)) // no-op
+
+    def addLoadOp(address: Int) = {
+      // We need to patch the previous instruction to issue the load, since
+      // there is one cycle of latency.
+      if (uops.length == 0) {
+        throw new Exception("cannot issue load as first instruction")
+      }
+
+      uops(uops.length - 1) = uops.last.copy(_5 = true, _6 = address)
+    }
   }
 
   sealed trait Expression
   case class SubExpr(op1: Operand, op2: Operand) extends Expression
   case class MulExpr(op1: Operand, op2: Operand) extends Expression
+  case class LoadExpr(op1: MemOperand) extends Expression
 
-  sealed abstract class Operand(val index: Int) {
+  sealed trait Operand {
     def -(op2: Operand): Expression = SubExpr(this, op2)
     def *(op2: Operand): Expression = MulExpr(this, op2)
-    def :=(expr: Expression)(implicit program: Program) = {
-      expr match {
-        case SubExpr(op1, op2) => program.uops += UInst(0, this.index, op1.index, op2.index)
-        case MulExpr(op1, op2) => program.uops += UInst(1, this.index, op1.index, op2.index)
-      }
-    }
   }
 
-  case object temp0 extends Operand(1)
-  case object temp1 extends Operand(2)
-  case object temp2 extends Operand(3)
-  case object x0 extends Operand(4)
-  case object x1 extends Operand(5)
-  case object x2 extends Operand(6)
-  case object y0 extends Operand(7)
-  case object y1 extends Operand(8)
-  case object y2 extends Operand(9)
-  case object bbleft extends Operand(10)
-  case object bbtop extends Operand(11)
-  case object xs0 extends Operand(4)
-  case object ys0 extends Operand(5)
-  case object iv0 extends Operand(6)
-  case object xs1 extends Operand(7)
-  case object ys1 extends Operand(8)
-  case object iv1 extends Operand(9)
-  case object xs2 extends Operand(10)
-  case object ys2 extends Operand(11)
-  case object iv2 extends Operand(12)
+  sealed abstract class RegOperand(val index: Int) extends Operand {
+    def :=(expr: Expression)(implicit program: Program) = {
+      val (opcode, op1, op2) = expr match {
+        case SubExpr(o1, o2) => (0, o1, o2)
+        case MulExpr(o1, o2) => (1, o1, o2)
+        case LoadExpr(o1) => (0, o1, zero)
+      }
 
-  def assemble(function: Program => Unit): List[UInst] = {
+      (op1, op2) match {
+        case (RegOperand(a), RegOperand(b)) => {
+          program.uops += ((opcode, this.index, a, b, false, 0, false))
+        }
+
+        case (RegOperand(a), MemOperand(b)) => {
+          program.addLoadOp(b)
+          program.uops += ((opcode, this.index, a, 15, false, 0, false))
+        }
+
+        case (MemOperand(a), RegOperand(b)) => {
+          program.addLoadOp(a)
+          program.uops += ((opcode, this.index, 15, b, false, 0, false))
+        }
+
+        case _ => throw new IllegalArgumentException("Unsupported configuration")
+      }
+    }
+
+    def :=(mem: MemOperand)(implicit program: Program): Unit = this := LoadExpr(mem)
+  }
+
+  object RegOperand {
+    def unapply(op: RegOperand): Option[Int] = Some(op.index)
+  }
+
+  sealed case class MemOperand(addr: Int) extends Operand
+
+  def mem(addr: Int) = MemOperand(addr)
+
+  case object zero extends RegOperand(0)
+  case object temp0 extends RegOperand(1)
+  case object temp1 extends RegOperand(2)
+  case object temp2 extends RegOperand(3)
+  case object bbleft extends RegOperand(4)
+  case object bbtop extends RegOperand(5)
+  case object xs0 extends RegOperand(4)
+  case object ys0 extends RegOperand(5)
+  case object iv0 extends RegOperand(6)
+  case object xs1 extends RegOperand(7)
+  case object ys1 extends RegOperand(8)
+  case object iv1 extends RegOperand(9)
+  case object xs2 extends RegOperand(10)
+  case object ys2 extends RegOperand(11)
+  case object iv2 extends RegOperand(12)
+
+  def assemble(function: Program => Unit): List[Inst] = {
     val program = new Program()
     function(program)
-    program.uops += UInst.HALT
+    program.uops += ((0, 0, 0, 0, false, 0, true)) // Halt
     program.uops.toList
+  }
+}
+
+class VertexParameterInterface extends Bundle with IMasterSlave {
+  val readEn = Bool()
+  val readAddress = UInt(4 bits)
+  val readData = UInt(32 bits)
+
+  override def asMaster(): Unit = {
+    out(readEn, readAddress)
+    in(readData)
   }
 }
 
@@ -132,9 +171,10 @@ class TriangleSetup extends Component {
   val io = new Bundle {
     val input = slave(spinal.lib.Stream(new TriangleSetupParams))
     val output = master(spinal.lib.Stream(new RasterizerSetupParams))
+    val vpi = master(new VertexParameterInterface())
   }
 
-  // Register incoming parameters
+  // RegOperand incoming parameters
   val inParams = RegNextWhen(io.input.payload, io.input.fire)
 
   // Here is where we accumulate values as we compute them
@@ -174,45 +214,71 @@ class TriangleSetup extends Component {
     outputResultPending := False
   }
 
+  // Vertex parameter offsets
+  val PARAM_X0 = 0
+  val PARAM_Y0 = 1
+  val PARAM_X1 = 2
+  val PARAM_Y1 = 3
+  val PARAM_X2 = 4
+  val PARAM_Y2 = 5
+
   val microcode = MicrocodeCompiler.assemble { implicit program =>
     import MicrocodeCompiler._
 
-    temp0 := bbleft - x0
-    temp1 := y1 - y0
+    // Edge 1
+    temp0 := bbleft - mem(PARAM_X0)
+    temp1 := mem(PARAM_Y1)
+    temp1 := temp1 - mem(PARAM_Y0)
     temp2 := temp0 * temp1
-    temp0 := bbtop - y0
-    temp1 := x1 - x0
+    temp0 := bbtop - mem(PARAM_Y0)
+    temp1 := mem(PARAM_X1)
+    temp1 := temp1 - mem(PARAM_X0)
     temp0 := temp0 * temp1
     iv0 := temp2 - temp0
-    xs0 := y1 - y0
-    ys0 := x0 - x1
+    temp0 := mem(PARAM_Y1)
+    xs0 := temp0 - mem(PARAM_Y0)
+    temp0 := mem(PARAM_X0)
+    ys0 := temp0 - mem(PARAM_X1)
 
-    temp0 := bbleft - x1
-    temp1 := y2 - y1
+    // Edge 2
+    temp0 := bbleft - mem(PARAM_X1)
+    temp1 := mem(PARAM_Y2)
+    temp1 := temp1 - mem(PARAM_Y1)
     temp2 := temp0 * temp1
-    temp0 := bbtop - y1
-    temp1 := x2 - x1
+    temp0 := bbtop - mem(PARAM_Y1)
+    temp1 := mem(PARAM_X2)
+    temp1 := temp1 - mem(PARAM_X1)
     temp0 := temp0 * temp1
     iv1 := temp2 - temp0
-    xs1 := y2 - y1
-    ys1 := x1 - x2
+    temp0 := mem(PARAM_Y2)
+    xs1 := temp0 - mem(PARAM_Y1)
+    temp0 := mem(PARAM_X1)
+    ys1 := temp0 - mem(PARAM_X2)
 
-    temp0 := bbleft - x2
-    temp1 := y0 - y2
+
+    // Edge 3
+    temp0 := bbleft - mem(PARAM_X2)
+    temp1 := mem(PARAM_Y0)
+    temp1 := temp1 - mem(PARAM_Y2)
     temp2 := temp0 * temp1
-    temp0 := bbtop - y2
-    temp1 := x0 - x2
+    temp0 := bbtop - mem(PARAM_Y2)
+    temp1 := mem(PARAM_X0)
+    temp1 := temp1 - mem(PARAM_X2)
     temp0 := temp0 * temp1
     iv2 := temp2 - temp0
-    xs2 := y0 - y2
-    ys2 := x2 - x0
+    temp0 := mem(PARAM_Y0)
+    xs2 := temp0 - mem(PARAM_Y2)
+    temp0 := mem(PARAM_X2)
+    ys2 := temp0 - mem(PARAM_X0)
   }
 
   // Control path
   val upc = Reg(UInt(log2Up(microcode.length) bits)) init(0)
-  val microcodeRom = Mem(UInst(), initialContent = microcode)
+  val microcodeRom = Mem(UInst(), initialContent = microcode.map(x => UInst(x._1, x._2, x._3, x._4, x._5, x._6, x._7)))
   val uInst = microcodeRom(upc)
   halt := uInst.halt
+  io.vpi.readEn := uInst.readEn
+  io.vpi.readAddress := uInst.readAddress
 
   when (computing) {
     upc := upc + 1
@@ -226,19 +292,25 @@ class TriangleSetup extends Component {
   val acc2 = Reg(SInt(32 bits))
 
   // Source operand multiplexers
+  // The order of this list must match the indices defined in case objects
+  // defined in MicrocodeAssembler
   val operands = Vec(
-    S(0, 16 bits),
+    S(0, 32 bits),
     acc0,
     acc1,
     acc2,
-    inParams.x0.resize(32),
-    inParams.x1.resize(32),
-    inParams.x2.resize(32),
-    inParams.y0.resize(32),
-    inParams.y1.resize(32),
-    inParams.y2.resize(32),
     (inParams.bbLeft << 1).resize(32),
-    (inParams.bbTop << 1).resize(32)
+    (inParams.bbTop << 1).resize(32),
+    S(0),
+    S(0),
+    S(0),
+    S(0),
+    S(0),
+    S(0),
+    S(0),
+    S(0),
+    S(0),
+    io.vpi.readData.intoSInt.resize(32)
   )
 
   val operand1 = operands(uInst.src1)
@@ -286,79 +358,85 @@ class TriangleSetupSpec extends AnyFunSuite {
 
   test("triangle setup") {
     compiledModel.doSim { dut =>
-        SimTimeout(1000000)
-        dut.clockDomain.forkStimulus(period = 10)
+      SimTimeout(1000000)
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.io.input.valid #= false
+      dut.io.vpi.readData #= 0
+      dut.clockDomain.waitSampling() // wait for reset
 
-        dut.io.input.valid #= false
+      val bbLeft = 32
+      val bbTop = 96
+      val bbRight = 64
+      val bbBottom = 128
+      val x0 = 47
+      val y0 = 88
+      val x1 = 59
+      val y1 = 110
+      val x2 = 33
+      val y2 = 107
 
-        dut.clockDomain.waitSampling()
 
-        val bbLeft = 32
-        val bbTop = 96
-        val bbRight = 64
-        val bbBottom = 128
-        val x0 = 47
-        val y0 = 88
-        val x1 = 59
-        val y1 = 110
-        val x2 = 33
-        val y2 = 107
+      val vpData = Array(
+        x0,
+        y0,
+        x1,
+        y1,
+        x2,
+        y2
+      )
 
-        dut.io.input.valid #= true
-        dut.io.input.bbLeft #= bbLeft
-        dut.io.input.bbTop #= bbTop
-        dut.io.input.bbRight #= bbRight
-        dut.io.input.bbBottom #= bbBottom
-        dut.io.input.x0 #= x0
-        dut.io.input.y0 #= y0
-        dut.io.input.x1 #= x1
-        dut.io.input.y1 #= y1
-        dut.io.input.x2 #= x2
-        dut.io.input.y2 #= y2
-
-        while (!dut.io.input.ready.toBoolean) {
+      fork {
+        while (true) {
           dut.clockDomain.waitSampling()
+          if (dut.io.vpi.readEn.toBoolean) {
+            dut.io.vpi.readData #= vpData(dut.io.vpi.readAddress.toInt)
+          }
         }
+      }
 
-        // Wait for a clock edge to latch it.
+      dut.io.input.valid #= true
+      dut.io.input.bbLeft #= bbLeft
+      dut.io.input.bbTop #= bbTop
+      dut.io.input.bbRight #= bbRight
+      dut.io.input.bbBottom #= bbBottom
+
+      while (!dut.io.input.ready.toBoolean) {
         dut.clockDomain.waitSampling()
+      }
 
-        // Clear the inputs to ensure it has latched them properly.
-        dut.io.input.valid #= false
-        dut.io.input.bbLeft #= 0
-        dut.io.input.bbTop #= 0
-        dut.io.input.bbRight #= 0
-        dut.io.input.bbBottom #= 0
-        dut.io.input.x0 #= 0
-        dut.io.input.y0 #= 0
-        dut.io.input.x1 #= 0
-        dut.io.input.y1 #= 0
-        dut.io.input.x2 #= 0
-        dut.io.input.y2 #= 0
+      // Wait for a clock edge to latch it.
+      dut.clockDomain.waitSampling()
 
-        while (!dut.io.output.valid.toBoolean) {
-          dut.clockDomain.waitSampling()
-        }
+      // Clear the inputs to ensure it has latched them properly.
+      dut.io.input.valid #= false
+      dut.io.input.bbLeft #= 0
+      dut.io.input.bbTop #= 0
+      dut.io.input.bbRight #= 0
+      dut.io.input.bbBottom #= 0
 
-        assert(dut.io.output.valid.toBoolean)
+      while (!dut.io.output.valid.toBoolean) {
+        dut.clockDomain.waitSampling()
+      }
 
-        val (xStep0, yStep0, initialValue0,
-          xStep1, yStep1, initialValue1,
-          xStep2, yStep2, initialValue2) = computeExpectedValues(bbLeft, bbTop,
-            x0, y0, x1, y1, x2, y2)
-        assert(dut.io.output.xStep(0).toInt == xStep0)
-        assert(dut.io.output.yStep(0).toInt == yStep0)
-        assert(dut.io.output.initialValue(0).toInt == initialValue0)
-        assert(dut.io.output.xStep(1).toInt == xStep1)
-        assert(dut.io.output.yStep(1).toInt == yStep1)
-        assert(dut.io.output.initialValue(1).toInt == initialValue1)
-        assert(dut.io.output.xStep(2).toInt == xStep2)
-        assert(dut.io.output.yStep(2).toInt == yStep2)
-        assert(dut.io.output.initialValue(2).toInt == initialValue2)
-        assert(dut.io.output.bbLeft.toInt == bbLeft)
-        assert(dut.io.output.bbTop.toInt == bbTop)
-        assert(dut.io.output.bbRight.toInt == bbRight)
-        assert(dut.io.output.bbBottom.toInt == bbBottom)
+      assert(dut.io.output.valid.toBoolean)
+
+      val (xStep0, yStep0, initialValue0,
+        xStep1, yStep1, initialValue1,
+        xStep2, yStep2, initialValue2) = computeExpectedValues(bbLeft, bbTop,
+          x0, y0, x1, y1, x2, y2)
+      assert(dut.io.output.xStep(0).toInt == xStep0)
+      assert(dut.io.output.yStep(0).toInt == yStep0)
+      assert(dut.io.output.initialValue(0).toInt == initialValue0)
+      assert(dut.io.output.xStep(1).toInt == xStep1)
+      assert(dut.io.output.yStep(1).toInt == yStep1)
+      assert(dut.io.output.initialValue(1).toInt == initialValue1)
+      assert(dut.io.output.xStep(2).toInt == xStep2)
+      assert(dut.io.output.yStep(2).toInt == yStep2)
+      assert(dut.io.output.initialValue(2).toInt == initialValue2)
+      assert(dut.io.output.bbLeft.toInt == bbLeft)
+      assert(dut.io.output.bbTop.toInt == bbTop)
+      assert(dut.io.output.bbRight.toInt == bbRight)
+      assert(dut.io.output.bbBottom.toInt == bbBottom)
     }
   }
 }
