@@ -39,6 +39,7 @@ class SingleFloat extends Bundle {
   def isInf = (this.exponent === 0xff && this.fraction === 0)
   def isZero = (this.exponent === 0 && this.fraction === 0)
 
+  // This adds the leading hidden bit
   def fullFraction = (!this.isZero ## this.fraction).asUInt
 
   def absLargerThan(that: SingleFloat): Bool = {
@@ -50,13 +51,35 @@ class SingleFloat extends Bundle {
 
 object SingleFloat {
   def apply() = new SingleFloat()
-  def apply(negative: Bool, exponent: UInt, fraction: UInt): SingleFloat = {
-    val f = SingleFloat()
-    f.negative := negative
-    f.exponent := exponent
-    f.fraction := fraction
-    f
+}
+
+object FpOperation extends SpinalEnum {
+  val None, Add, Sub, Mul = newElement()
+}
+
+class FloatingPointPipeline extends Component {
+  val io = new Bundle {
+    val result = out(SingleFloat())
+    val operand1 = in(SingleFloat())
+    val operand2 = in(SingleFloat())
+    val operation = in(FpOperation())
   }
+
+  val opStage1 = RegNext(io.operation) init(FpOperation.None)
+  val opStage2 = RegNext(opStage1) init(FpOperation.None)
+  val opStage3 = RegNext(opStage2) init(FpOperation.None)
+
+  val addPipeline = new FpAddPipeline
+  val mulPipeline = new FpMulPipeline
+
+  addPipeline.io.operand1 := io.operand1
+  addPipeline.io.operand2 := io.operand2
+  addPipeline.io.subtract := io.operation === FpOperation.Sub
+  mulPipeline.io.operand1 := io.operand1
+  mulPipeline.io.operand2 := io.operand2
+
+  io.result := Mux(opStage3 === FpOperation.Mul,
+    mulPipeline.io.result, addPipeline.io.result)
 }
 
 class FpAddPipeline extends Component {
@@ -96,7 +119,7 @@ class FpAddPipeline extends Component {
     val isNaN = RegNext(isNanNext) init(False)
     val isInf = RegNext(!isNanNext && (io.operand1.isInf || io.operand2.isInf)) init(False)
     val logicalSubtract = RegNext(logicalSubtractNext) init(False)
-    val resultExponent = RegNext(Mux(op1IsLarger, io.operand1.exponent, io.operand2.exponent))
+    val resultExponent = RegNext(Mux(op1IsLarger, io.operand1.exponent, io.operand2.exponent)) init(0)
 
     // Value with larger magnitude wins
     val resultNegative = RegNext(Mux(op1IsLarger, io.operand1.negative, io.operand2.negative ^ io.subtract)) init(False)
@@ -219,72 +242,101 @@ class FpMulPipeline extends Component {
 }
 
 class FloatingPointSpec extends AnyFunSuite {
-  test("fp add") {
-    TestConfig.testSim.compile(new FpAddPipeline()).doSim { dut =>
+  test("fp operations") {
+    TestConfig.testSim.compile(new FloatingPointPipeline()).doSim { dut =>
       dut.clockDomain.forkStimulus(period = 10)
       dut.io.operand1.raw #= 0
       dut.io.operand2.raw #= 0
-      dut.io.subtract #= false
       dut.clockDomain.waitSampling() // Wait for reset to complete
 
       val pipelineDelay = 4
-      val testVectors: Array[(Boolean, Float, Float, Float)] = Array(
+      val testVectors: Array[(FpOperation.E, Float, Float, Float)] = Array(
         // Addition
-        (false, 3.0f, 2.0f, 5.0f), // pos + pos
-        (false, -4.0f, -5.0f, -9.0f), // neg + neg
-        (false, 7.7f, -3.5f, 4.2f), // pos + smaller neg
-        (false, 7.0f, -13.0f, -6.0f), // pos + larger neg
-        (false, -40.0f, 37.0f, -3.0f), // neg + smaller pos
-        (false, -27.0f, 35.0f, 8.0f), // neg + larger pos
-        (false, 5.0f, -5.0f, 0.0f), // Exact cancellation
-        (false, -5.0f, 5.0f, 0.0f),
-        (false, 17.79f, 19.32f, 37.11f), // Exponents equal. Will carry into next significand bit
-        (false, 0.34f, 44.23f, 44.57f), // Exponent 2 larger
-        (false, 44.23f, 0.034f, 44.264f), // Exponent 1 larger
-        (false, -1.0f, 5.0f, 4.0f), // First element is negative and has smaller exponent
-        (false, -5.0f, 1.0f, -4.0f), // First element is negative and has larger exponent
-        (false, 5.0f, -1.0f, 4.0f), // Second element is negative and has smaller exponent
-        (false, 1.0f, -5.0f, -4.0f), // Second element is negative and has larger exponent
-        (false, 5.0f, 0.0f, 5.0f), // Zero identity
-        (false, 0.0f, 5.0f, 5.0f), // " "
-        (false, 0.0f, 0.0f, 0.0f), // " "
-        (false, 7.0f, -7.0f, 0.0f), // Sum is zero, positive first operand
-        (false, -7.0f, 7.0f, 0.0f), // Sum is zero, negative first operand
-        (false, 1000000.0f, 0.0000001f, 1000000.0f), //  Second op is lost because of precision
-        (false, 0.0000001f, 0.00000001f, 0.00000011f), // Very small number
-        (false, 1000000.0f, 10000000.0f, 11000000.0f), // Large number
-        (false, -0.0f, 2.323f, 2.323f), // negative zero
-        (false, 2.323f, -0.0f, 2.323f), // negative zero
-        (false, Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
-        (false, Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
-        (false, Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
-        (false, 0.0f, Float.NegativeInfinity, Float.NegativeInfinity),
-        (false, 1.0f, Float.PositiveInfinity, Float.PositiveInfinity),
-        (false, 1.0f, Float.NegativeInfinity, Float.NegativeInfinity),
-        (false, Float.PositiveInfinity, Float.NegativeInfinity, Float.NaN),
-        (false, Float.NaN, 1.0f, Float.NaN),
-        (false, 1.0f, Float.NaN, Float.NaN),
-        (false, Float.NaN, Float.NaN, Float.NaN),
+        (FpOperation.Add, 3.0f, 2.0f, 5.0f), // pos + pos
+        (FpOperation.Add, -4.0f, -5.0f, -9.0f), // neg + neg
+        (FpOperation.Add, 7.7f, -3.5f, 4.2f), // pos + smaller neg
+        (FpOperation.Add, 7.0f, -13.0f, -6.0f), // pos + larger neg
+        (FpOperation.Add, -40.0f, 37.0f, -3.0f), // neg + smaller pos
+        (FpOperation.Add, -27.0f, 35.0f, 8.0f), // neg + larger pos
+        (FpOperation.Add, 5.0f, -5.0f, 0.0f), // Exact cancellation
+        (FpOperation.Add, -5.0f, 5.0f, 0.0f),
+        (FpOperation.Add, 17.79f, 19.32f, 37.11f), // Exponents equal. Will carry into next significand bit
+        (FpOperation.Add, 0.34f, 44.23f, 44.57f), // Exponent 2 larger
+        (FpOperation.Add, 44.23f, 0.034f, 44.264f), // Exponent 1 larger
+        (FpOperation.Add, -1.0f, 5.0f, 4.0f), // First element is negative and has smaller exponent
+        (FpOperation.Add, -5.0f, 1.0f, -4.0f), // First element is negative and has larger exponent
+        (FpOperation.Add, 5.0f, -1.0f, 4.0f), // Second element is negative and has smaller exponent
+        (FpOperation.Add, 1.0f, -5.0f, -4.0f), // Second element is negative and has larger exponent
+        (FpOperation.Add, 5.0f, 0.0f, 5.0f), // Zero identity
+        (FpOperation.Add, 0.0f, 5.0f, 5.0f), // " "
+        (FpOperation.Add, 0.0f, 0.0f, 0.0f), // " "
+        (FpOperation.Add, 7.0f, -7.0f, 0.0f), // Sum is zero, positive first operand
+        (FpOperation.Add, -7.0f, 7.0f, 0.0f), // Sum is zero, negative first operand
+        (FpOperation.Add, 1000000.0f, 0.0000001f, 1000000.0f), //  Second op is lost because of precision
+        (FpOperation.Add, 0.0000001f, 0.00000001f, 0.00000011f), // Very small number
+        (FpOperation.Add, 1000000.0f, 10000000.0f, 11000000.0f), // Large number
+        (FpOperation.Add, -0.0f, 2.323f, 2.323f), // negative zero
+        (FpOperation.Add, 2.323f, -0.0f, 2.323f), // negative zero
+        (FpOperation.Add, Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
+        (FpOperation.Add, Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
+        (FpOperation.Add, Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
+        (FpOperation.Add, 0.0f, Float.NegativeInfinity, Float.NegativeInfinity),
+        (FpOperation.Add, 1.0f, Float.PositiveInfinity, Float.PositiveInfinity),
+        (FpOperation.Add, 1.0f, Float.NegativeInfinity, Float.NegativeInfinity),
+        (FpOperation.Add, Float.PositiveInfinity, Float.NegativeInfinity, Float.NaN),
+        (FpOperation.Add, Float.NaN, 1.0f, Float.NaN),
+        (FpOperation.Add, 1.0f, Float.NaN, Float.NaN),
+        (FpOperation.Add, Float.NaN, Float.NaN, Float.NaN),
 
         // Subtraction
-        (true, 3.0f, 2.0f, 1.0f),
-        (true, -3.0f, -2.0f, -1.0f),
-        (true, 3.0f, -2.0f, 5.0f),
-        (true, -3.0f, 2.0f, -5.0f),
-        (true, 2.0f, -3.0f, 5.0f),
-        (true, -2.0f, 3.0f, -5.0f),
+        (FpOperation.Sub, 3.0f, 2.0f, 1.0f),
+        (FpOperation.Sub, -3.0f, -2.0f, -1.0f),
+        (FpOperation.Sub, 3.0f, -2.0f, 5.0f),
+        (FpOperation.Sub, -3.0f, 2.0f, -5.0f),
+        (FpOperation.Sub, 2.0f, -3.0f, 5.0f),
+        (FpOperation.Sub, -2.0f, 3.0f, -5.0f),
+
+        // Multiplication
+        (FpOperation.Mul, 100.0f, 25.0f, 2500.0f), // positive * positive
+        (FpOperation.Mul, -10.0f, 32.0f, -320.0f), // negative * positive
+        (FpOperation.Mul, 0.5f, -90.0f, -45.0f), // positive * negative
+        (FpOperation.Mul, -15.0f, -4.0f, 60.0f), // negative * negative
+        (FpOperation.Mul, -15.0f, 0.0f, -0.0f), // zero identity, negative
+        (FpOperation.Mul, 0.0f, 15.0f, 0.0f), // zero identity, positive
+        (FpOperation.Mul, 0.00001f, 12345.0f, 0.12345f),
+        (FpOperation.Mul, 200000.5f, 123.0f, 24600061.5f),
+        (FpOperation.Mul, 1.0E25f, 1.0E25f, Float.PositiveInfinity), // Overflow
+        (FpOperation.Mul, 1.0E-20f, 1.0E-20f, 0.0f), // Underflow
+        (FpOperation.Mul, Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
+        (FpOperation.Mul, Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
+        (FpOperation.Mul, Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
+        (FpOperation.Mul, Float.NegativeInfinity, -1.0f, Float.PositiveInfinity),
+        (FpOperation.Mul, Float.PositiveInfinity, -1.0f, Float.NegativeInfinity),
+        (FpOperation.Mul, 0.0f, Float.NegativeInfinity, Float.NaN),
+        (FpOperation.Mul, 0.0f, Float.PositiveInfinity, Float.NaN),
+        (FpOperation.Mul, Float.NegativeInfinity, 0.0f, Float.NaN),
+        (FpOperation.Mul, Float.PositiveInfinity, 0.0f, Float.NaN),
+        (FpOperation.Mul, Float.PositiveInfinity, Float.NegativeInfinity, Float.NegativeInfinity),
+        (FpOperation.Mul, Float.NaN, 1.0f, Float.NaN),
+        (FpOperation.Mul, 1.0f, Float.NaN, Float.NaN),
+        (FpOperation.Mul, Float.NaN, Float.NaN, Float.NaN),
+        (FpOperation.Mul, Float.NaN, Float.PositiveInfinity, Float.NaN),
+        (FpOperation.Mul, Float.PositiveInfinity, Float.NaN, Float.NaN),
+        (FpOperation.Mul, Float.NegativeInfinity, Float.NaN, Float.NaN),
+        (FpOperation.Mul, Float.NaN, Float.NegativeInfinity, Float.NaN),
       )
 
       for (cycle <- 0 until testVectors.length + pipelineDelay) {
         if (cycle < testVectors.length) {
           val testValues = testVectors(cycle)
+
+          dut.io.operation #= testValues._1
+
           val bits1: Long = java.lang.Float.floatToIntBits(testValues._2.toFloat).toLong & 0xFFFFFFFFL
           dut.io.operand1.raw #= bits1
 
           val bits2: Long = java.lang.Float.floatToIntBits(testValues._3.toFloat).toLong & 0xFFFFFFFFL
           dut.io.operand2.raw #= bits2
-
-          dut.io.subtract #= testValues._1
         }
 
         if (cycle >= pipelineDelay) {
@@ -300,81 +352,7 @@ class FloatingPointSpec extends AnyFunSuite {
             val expectedFloat = testValues._4
             val actualFloat = java.lang.Float.intBitsToFloat(actualBits.toInt)
 
-            println(f"mismatch at test entry ${cycle - pipelineDelay}: $a%.3f ${if (testValues._1) "-" else "+"} $b%.3f")
-            println(f"  expected = $expectedFloat%.6f  (0x$expectedBits%08x)")
-            println(f"  actual   = $actualFloat%.6f  (0x$actualBits%08x)")
-            simFailure()
-          }
-        }
-
-        dut.clockDomain.waitSampling()
-      }
-    }
-  }
-
-  // XXX this is duplicative of above. These will merge into a unified pipeline.
-  test("fp mul") {
-    TestConfig.testSim.compile(new FpMulPipeline()).doSim { dut =>
-      dut.clockDomain.forkStimulus(period = 10)
-      dut.io.operand1.raw #= 0
-      dut.io.operand2.raw #= 0
-      dut.clockDomain.waitSampling() // Wait for reset to complete
-
-      val pipelineDelay = 4
-      val testVectors: Array[(Float, Float, Float)] = Array(
-        (100.0f, 25.0f, 2500.0f), // positive * positive
-        (-10.0f, 32.0f, -320.0f), // negative * positive
-        (0.5f, -90.0f, -45.0f), // positive * negative
-        (-15.0f, -4.0f, 60.0f), // negative * negative
-        (-15.0f, 0.0f, -0.0f), // zero identity, negative
-        (0.0f, 15.0f, 0.0f), // zero identity, positive
-        (0.00001f, 12345.0f, 0.12345f),
-        (200000.5f, 123.0f, 24600061.5f),
-        (1.0E25f, 1.0E25f, Float.PositiveInfinity), // Overflow
-        (1.0E-20f, 1.0E-20f, 0.0f), // Underflow
-        (Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
-        (Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
-        (Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
-        (Float.NegativeInfinity, -1.0f, Float.PositiveInfinity),
-        (Float.PositiveInfinity, -1.0f, Float.NegativeInfinity),
-        (0.0f, Float.NegativeInfinity, Float.NaN),
-        (0.0f, Float.PositiveInfinity, Float.NaN),
-        (Float.NegativeInfinity, 0.0f, Float.NaN),
-        (Float.PositiveInfinity, 0.0f, Float.NaN),
-        (Float.PositiveInfinity, Float.NegativeInfinity, Float.NegativeInfinity),
-        (Float.NaN, 1.0f, Float.NaN),
-        (1.0f, Float.NaN, Float.NaN),
-        (Float.NaN, Float.NaN, Float.NaN),
-        (Float.NaN, Float.PositiveInfinity, Float.NaN),
-        (Float.PositiveInfinity, Float.NaN, Float.NaN),
-        (Float.NegativeInfinity, Float.NaN, Float.NaN),
-        (Float.NaN, Float.NegativeInfinity, Float.NaN),
-      )
-
-      for (cycle <- 0 until testVectors.length + pipelineDelay) {
-        if (cycle < testVectors.length) {
-          val testValues = testVectors(cycle)
-          val bits1: Long = java.lang.Float.floatToIntBits(testValues._1.toFloat).toLong & 0xFFFFFFFFL
-          dut.io.operand1.raw #= bits1
-
-          val bits2: Long = java.lang.Float.floatToIntBits(testValues._2.toFloat).toLong & 0xFFFFFFFFL
-          dut.io.operand2.raw #= bits2
-        }
-
-        if (cycle >= pipelineDelay) {
-          val expectedBits: Long = java.lang.Float.floatToIntBits(testVectors(cycle - pipelineDelay)._3.toFloat).toLong & 0xFFFFFFFFL
-          val actualBits: Long = dut.io.result.raw.toLong & 0xFFFFFFFFL
-
-          // We allow an error of 1ulp because we're truncating rounding so the host machine may
-          // represent our expected values differently.
-          if (math.abs(expectedBits - actualBits) > 1) {
-            val testValues = testVectors(cycle - pipelineDelay)
-            val a = testValues._1
-            val b = testValues._2
-            val expectedFloat = testValues._3
-            val actualFloat = java.lang.Float.intBitsToFloat(actualBits.toInt)
-
-            println(f"mismatch at test entry ${cycle - pipelineDelay}: $a%.3f * $b%.3f")
+            println(f"mismatch at test entry ${cycle - pipelineDelay}: $a%.3f $b%.3f")
             println(f"  expected = $expectedFloat%.6f  (0x$expectedBits%08x)")
             println(f"  actual   = $actualFloat%.6f  (0x$actualBits%08x)")
             simFailure()
