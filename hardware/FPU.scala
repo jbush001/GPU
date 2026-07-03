@@ -52,11 +52,14 @@ class SingleFloat extends Bundle {
 }
 
 object SingleFloat {
+  val exponentWidth = 8
+  val fractionWidth = 23
+
   def apply() = new SingleFloat()
 }
 
 object FpOperation extends SpinalEnum {
-  val None, Add, Sub, Mul, Recip = newElement()
+  val Add, Sub, Mul, Recip = newElement()
 }
 
 class FloatingPointPipeline extends Component {
@@ -67,9 +70,9 @@ class FloatingPointPipeline extends Component {
     val operation = in(FpOperation())
   }
 
-  val opStage1 = RegNext(io.operation) init(FpOperation.None)
-  val opStage2 = RegNext(opStage1) init(FpOperation.None)
-  val opStage3 = RegNext(opStage2) init(FpOperation.None)
+  val opStage1 = RegNext(io.operation) init(FpOperation.Add)
+  val opStage2 = RegNext(opStage1) init(FpOperation.Add)
+  val opStage3 = RegNext(opStage2) init(FpOperation.Add)
 
   val addPipeline = new FpAddPipeline
   val mulPipeline = new FpMulPipeline
@@ -141,9 +144,10 @@ class FpAddPipeline extends Component {
   // - Shift smaller fraction to align with larger, then add/subtract them
   //
   val stage2 = new Area {
+    val resultWidth = SingleFloat.fractionWidth + 2
     val sumResult = RegNext(Mux(stage1.logicalSubtract,
-      stage1.largerFaction.resize(25) - stage1.smallerFractionAligned.resize(25),
-      stage1.largerFaction.resize(25) + stage1.smallerFractionAligned.resize(25))) init(0)
+      stage1.largerFaction.resize(resultWidth) - stage1.smallerFractionAligned.resize(resultWidth),
+      stage1.largerFaction.resize(resultWidth) + stage1.smallerFractionAligned.resize(resultWidth))) init(0)
     val exponent = RegNext(stage1.resultExponent) init(0)
     val resultNegative = RegNext(stage1.resultNegative) init(False)
     val isNaN = RegNext(stage1.isNaN) init(False)
@@ -155,26 +159,26 @@ class FpAddPipeline extends Component {
   // - Find leading zero, shift to renormalize
   //
   val stage3 = new Area {
-    val width = stage2.sumResult.getWidth
+    val resultWidth = stage2.sumResult.getWidth
     val isZeroResult = stage2.sumResult === 0
-    val normalizeShift = UInt(log2Up(width) bits)
-    normalizeShift := width
-    for (i <- (width - 1) downto 0) {
-      when (stage2.sumResult(width - 1 - i)) {
+    val normalizeShift = UInt(log2Up(resultWidth) bits)
+    normalizeShift := resultWidth
+    for (i <- (resultWidth - 1) downto 0) {
+      when (stage2.sumResult(resultWidth - 1 - i)) {
         normalizeShift := i
       }
     }
 
-    val normalizedSum = (stage2.sumResult << normalizeShift)(23 downto 1)
+    val normalizedSum = (stage2.sumResult << normalizeShift)(SingleFloat.fractionWidth downto 1)
 
     val resultFraction = UInt(23 bits)
     val resultExponent = UInt(8 bits)
     when (stage2.isInf) {
       resultFraction := 0
-      resultExponent :=  U(0xff, 8 bits)
+      resultExponent :=  U(0xff, SingleFloat.exponentWidth bits)
     } elsewhen (stage2.isNaN) {
       resultFraction := 0x400000
-      resultExponent := U(0xff, 8 bits)
+      resultExponent := U(0xff, SingleFloat.exponentWidth bits)
     } elsewhen (isZeroResult) {
       resultFraction := 0
       resultExponent := 0
@@ -234,9 +238,9 @@ class FpMulPipeline extends Component {
 
     val resultNext = Bits(32 bits)
     when (stage1.isNaN) {
-      resultNext := False ## B(0xff, 8 bits) ## B(0x400000, 23 bits)
+      resultNext := False ## B(0xff, SingleFloat.exponentWidth bits) ## B(0x400000, SingleFloat.fractionWidth bits)
     } elsewhen (stage1.isInf) {
-      resultNext := stage1.isNegative ## B(0xff, 8 bits) ## B(0, 23 bits)
+      resultNext := stage1.isNegative ## B(0xff, SingleFloat.exponentWidth bits) ## B(0, SingleFloat.fractionWidth bits)
     } elsewhen (stage1.isZero) {
       resultNext := stage1.isNegative ## B(0, 31 bits)
     } otherwise {
@@ -258,7 +262,7 @@ class FpReciprocalEstimate extends Component {
 
   // Generate fraction lookup table.
   // Because the floating point significant is normalized, its value ranges
-  // from (1.0, 2.0]. The reciprocal of this range therefore is (0.5, 1.0].
+  // from [1.0, 2.0). The reciprocal of this range therefore is (0.5, 1.0].
   // For the table calculation, we treat the table entries as 1.6 fixed point
   // numbers, so the numerator for our calculations is 64^2. However, 0.5 is
   // not representable in a normalized value, so we need to also multiply by
@@ -275,25 +279,25 @@ class FpReciprocalEstimate extends Component {
   // Read value out of lookup table
   val fractionNext = reciprocalRom.readAsync(io.operand.fraction(22 downto 17))
 
-  // Invert the exponent. Note we subtract 1-2 extra bits here to renormalize
-  // the value.
+  // Invert the exponent. Note we subtract 1-2 extra values out of the exponent
+  // to compensate for the normalization shift that occurs below.
+  // In the case of zero, there's nothing to normalize.
   val normalizationCorrection = io.operand.fraction(22 downto 17) === 0
   val exponentNext = 253 - io.operand.exponent + U(normalizationCorrection)
 
   val resultNext = Bits(32 bits)
   when (io.operand.isZero || io.operand.isNaN) {
     // Division by zero or NaN = NaN
-    resultNext := False ## U(0xff, 8 bits) ## B(0x400000, 23 bits)
+    resultNext := False ## U(0xff, SingleFloat.exponentWidth bits) ## B(0x400000, SingleFloat.fractionWidth bits)
   } elsewhen (io.operand.isInf) {
     // Division by +/- inf = 0.0
     resultNext := io.operand.negative ## U(0, 8 bits) ## U(0, 23 bits)
   } otherwise {
-    resultNext := io.operand.negative ## exponentNext ## B(fractionNext << 17, 23 bits)
+    resultNext := io.operand.negative ## exponentNext ## B(fractionNext << 17, SingleFloat.fractionWidth bits)
   }
 
   io.result.raw := RegNext(resultNext) init(0)
 }
-
 
 class FloatingPointSpec extends AnyFunSuite {
   // Helper for reciprocal tests
