@@ -153,15 +153,74 @@ class FpAddPipeline extends Component {
 
     val resultNegative = stage2.resultNegative && !isZeroResult
 
+    // Use SingleFloat apply here...
     io.result.raw := RegNext(resultNegative ## resultExponent.asBits ## resultFraction.asBits) init(0)
   }
 }
 
-class FloatingPointSpec extends AnyFunSuite {
-  val compiledModel = TestConfig.testSim.compile(new FpAddPipeline())
+class FpMulPipeline extends Component {
+  val io = new Bundle {
+    val result = out(SingleFloat())
+    val operand1 = in(SingleFloat())
+    val operand2 = in(SingleFloat())
+  }
 
+  // Stage 1
+  // Add exponents, multiply fractions
+  val stage1 = new Area {
+    val isNanNext = (io.operand1.isNaN || io.operand2.isNaN
+      || (io.operand1.isInf && io.operand2.isZero)
+      || (io.operand1.isZero && io.operand2.isInf))
+
+    val mulExpSum = io.operand1.exponent.resize(10) + io.operand2.exponent.resize(10) - U(127, 10 bits)
+    val mulExponentUnderflow = mulExpSum(9)
+    val mulExponentCarry = mulExpSum(8)
+    val mulExponentNext = mulExpSum(7 downto 0)
+
+    val isInfNext = (io.operand1.isInf || io.operand2.isInf
+      || (mulExponentCarry && !mulExponentUnderflow))
+    val isZeroNext = io.operand1.isZero || io.operand2.isZero || mulExponentUnderflow
+
+    // note: we do the multiplication in one stage here.
+    val fractionProductNext = (io.operand1.fullFraction * io.operand2.fullFraction)(47 downto 23)
+
+    val isZero = RegNext(isZeroNext) init(False)
+    val isNaN = RegNext(isNanNext) init(False)
+    val isInf = RegNext(isInfNext) init(False)
+    val isNegative = RegNext(io.operand1.negative ^ io.operand2.negative) init(False)
+    val mulExponent = RegNext(mulExponentNext) init(0)
+    val fractionProduct = RegNext(fractionProductNext) init(0)
+  }
+
+  val stage2 = new Area {
+    // One position shift to normalize if the product has overflown
+    val normShift = stage1.fractionProduct(24)
+    val normalizedFraction = Mux(normShift,
+      stage1.fractionProduct(23 downto 1),
+      stage1.fractionProduct(22 downto 0))
+    val adjustedExponent = Mux(normShift, stage1.mulExponent + 1, stage1.mulExponent)
+
+    val resultNext = Bits(32 bits)
+    when (stage1.isNaN) {
+      resultNext := False ## B(0xff, 8 bits) ## B(0x400000, 23 bits)
+    } elsewhen (stage1.isInf) {
+      resultNext := stage1.isNegative ## B(0xff, 8 bits) ## B(0, 23 bits)
+    } elsewhen (stage1.isZero) {
+      resultNext := stage1.isNegative ## B(0, 31 bits)
+    } otherwise {
+      resultNext := stage1.isNegative ## adjustedExponent ## normalizedFraction
+    }
+
+    val result = RegNext(resultNext) init(0)
+  }
+
+  // Stage 3
+  io.result.raw := RegNext(stage2.result) init(0)
+}
+
+class FloatingPointSpec extends AnyFunSuite {
   test("fp add") {
-    compiledModel.doSim { dut =>
+    TestConfig.testSim.compile(new FpAddPipeline()).doSim { dut =>
       dut.clockDomain.forkStimulus(period = 10)
       dut.io.operand1.raw #= 0
       dut.io.operand2.raw #= 0
@@ -242,6 +301,80 @@ class FloatingPointSpec extends AnyFunSuite {
             val actualFloat = java.lang.Float.intBitsToFloat(actualBits.toInt)
 
             println(f"mismatch at test entry ${cycle - pipelineDelay}: $a%.3f ${if (testValues._1) "-" else "+"} $b%.3f")
+            println(f"  expected = $expectedFloat%.6f  (0x$expectedBits%08x)")
+            println(f"  actual   = $actualFloat%.6f  (0x$actualBits%08x)")
+            simFailure()
+          }
+        }
+
+        dut.clockDomain.waitSampling()
+      }
+    }
+  }
+
+  // XXX this is duplicative of above. These will merge into a unified pipeline.
+  test("fp mul") {
+    TestConfig.testSim.compile(new FpMulPipeline()).doSim { dut =>
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.io.operand1.raw #= 0
+      dut.io.operand2.raw #= 0
+      dut.clockDomain.waitSampling() // Wait for reset to complete
+
+      val pipelineDelay = 4
+      val testVectors: Array[(Float, Float, Float)] = Array(
+        (100.0f, 25.0f, 2500.0f), // positive * positive
+        (-10.0f, 32.0f, -320.0f), // negative * positive
+        (0.5f, -90.0f, -45.0f), // positive * negative
+        (-15.0f, -4.0f, 60.0f), // negative * negative
+        (-15.0f, 0.0f, -0.0f), // zero identity, negative
+        (0.0f, 15.0f, 0.0f), // zero identity, positive
+        (0.00001f, 12345.0f, 0.12345f),
+        (200000.5f, 123.0f, 24600061.5f),
+        (1.0E25f, 1.0E25f, Float.PositiveInfinity), // Overflow
+        (1.0E-20f, 1.0E-20f, 0.0f), // Underflow
+        (Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
+        (Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
+        (Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
+        (Float.NegativeInfinity, -1.0f, Float.PositiveInfinity),
+        (Float.PositiveInfinity, -1.0f, Float.NegativeInfinity),
+        (0.0f, Float.NegativeInfinity, Float.NaN),
+        (0.0f, Float.PositiveInfinity, Float.NaN),
+        (Float.NegativeInfinity, 0.0f, Float.NaN),
+        (Float.PositiveInfinity, 0.0f, Float.NaN),
+        (Float.PositiveInfinity, Float.NegativeInfinity, Float.NegativeInfinity),
+        (Float.NaN, 1.0f, Float.NaN),
+        (1.0f, Float.NaN, Float.NaN),
+        (Float.NaN, Float.NaN, Float.NaN),
+        (Float.NaN, Float.PositiveInfinity, Float.NaN),
+        (Float.PositiveInfinity, Float.NaN, Float.NaN),
+        (Float.NegativeInfinity, Float.NaN, Float.NaN),
+        (Float.NaN, Float.NegativeInfinity, Float.NaN),
+      )
+
+      for (cycle <- 0 until testVectors.length + pipelineDelay) {
+        if (cycle < testVectors.length) {
+          val testValues = testVectors(cycle)
+          val bits1: Long = java.lang.Float.floatToIntBits(testValues._1.toFloat).toLong & 0xFFFFFFFFL
+          dut.io.operand1.raw #= bits1
+
+          val bits2: Long = java.lang.Float.floatToIntBits(testValues._2.toFloat).toLong & 0xFFFFFFFFL
+          dut.io.operand2.raw #= bits2
+        }
+
+        if (cycle >= pipelineDelay) {
+          val expectedBits: Long = java.lang.Float.floatToIntBits(testVectors(cycle - pipelineDelay)._3.toFloat).toLong & 0xFFFFFFFFL
+          val actualBits: Long = dut.io.result.raw.toLong & 0xFFFFFFFFL
+
+          // We allow an error of 1ulp because we're truncating rounding so the host machine may
+          // represent our expected values differently.
+          if (math.abs(expectedBits - actualBits) > 1) {
+            val testValues = testVectors(cycle - pipelineDelay)
+            val a = testValues._1
+            val b = testValues._2
+            val expectedFloat = testValues._3
+            val actualFloat = java.lang.Float.intBitsToFloat(actualBits.toInt)
+
+            println(f"mismatch at test entry ${cycle - pipelineDelay}: $a%.3f * $b%.3f")
             println(f"  expected = $expectedFloat%.6f  (0x$expectedBits%08x)")
             println(f"  actual   = $actualFloat%.6f  (0x$actualBits%08x)")
             simFailure()

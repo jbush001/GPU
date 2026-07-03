@@ -1,7 +1,7 @@
 # To do
 
-- [ ] Floating point add/subtract pipeline
-- [ ] Floating point multiplication pipeline
+- [x] Floating point add/subtract pipeline
+- [x] Floating point multiplication pipeline
 - [ ] Integer to floating point conversion (in add pipeline)
 - [ ] Reciprocal lookup table
 - [ ] Replace Stream input to triangle setup, make bounding box be passed in directly.
@@ -12,3 +12,4 @@
 - [ ] Refactor/optimize edge equation calculation (remove microsequencer, hard coded logic)
 - [ ] Floating point to integer conversion
 - [ ] TileBuffer flush DMA block
+- [ ] Floating point comparison
