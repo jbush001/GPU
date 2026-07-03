@@ -16,8 +16,8 @@
 
 //
 // Floating point pipeline
-// This does not handle denormal numbers
-// It is hard-coded for round towards zero
+// - This does not support subnormal numbers and treats them as zero
+// - It only supports round towards zero
 //
 
 package gpu
@@ -37,7 +37,9 @@ class SingleFloat extends Bundle {
 
   def isNaN = (this.exponent === 0xff && this.fraction =/= 0)
   def isInf = (this.exponent === 0xff && this.fraction === 0)
-  def isZero = (this.exponent === 0 && this.fraction === 0)
+
+  // Note: we don't support subnormal numbers, so treat them as zero.
+  def isZero = this.exponent === 0
 
   // This adds the leading hidden bit
   def fullFraction = (!this.isZero ## this.fraction).asUInt
@@ -54,7 +56,7 @@ object SingleFloat {
 }
 
 object FpOperation extends SpinalEnum {
-  val None, Add, Sub, Mul = newElement()
+  val None, Add, Sub, Mul, Recip = newElement()
 }
 
 class FloatingPointPipeline extends Component {
@@ -71,15 +73,22 @@ class FloatingPointPipeline extends Component {
 
   val addPipeline = new FpAddPipeline
   val mulPipeline = new FpMulPipeline
+  val reciprocal = new FpReciprocalEstimate
+
+  val recipResult = RegNext(RegNext(reciprocal.io.result))
 
   addPipeline.io.operand1 := io.operand1
   addPipeline.io.operand2 := io.operand2
   addPipeline.io.subtract := io.operation === FpOperation.Sub
   mulPipeline.io.operand1 := io.operand1
   mulPipeline.io.operand2 := io.operand2
+  reciprocal.io.operand := io.operand1
 
-  io.result := Mux(opStage3 === FpOperation.Mul,
-    mulPipeline.io.result, addPipeline.io.result)
+  switch (opStage3) {
+    is (FpOperation.Mul) { io.result := mulPipeline.io.result }
+    is (FpOperation.Recip) { io.result := recipResult }
+    default { io.result := addPipeline.io.result }
+  }
 }
 
 class FpAddPipeline extends Component {
@@ -241,8 +250,57 @@ class FpMulPipeline extends Component {
   io.result.raw := RegNext(stage2.result) init(0)
 }
 
+class FpReciprocalEstimate extends Component {
+  val io = new Bundle {
+    val result = out(SingleFloat())
+    val operand = in(SingleFloat())
+  }
+
+  // Generate fraction lookup table.
+  // Because the floating point significant is normalized, its value ranges
+  // from (1.0, 2.0]. The reciprocal of this range therefore is (0.5, 1.0].
+  // For the table calculation, we treat the table entries as 1.6 fixed point
+  // numbers, so the numerator for our calculations is 64^2. However, 0.5 is
+  // not representable in a normalized value, so we need to also multiply by
+  // two (we will compensate in hardware by adjusting the exponent to
+  // renormalize)
+  val numEntries = 64 // Must be a power of two
+  val entryWidth = log2Up(numEntries)
+  val numerator = (numEntries * numEntries * 2)
+  val romValues = Array.tabulate[UInt](numEntries)(i =>
+    U((numerator / (numEntries + i)) & (numEntries - 1), entryWidth bits))
+
+  val reciprocalRom = Mem(UInt(entryWidth bits), romValues)
+
+  // Read value out of lookup table
+  val fractionNext = reciprocalRom.readAsync(io.operand.fraction(22 downto 17))
+
+  // Invert the exponent. Note we subtract 1-2 extra bits here to renormalize
+  // the value.
+  val normalizationCorrection = io.operand.fraction(22 downto 17) === 0
+  val exponentNext = 253 - io.operand.exponent + U(normalizationCorrection)
+
+  val resultNext = Bits(32 bits)
+  when (io.operand.isZero || io.operand.isNaN) {
+    // Division by zero or NaN = NaN
+    resultNext := False ## U(0xff, 8 bits) ## B(0x400000, 23 bits)
+  } elsewhen (io.operand.isInf) {
+    // Division by +/- inf = 0.0
+    resultNext := io.operand.negative ## U(0, 8 bits) ## U(0, 23 bits)
+  } otherwise {
+    resultNext := io.operand.negative ## exponentNext ## B(fractionNext << 17, 23 bits)
+  }
+
+  io.result.raw := RegNext(resultNext) init(0)
+}
+
+
 class FloatingPointSpec extends AnyFunSuite {
-  test("fp operations") {
+  // Helper for reciprocal tests
+  def fpTruncate(value: Float): Float =
+    java.lang.Float.intBitsToFloat(java.lang.Float.floatToIntBits(value) & 0xfffe0000)
+
+  test("fp pipeline") {
     TestConfig.testSim.compile(new FloatingPointPipeline()).doSim { dut =>
       dut.clockDomain.forkStimulus(period = 10)
       dut.io.operand1.raw #= 0
@@ -251,6 +309,20 @@ class FloatingPointSpec extends AnyFunSuite {
 
       val pipelineDelay = 4
       val testVectors: Array[(FpOperation.E, Float, Float, Float)] = Array(
+        // Reciprocal Estimate (second operand is ignored)
+        (FpOperation.Recip, 1.0f, 0.0f, 1.0f),
+        (FpOperation.Recip, 2.0f, 0.0f, 0.5f),
+        (FpOperation.Recip, 0.5f, 0.0f, 2.0f),
+        (FpOperation.Recip, 4.0f, 0.0f, 0.25f),
+        (FpOperation.Recip, 3.0f, 0.0f, fpTruncate(0.333333f)),
+        (FpOperation.Recip, 1.5f, 0.0f, fpTruncate(0.666666f)),
+        (FpOperation.Recip, 0.333333f, 0.0f, fpTruncate(3.0f)),
+        (FpOperation.Recip, 1000.0f, 0.0f, fpTruncate(0.001f)),
+        (FpOperation.Recip, 0.99999f, 0.0f, 1.0f), // Last table entry
+        (FpOperation.Recip, 0.0f, 0.0f, Float.NaN), // Division by zero
+        (FpOperation.Recip, Float.NegativeInfinity, 0.0f, -0.0f), // Division by inf
+        (FpOperation.Recip, Float.PositiveInfinity, 0.0f, 0.0f), // Division by inf
+
         // Addition
         (FpOperation.Add, 3.0f, 2.0f, 5.0f), // pos + pos
         (FpOperation.Add, -4.0f, -5.0f, -9.0f), // neg + neg

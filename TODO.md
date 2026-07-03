@@ -2,7 +2,7 @@
 
 - [x] Floating point add/subtract pipeline
 - [x] Floating point multiplication pipeline
-- [ ] Reciprocal lookup table
+- [x] Reciprocal estimate
 - [ ] Vertex parameter memory
 - [ ] Refactor/optimize edge equation calculation (remove microsequencer, hard coded logic)
 - [ ] Varying setup pipeline
