@@ -35,28 +35,40 @@ import spinal.lib.fsm._
 import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
 
+object Consts {
+  val triangleEdges = 3
+  val pixelsPerQuad = 4
+}
+
 class RasterizerSetupParams extends Bundle {
-  val edgeFunctionBits = 32;
-  val triangleEdges = 3;
 
   val bbLeft = ScreenCoord()
   val bbTop = ScreenCoord()
   val bbRight = ScreenCoord()
   val bbBottom = ScreenCoord()
-  val initialValue = Vec(SInt(edgeFunctionBits bits), triangleEdges)
-  val xStep = Vec(SInt(edgeFunctionBits bits), triangleEdges)
-  val yStep = Vec(SInt(edgeFunctionBits bits), triangleEdges)
+  val initialValue = Vec(SInt(GpuConfig.edgeFunctionBits bits), Consts.triangleEdges)
+  val xStep = Vec(SInt(GpuConfig.edgeFunctionBits bits), Consts.triangleEdges)
+  val yStep = Vec(SInt(GpuConfig.edgeFunctionBits bits), Consts.triangleEdges)
 }
 
-// The output mask is bits:
+// The output mask has one bit per pixel in the quad that represents covered
+// pixels:
 //  0 1
 //  2 3
 // x and y are the coordinates (in quads) of the upper left corner, relative to
 // the left/top edges of the current tile bounding box.
+//
+// The lambda outputs contain unnormalized barycentric coordindates for the
+// first two vertices (the third can be inferred from the others, since they
+// always add up to the same value). These is used to interpolate varyings
+// across the triangle.
+//
 class QuadOutput extends Bundle {
   val x = ScreenCoord()
   val y = ScreenCoord()
-  val mask = Bits(4 bits)
+  val mask = Bits(Consts.pixelsPerQuad bits)
+  val lambda0 = Vec(SInt(32 bits), Consts.pixelsPerQuad)
+  val lambda1 = Vec(SInt(32 bits), Consts.pixelsPerQuad)
 }
 
 class Rasterizer extends Component {
@@ -78,12 +90,19 @@ class Rasterizer extends Component {
   val y = Reg(ScreenCoord())
 
   // We compute the visibility of four pixels in the quad in parallel.
-  val pixelCheck = B(for (pixel <- 0 until 4) yield {
-    val edgeCheck = for (edge <- 0 until 3) yield {
+  val pixelCheck = B(for (pixel <- 0 until Consts.pixelsPerQuad) yield {
+    val edgeCheck = for (edge <- 0 until Consts.triangleEdges) yield {
       // The edge value represents the dot product of this point with the edge,
       // which tells us on which side of the edge it is on. If the pixel
       // is on the inside of all three triangle edges, then it is inside the triangle.
       val edgeValue = Reg(SInt(32 bits))
+
+      if (edge == 0) {
+        io.output.lambda0(pixel) := edgeValue
+      } else if (edge == 1) {
+        io.output.lambda1(pixel) := edgeValue
+      }
+
       switch(stepCommand) {
         is(StepCommand.Reset) {
           pixel match {

@@ -26,6 +26,7 @@ object GpuConfig {
   val tileSizePixels: Int = 64;
   val tileSizeQuads = tileSizePixels / 2
   val tileCoordBits = log2Up(tileSizeQuads)
+  val edgeFunctionBits = 32;
 
   assert((GpuConfig.tileSizePixels & (GpuConfig.tileSizePixels - 1)) == 0) // Must be power of two tile
 }
