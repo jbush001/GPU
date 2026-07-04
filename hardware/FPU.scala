@@ -106,7 +106,8 @@ class FpAddPipeline extends Component {
   // Stage 1
   // - Determine which operand has the larger absolute value and swap
   //   conditionally into proper lanes
-  // - Compute alignment shift count
+  // - Compute alignment shift count, shift smaller value to align
+  // - Check for special cases: inf/NaN
   //
   val stage1 = new Area {
     val op1IsLarger = io.operand1.absLargerThan(io.operand2)
@@ -141,7 +142,7 @@ class FpAddPipeline extends Component {
 
   //
   // Stage 2
-  // - Shift smaller fraction to align with larger, then add/subtract them
+  // - Add/subtract
   //
   val stage2 = new Area {
     val resultWidth = SingleFloat.fractionWidth + 2
@@ -189,7 +190,6 @@ class FpAddPipeline extends Component {
 
     val resultNegative = stage2.resultNegative && !isZeroResult
 
-    // Use SingleFloat apply here...
     io.result.raw := RegNext(resultNegative ## resultExponent.asBits ## resultFraction.asBits) init(0)
   }
 }
@@ -217,7 +217,6 @@ class FpMulPipeline extends Component {
       || (mulExponentCarry && !mulExponentUnderflow))
     val isZeroNext = io.operand1.isZero || io.operand2.isZero || mulExponentUnderflow
 
-    // note: we do the multiplication in one stage here.
     val fractionProductNext = (io.operand1.fullFraction * io.operand2.fullFraction)(47 downto 23)
 
     val isZero = RegNext(isZeroNext) init(False)
@@ -289,7 +288,7 @@ class FpReciprocalEstimate extends Component {
   // Read value out of lookup table
   val fractionNext = reciprocalRom.readAsync(io.operand.fraction(22 downto 17))
 
-  // Invert the exponent. Note we subtract 1-2 extra values out of the exponent
+  // Adjust the exponent. Note we subtract 1-2 extra values out of the exponent
   // to compensate for the normalization shift that occurs below.
   // In the case of zero, there's nothing to normalize.
   val normalizationCorrection = io.operand.fraction(22 downto 17) === 0
