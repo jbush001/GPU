@@ -27,7 +27,7 @@ import spinal.core.sim._
 import org.scalatest.funsuite.AnyFunSuite
 
 // IEEE754 single precision floating point value, binary32 format.
-// // https://en.wikipedia.org/wiki/Single-precision_floating-point_format
+// https://en.wikipedia.org/wiki/Single-precision_floating-point_format
 class SingleFloat extends Bundle {
   val raw = Bits(32 bits)
 
@@ -53,7 +53,8 @@ class SingleFloat extends Bundle {
 
 object SingleFloat {
   val exponentWidth = 8
-  val fractionWidth = 23
+  val fractionWidth = 23 // As encoded (not including hidden bit)
+  val exponentBias = 127 // This is an exponent of zero
 
   def apply() = new SingleFloat()
 }
@@ -115,11 +116,11 @@ class FpAddPipeline extends Component {
       io.operand1.exponent - io.operand2.exponent,
       io.operand2.exponent - io.operand1.exponent)
 
-    val alignShift = UInt(5 bits)
-    when (exponentDiff <= 24) {
+    val alignShift = UInt(log2Up(SingleFloat.fractionWidth) bits)
+    when (exponentDiff <= SingleFloat.fractionWidth + 1) {
       alignShift := exponentDiff(4 downto 0)
     } otherwise {
-      alignShift := 24
+      alignShift := SingleFloat.fractionWidth + 1
     }
 
     val largerFractionNext = Mux(op1IsLarger, io.operand1.fullFraction, io.operand2.fullFraction)
@@ -172,8 +173,8 @@ class FpAddPipeline extends Component {
 
     val normalizedSum = (stage2.sumResult << normalizeShift)(SingleFloat.fractionWidth downto 1)
 
-    val resultFraction = UInt(23 bits)
-    val resultExponent = UInt(8 bits)
+    val resultFraction = UInt(SingleFloat.fractionWidth bits)
+    val resultExponent = UInt(SingleFloat.exponentWidth bits)
     when (stage2.isInf) {
       resultFraction := 0
       resultExponent :=  U(0xff, SingleFloat.exponentWidth bits)
@@ -208,10 +209,11 @@ class FpMulPipeline extends Component {
       || (io.operand1.isInf && io.operand2.isZero)
       || (io.operand1.isZero && io.operand2.isInf))
 
-    val mulExpSum = io.operand1.exponent.resize(10) + io.operand2.exponent.resize(10) - U(127, 10 bits)
-    val mulExponentUnderflow = mulExpSum(9)
-    val mulExponentCarry = mulExpSum(8)
-    val mulExponentNext = mulExpSum(7 downto 0)
+    val mulExpSum = io.operand1.exponent.resize(10) + io.operand2.exponent.resize(10) -
+      U(SingleFloat.exponentBias, 10 bits)
+    val mulExponentUnderflow = mulExpSum(SingleFloat.exponentWidth + 1)
+    val mulExponentCarry = mulExpSum(SingleFloat.exponentWidth)
+    val mulExponentNext = mulExpSum(SingleFloat.exponentWidth - 1 downto 0)
 
     val isInfNext = (io.operand1.isInf || io.operand2.isInf
       || (mulExponentCarry && !mulExponentUnderflow))
@@ -244,8 +246,8 @@ class FpMulPipeline extends Component {
     // One position shift to normalize if the product has overflown
     val normShift = stage2.fractionProduct(24)
     val normalizedFraction = Mux(normShift,
-      stage2.fractionProduct(23 downto 1),
-      stage2.fractionProduct(22 downto 0))
+      stage2.fractionProduct(SingleFloat.fractionWidth downto 1),
+      stage2.fractionProduct(SingleFloat.fractionWidth - 1 downto 0))
     val adjustedExponent = Mux(normShift, stage2.mulExponent + 1, stage2.mulExponent)
 
     val resultNext = Bits(32 bits)
