@@ -228,30 +228,40 @@ class FpMulPipeline extends Component {
     val fractionProduct = RegNext(fractionProductNext) init(0)
   }
 
+  // This stage is a passthrough. Synthesis tools like Vivado can absorb
+  // registers (specifically fractionProduct in this case) into the DSP
+  // multiplier blocks to take advantage of their pipelining capabilities.
+  // (e.g. Vivado Design Suite User Guide UG901, chapter 4)
   val stage2 = new Area {
-    // One position shift to normalize if the product has overflown
-    val normShift = stage1.fractionProduct(24)
-    val normalizedFraction = Mux(normShift,
-      stage1.fractionProduct(23 downto 1),
-      stage1.fractionProduct(22 downto 0))
-    val adjustedExponent = Mux(normShift, stage1.mulExponent + 1, stage1.mulExponent)
-
-    val resultNext = Bits(32 bits)
-    when (stage1.isNaN) {
-      resultNext := False ## B(0xff, SingleFloat.exponentWidth bits) ## B(0x400000, SingleFloat.fractionWidth bits)
-    } elsewhen (stage1.isInf) {
-      resultNext := stage1.isNegative ## B(0xff, SingleFloat.exponentWidth bits) ## B(0, SingleFloat.fractionWidth bits)
-    } elsewhen (stage1.isZero) {
-      resultNext := stage1.isNegative ## B(0, 31 bits)
-    } otherwise {
-      resultNext := stage1.isNegative ## adjustedExponent ## normalizedFraction
-    }
-
-    val result = RegNext(resultNext) init(0)
+    val isZero = RegNext(stage1.isZero) init(False)
+    val isNaN = RegNext(stage1.isNaN) init(False)
+    val isInf = RegNext(stage1.isInf) init(False)
+    val isNegative = RegNext(stage1.isNegative) init(False)
+    val mulExponent = RegNext(stage1.mulExponent) init(0)
+    val fractionProduct = RegNext(stage1.fractionProduct) init(0)
   }
 
-  // Stage 3
-  io.result.raw := RegNext(stage2.result) init(0)
+  val stage3 = new Area {
+    // One position shift to normalize if the product has overflown
+    val normShift = stage2.fractionProduct(24)
+    val normalizedFraction = Mux(normShift,
+      stage2.fractionProduct(23 downto 1),
+      stage2.fractionProduct(22 downto 0))
+    val adjustedExponent = Mux(normShift, stage2.mulExponent + 1, stage2.mulExponent)
+
+    val resultNext = Bits(32 bits)
+    when (stage2.isNaN) {
+      resultNext := False ## B(0xff, SingleFloat.exponentWidth bits) ## B(0x400000, SingleFloat.fractionWidth bits)
+    } elsewhen (stage2.isInf) {
+      resultNext := stage2.isNegative ## B(0xff, SingleFloat.exponentWidth bits) ## B(0, SingleFloat.fractionWidth bits)
+    } elsewhen (stage2.isZero) {
+      resultNext := stage2.isNegative ## B(0, 31 bits)
+    } otherwise {
+      resultNext := stage2.isNegative ## adjustedExponent ## normalizedFraction
+    }
+
+    io.result.raw := RegNext(resultNext) init(0)
+  }
 }
 
 class FpReciprocalEstimate extends Component {
