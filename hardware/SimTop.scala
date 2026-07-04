@@ -67,13 +67,11 @@ object Simulation {
       sim.withFstWave
     } else {
       sim
-    }.compile(new SimTop())
-      .doSim { dut =>
-        dut.io.startFlush #= false
-        dut.io.inputTriangle.valid #= false
-        dut.clockDomain.forkStimulus(period = 10)
-        dut.clockDomain.waitSampling(100)
-
+    }.compile(new SimTop()).doSim { dut =>
+      dut.io.startFlush #= false
+      dut.io.inputTriangle.valid #= false
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.clockDomain.waitSampling(100)
 
       val vpmData = Array(5, 7, 61, 49, 23, 60)
 
@@ -86,34 +84,34 @@ object Simulation {
         }
       }
 
-        // Run a resolve to clear out the buffer initially
-        resolve(dut)
+      // Run a resolve to clear out the buffer initially
+      resolve(dut)
 
-        // Set up a triangle
-        dut.io.inputTriangle.bbLeft #= 0
-        dut.io.inputTriangle.bbTop #= 0
-        dut.io.inputTriangle.bbRight #= GpuConfig.tileSizeQuads
-        dut.io.inputTriangle.bbBottom #= GpuConfig.tileSizeQuads
-        dut.io.inputTriangle.valid #= true
+      // Set up a triangle
+      dut.io.inputTriangle.bbLeft #= 0
+      dut.io.inputTriangle.bbTop #= 0
+      dut.io.inputTriangle.bbRight #= GpuConfig.tileSizeQuads
+      dut.io.inputTriangle.bbBottom #= GpuConfig.tileSizeQuads
+      dut.io.inputTriangle.valid #= true
+      dut.clockDomain.waitSampling()
+      dut.io.inputTriangle.valid #= false
+
+      // Render stuff. Note that we don't check for completion, just run for
+      // enough cycles we know it should finish.
+      for (_ <- 0 until 1500) {
         dut.clockDomain.waitSampling()
-        dut.io.inputTriangle.valid #= false
+      }
 
-        // Render stuff. Note that we don't check for completion, just run for
-        // enough cycles we know it should finish.
-        for (_ <- 0 until 1500) {
-          dut.clockDomain.waitSampling()
-        }
+      // Read out the final data
+      val fbData = resolve(dut)
 
-        // Read out the final data
-        val fbData = resolve(dut)
-
-        // Write an image file
-        val canvas = new BufferedImage(GpuConfig.tileSizePixels, GpuConfig.tileSizePixels,
-          BufferedImage.TYPE_INT_ARGB)
-        canvas.setRGB(0, 0, GpuConfig.tileSizePixels, GpuConfig.tileSizePixels, fbData.toArray, 0,
-          GpuConfig.tileSizePixels)
-        val outputFile = new File("output.png")
-        ImageIO.write(canvas, "png", outputFile)
+      // Write an image file
+      val canvas = new BufferedImage(GpuConfig.tileSizePixels, GpuConfig.tileSizePixels,
+        BufferedImage.TYPE_INT_ARGB)
+      canvas.setRGB(0, 0, GpuConfig.tileSizePixels, GpuConfig.tileSizePixels, fbData.toArray, 0,
+        GpuConfig.tileSizePixels)
+      val outputFile = new File("output.png")
+      ImageIO.write(canvas, "png", outputFile)
     }
   }
 
