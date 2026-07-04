@@ -80,6 +80,8 @@ class FloatingPointPipeline extends Component {
   val reciprocal = new FpReciprocalEstimate
   val fpToInt = new FpToInt
 
+  // These stages have one cycle of latency. Add additional registers
+  // to match latency of other pipelines and avoid a structural hazard.
   val recipResult = RegNext(RegNext(reciprocal.io.result))
   val fpToIntResult = RegNext(RegNext(fpToInt.io.result))
 
@@ -99,6 +101,7 @@ class FloatingPointPipeline extends Component {
   }
 }
 
+// This has three cycles of latency
 class FpAddPipeline extends Component {
   val io = new Bundle {
     val result = out(SingleFloat())
@@ -141,7 +144,7 @@ class FpAddPipeline extends Component {
 
     // Value with larger magnitude wins
     val resultNegative = RegNext(Mux(op1IsLarger, io.operand1.negative, io.operand2.negative ^ io.subtract)) init(False)
-    val largerFaction = RegNext(largerFractionNext) init(0)
+    val largerFraction = RegNext(largerFractionNext) init(0)
     val smallerFractionAligned = RegNext(smallerFractionAlignedNext) init(0)
   }
 
@@ -152,8 +155,8 @@ class FpAddPipeline extends Component {
   val stage2 = new Area {
     val resultWidth = SingleFloat.fractionWidth + 2
     val sumResult = RegNext(Mux(stage1.logicalSubtract,
-      stage1.largerFaction.resize(resultWidth) - stage1.smallerFractionAligned.resize(resultWidth),
-      stage1.largerFaction.resize(resultWidth) + stage1.smallerFractionAligned.resize(resultWidth))) init(0)
+      stage1.largerFraction.resize(resultWidth) - stage1.smallerFractionAligned.resize(resultWidth),
+      stage1.largerFraction.resize(resultWidth) + stage1.smallerFractionAligned.resize(resultWidth))) init(0)
     val exponent = RegNext(stage1.resultExponent) init(0)
     val resultNegative = RegNext(stage1.resultNegative) init(False)
     val isNaN = RegNext(stage1.isNaN) init(False)
@@ -199,6 +202,7 @@ class FpAddPipeline extends Component {
   }
 }
 
+// This has three cycles of latency
 class FpMulPipeline extends Component {
   val io = new Bundle {
     val result = out(SingleFloat())
@@ -269,6 +273,7 @@ class FpMulPipeline extends Component {
   }
 }
 
+// This has one cycle of latency
 class FpReciprocalEstimate extends Component {
   val io = new Bundle {
     val result = out(SingleFloat())
@@ -314,6 +319,7 @@ class FpReciprocalEstimate extends Component {
   io.result.raw := RegNext(resultNext) init(0)
 }
 
+// This has one cycle of latency
 class FpToInt extends Component {
   val io = new Bundle {
     val result = out(UInt(32 bits))
@@ -330,9 +336,10 @@ class FpToInt extends Component {
   } elsewhen (io.operand.isInf && io.operand.negative) {
     unsignedResult := U(0x80000000L, 32 bits)
   } otherwise {
-    // Shift
+    // Shift to align whole portion
+    val shiftAmount = SingleFloat.exponentBias - io.operand.exponent + 32
     unsignedResult := ((io.operand.fullFraction ## U(0, 32 - SingleFloat.fractionWidth bits)) >>
-      (SingleFloat.exponentBias - io.operand.exponent + 32)).asUInt.resize(32)
+      shiftAmount).asUInt.resize(32)
   }
 
   val resultNext = Mux(io.operand.negative,
