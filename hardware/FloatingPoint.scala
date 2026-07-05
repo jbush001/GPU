@@ -59,48 +59,6 @@ object Float32 {
   def apply() = new Float32()
 }
 
-object FpOperation extends SpinalEnum {
-  val Add, Sub, Mul, Recip, FpToInt = newElement()
-}
-
-class FloatingPointPipeline extends Component {
-  val io = new Bundle {
-    val result = out(Bits())
-    val operand1 = in(Float32())
-    val operand2 = in(Float32())
-    val operation = in(FpOperation())
-  }
-
-  val opStage1 = RegNext(io.operation) init(FpOperation.Add)
-  val opStage2 = RegNext(opStage1) init(FpOperation.Add)
-  val opStage3 = RegNext(opStage2) init(FpOperation.Add)
-
-  val addPipeline = new FpAddSub
-  val mulPipeline = new FpMul
-  val reciprocal = new FpReciprocalEstimate
-  val fpToInt = new FpToInt
-
-  // These stages have one cycle of latency. Add additional registers
-  // to match latency of other pipelines and avoid a structural hazard.
-  val recipResult = RegNext(RegNext(reciprocal.io.result))
-  val fpToIntResult = RegNext(RegNext(fpToInt.io.result))
-
-  addPipeline.io.operand1 := io.operand1
-  addPipeline.io.operand2 := io.operand2
-  addPipeline.io.subtract := io.operation === FpOperation.Sub
-  mulPipeline.io.operand1 := io.operand1
-  mulPipeline.io.operand2 := io.operand2
-  reciprocal.io.operand := io.operand1
-  fpToInt.io.operand := io.operand1
-
-  switch (opStage3) {
-    is (FpOperation.Mul) { io.result := mulPipeline.io.result.asBits }
-    is (FpOperation.Recip) { io.result := recipResult.asBits }
-    is (FpOperation.FpToInt) { io.result := fpToIntResult.asBits }
-    default { io.result := addPipeline.io.result.asBits }
-  }
-}
-
 // This has three cycles of latency
 class FpAddSub extends Component {
   val io = new Bundle {
@@ -326,25 +284,27 @@ class FpToInt extends Component {
     val operand = in(Float32())
   }
 
-  val unsignedResult = UInt(32 bits)
+  val resultNext = UInt(32 bits)
   when (io.operand.exponent < Float32.exponentBias || io.operand.isNaN) {
     // Number is less than zero
-    unsignedResult := 0
-  } elsewhen (io.operand.exponent > Float32.exponentBias + 30 || (io.operand.isInf && !io.operand.negative)) {
-    // Number is too large to fit
-    unsignedResult := 0x7fffffff
-  } elsewhen (io.operand.isInf && io.operand.negative) {
-    unsignedResult := U(0x80000000L, 32 bits)
+    resultNext := 0
+  } elsewhen (io.operand.exponent > Float32.exponentBias + 30 || io.operand.isInf) {
+    // Number is too large to fit, set to infinity
+    when (io.operand.negative) {
+      resultNext := U(0x80000000L, 32 bits)
+    } otherwise {
+      resultNext := 0x7fffffff
+    }
   } otherwise {
     // Shift to align whole portion
     val shiftAmount = Float32.exponentBias - io.operand.exponent + 32
-    unsignedResult := ((io.operand.fullFraction ## U(0, 32 - Float32.fractionWidth bits)) >>
+    val shifted = ((io.operand.fullFraction ## U(0, 32 - Float32.fractionWidth bits)) >>
       shiftAmount).asUInt.resize(32)
+    resultNext := Mux(io.operand.negative,
+      (shifted ^ U(0xffffffffL, 32 bits)) + 1,
+      shifted)
   }
 
-  val resultNext = Mux(io.operand.negative,
-    (unsignedResult ^ U(0xffffffffL, 32 bits)) + 1,
-    unsignedResult)
   io.result := RegNext(resultNext) init(0)
 }
 
@@ -353,171 +313,254 @@ class FloatingPointTests extends AnyFunSuite {
   def fpTruncate(value: Float): Float =
     java.lang.Float.intBitsToFloat(java.lang.Float.floatToIntBits(value) & 0xfffe0000)
 
-  test("fp pipeline") {
-    TestConfig.testSim.compile(new FloatingPointPipeline()).doSim { dut =>
+  def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval).toLong & 0xffffffffL
+
+  def runFpPipelineTest[T <: Component, V](
+    dut: T,
+    pipelineDelay: Int,
+    testVectors: Seq[V],
+    driveInput: (T, V) => Unit,
+    verifyOutput: (T, V, Int) => Unit
+  ) = {
+    for (cycle <- 0 until testVectors.length + pipelineDelay) {
+      if (cycle < testVectors.length) {
+        driveInput(dut, testVectors(cycle))
+      }
+
+      dut.clockDomain.waitSampling()
+
+      if (cycle >= pipelineDelay) {
+        verifyOutput(dut, testVectors(cycle - pipelineDelay), cycle - pipelineDelay)
+      }
+    }
+  }
+
+  def reportTestFailure(index: Int, a: Float, b: Float, expected: Float, actual: Float) = {
+    println(f"mismatch at test entry $index: $a%.3f $b%.3f")
+    println(f"  expected = $expected%.6f  (0x${this.floatToRawBits(expected)}%08x)")
+    println(f"  actual   = $actual%.6f  (0x${this.floatToRawBits(actual)}%08x)")
+  }
+
+  test("fp adder") {
+    TestConfig.testSim.compile(new FpAddSub()).doSim { dut =>
+      type TestVector = (Boolean, Float, Float, Float)
+      val testVectors: Seq[TestVector] = Seq(
+        (false, 3.0f, 2.0f, 5.0f), // pos + pos
+        (false, -4.0f, -5.0f, -9.0f), // neg + neg
+        (false, 7.7f, -3.5f, 4.2f), // pos + smaller neg
+        (false, 7.0f, -13.0f, -6.0f), // pos + larger neg
+        (false, -40.0f, 37.0f, -3.0f), // neg + smaller pos
+        (false, -27.0f, 35.0f, 8.0f), // neg + larger pos
+        (false, 5.0f, -5.0f, 0.0f), // Exact cancellation
+        (false, -5.0f, 5.0f, 0.0f),
+        (false, 17.79f, 19.32f, 37.11f), // Exponents equal. Will carry into next significand bit
+        (false, 0.34f, 44.23f, 44.57f), // Exponent 2 larger
+        (false, 44.23f, 0.034f, 44.264f), // Exponent 1 larger
+        (false, -1.0f, 5.0f, 4.0f), // First element is negative and has smaller exponent
+        (false, -5.0f, 1.0f, -4.0f), // First element is negative and has larger exponent
+        (false, 5.0f, -1.0f, 4.0f), // Second element is negative and has smaller exponent
+        (false, 1.0f, -5.0f, -4.0f), // Second element is negative and has larger exponent
+        (false, 5.0f, 0.0f, 5.0f), // Zero identity
+        (false, 0.0f, 5.0f, 5.0f), // " "
+        (false, 0.0f, 0.0f, 0.0f), // " "
+        (false, 7.0f, -7.0f, 0.0f), // Sum is zero, positive first operand
+        (false, -7.0f, 7.0f, 0.0f), // Sum is zero, negative first operand
+        (false, 1000000.0f, 0.0000001f, 1000000.0f), //  Second op is lost because of precision
+        (false, 0.0000001f, 0.00000001f, 0.00000011f), // Very small number
+        (false, 1000000.0f, 10000000.0f, 11000000.0f), // Large number
+        (false, -0.0f, 2.323f, 2.323f), // negative zero
+        (false, 2.323f, -0.0f, 2.323f), // negative zero
+        (false, Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
+        (false, Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
+        (false, Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
+        (false, 0.0f, Float.NegativeInfinity, Float.NegativeInfinity),
+        (false, 1.0f, Float.PositiveInfinity, Float.PositiveInfinity),
+        (false, 1.0f, Float.NegativeInfinity, Float.NegativeInfinity),
+        (false, Float.PositiveInfinity, Float.NegativeInfinity, Float.NaN),
+        (false, Float.NaN, 1.0f, Float.NaN),
+        (false, 1.0f, Float.NaN, Float.NaN),
+        (false, Float.NaN, Float.NaN, Float.NaN),
+
+        // Subtraction
+        (true, 3.0f, 2.0f, 1.0f),
+        (true, -3.0f, -2.0f, -1.0f),
+        (true, 3.0f, -2.0f, 5.0f),
+        (true, -3.0f, 2.0f, -5.0f),
+        (true, 2.0f, -3.0f, 5.0f),
+        (true, -2.0f, 3.0f, -5.0f)
+      )
+
       dut.clockDomain.forkStimulus(period = 10)
       dut.io.operand1.raw #= 0
       dut.io.operand2.raw #= 0
       dut.clockDomain.waitSampling() // Wait for reset to complete
 
-      val pipelineDelay = 4
-      val testVectors: Array[(FpOperation.E, Float, Float, Either[Float, Int])] = Array(
-        // Reciprocal Estimate (second operand is ignored)
-        (FpOperation.Recip, 1.0f, 0.0f, Left(1.0f)),
-        (FpOperation.Recip, 2.0f, 0.0f, Left(0.5f)),
-        (FpOperation.Recip, 0.5f, 0.0f, Left(2.0f)),
-        (FpOperation.Recip, 4.0f, 0.0f, Left(0.25f)),
-        (FpOperation.Recip, 3.0f, 0.0f, Left(fpTruncate(0.333333f))),
-        (FpOperation.Recip, 1.5f, 0.0f, Left(fpTruncate(0.666666f))),
-        (FpOperation.Recip, 0.333333f, 0.0f, Left(fpTruncate(3.0f))),
-        (FpOperation.Recip, 1000.0f, 0.0f, Left(fpTruncate(0.001f))),
-        (FpOperation.Recip, 0.99999f, 0.0f, Left(1.0f)), // Last table entry
-        (FpOperation.Recip, 0.0f, 0.0f, Left(Float.NaN)), // Division by zero
-        (FpOperation.Recip, Float.NegativeInfinity, 0.0f, Left(-0.0f)), // Division by inf
-        (FpOperation.Recip, Float.PositiveInfinity, 0.0f, Left(0.0f)), // Division by inf
-
-        // Addition
-        (FpOperation.Add, 3.0f, 2.0f, Left(5.0f)), // pos + pos
-        (FpOperation.Add, -4.0f, -5.0f, Left(-9.0f)), // neg + neg
-        (FpOperation.Add, 7.7f, -3.5f, Left(4.2f)), // pos + smaller neg
-        (FpOperation.Add, 7.0f, -13.0f, Left(-6.0f)), // pos + larger neg
-        (FpOperation.Add, -40.0f, 37.0f, Left(-3.0f)), // neg + smaller pos
-        (FpOperation.Add, -27.0f, 35.0f, Left(8.0f)), // neg + larger pos
-        (FpOperation.Add, 5.0f, -5.0f, Left(0.0f)), // Exact cancellation
-        (FpOperation.Add, -5.0f, 5.0f, Left(0.0f)),
-        (FpOperation.Add, 17.79f, 19.32f, Left(37.11f)), // Exponents equal. Will carry into next significand bit
-        (FpOperation.Add, 0.34f, 44.23f, Left(44.57f)), // Exponent 2 larger
-        (FpOperation.Add, 44.23f, 0.034f, Left(44.264f)), // Exponent 1 larger
-        (FpOperation.Add, -1.0f, 5.0f, Left(4.0f)), // First element is negative and has smaller exponent
-        (FpOperation.Add, -5.0f, 1.0f, Left(-4.0f)), // First element is negative and has larger exponent
-        (FpOperation.Add, 5.0f, -1.0f, Left(4.0f)), // Second element is negative and has smaller exponent
-        (FpOperation.Add, 1.0f, -5.0f, Left(-4.0f)), // Second element is negative and has larger exponent
-        (FpOperation.Add, 5.0f, 0.0f, Left(5.0f)), // Zero identity
-        (FpOperation.Add, 0.0f, 5.0f, Left(5.0f)), // " "
-        (FpOperation.Add, 0.0f, 0.0f, Left(0.0f)), // " "
-        (FpOperation.Add, 7.0f, -7.0f, Left(0.0f)), // Sum is zero, positive first operand
-        (FpOperation.Add, -7.0f, 7.0f, Left(0.0f)), // Sum is zero, negative first operand
-        (FpOperation.Add, 1000000.0f, 0.0000001f, Left(1000000.0f)), //  Second op is lost because of precision
-        (FpOperation.Add, 0.0000001f, 0.00000001f, Left(0.00000011f)), // Very small number
-        (FpOperation.Add, 1000000.0f, 10000000.0f, Left(11000000.0f)), // Large number
-        (FpOperation.Add, -0.0f, 2.323f, Left(2.323f)), // negative zero
-        (FpOperation.Add, 2.323f, -0.0f, Left(2.323f)), // negative zero
-        (FpOperation.Add, Float.PositiveInfinity, Float.PositiveInfinity, Left(Float.PositiveInfinity)), // Infinity and NaN cases...
-        (FpOperation.Add, Float.PositiveInfinity, 1.0f, Left(Float.PositiveInfinity)),
-        (FpOperation.Add, Float.NegativeInfinity, 1.0f, Left(Float.NegativeInfinity)),
-        (FpOperation.Add, 0.0f, Float.NegativeInfinity, Left(Float.NegativeInfinity)),
-        (FpOperation.Add, 1.0f, Float.PositiveInfinity, Left(Float.PositiveInfinity)),
-        (FpOperation.Add, 1.0f, Float.NegativeInfinity, Left(Float.NegativeInfinity)),
-        (FpOperation.Add, Float.PositiveInfinity, Float.NegativeInfinity, Left(Float.NaN)),
-        (FpOperation.Add, Float.NaN, 1.0f, Left(Float.NaN)),
-        (FpOperation.Add, 1.0f, Float.NaN, Left(Float.NaN)),
-        (FpOperation.Add, Float.NaN, Float.NaN, Left(Float.NaN)),
-
-        // Subtraction
-        (FpOperation.Sub, 3.0f, 2.0f, Left(1.0f)),
-        (FpOperation.Sub, -3.0f, -2.0f, Left(-1.0f)),
-        (FpOperation.Sub, 3.0f, -2.0f, Left(5.0f)),
-        (FpOperation.Sub, -3.0f, 2.0f, Left(-5.0f)),
-        (FpOperation.Sub, 2.0f, -3.0f, Left(5.0f)),
-        (FpOperation.Sub, -2.0f, 3.0f, Left(-5.0f)),
-
-        // Multiplication
-        (FpOperation.Mul, 100.0f, 25.0f, Left(2500.0f)), // positive * positive
-        (FpOperation.Mul, -10.0f, 32.0f, Left(-320.0f)), // negative * positive
-        (FpOperation.Mul, 0.5f, -90.0f, Left(-45.0f)), // positive * negative
-        (FpOperation.Mul, -15.0f, -4.0f, Left(60.0f)), // negative * negative
-        (FpOperation.Mul, -15.0f, 0.0f, Left(-0.0f)), // zero identity, negative
-        (FpOperation.Mul, 0.0f, 15.0f, Left(0.0f)), // zero identity, positive
-        (FpOperation.Mul, 0.00001f, 12345.0f, Left(0.12345f)),
-        (FpOperation.Mul, 200000.5f, 123.0f, Left(24600061.5f)),
-        (FpOperation.Mul, 1.0E25f, 1.0E25f, Left(Float.PositiveInfinity)), // Overflow
-        (FpOperation.Mul, 1.0E-20f, 1.0E-20f, Left(0.0f)), // Underflow
-        (FpOperation.Mul, Float.PositiveInfinity, Float.PositiveInfinity, Left(Float.PositiveInfinity)), // Infinity and NaN cases...
-        (FpOperation.Mul, Float.PositiveInfinity, 1.0f, Left(Float.PositiveInfinity)),
-        (FpOperation.Mul, Float.NegativeInfinity, 1.0f, Left(Float.NegativeInfinity)),
-        (FpOperation.Mul, Float.NegativeInfinity, -1.0f, Left(Float.PositiveInfinity)),
-        (FpOperation.Mul, Float.PositiveInfinity, -1.0f, Left(Float.NegativeInfinity)),
-        (FpOperation.Mul, 0.0f, Float.NegativeInfinity, Left(Float.NaN)),
-        (FpOperation.Mul, 0.0f, Float.PositiveInfinity, Left(Float.NaN)),
-        (FpOperation.Mul, Float.NegativeInfinity, 0.0f, Left(Float.NaN)),
-        (FpOperation.Mul, Float.PositiveInfinity, 0.0f, Left(Float.NaN)),
-        (FpOperation.Mul, Float.PositiveInfinity, Float.NegativeInfinity, Left(Float.NegativeInfinity)),
-        (FpOperation.Mul, Float.NaN, 1.0f, Left(Float.NaN)),
-        (FpOperation.Mul, 1.0f, Float.NaN, Left(Float.NaN)),
-        (FpOperation.Mul, Float.NaN, Float.NaN, Left(Float.NaN)),
-        (FpOperation.Mul, Float.NaN, Float.PositiveInfinity, Left(Float.NaN)),
-        (FpOperation.Mul, Float.PositiveInfinity, Float.NaN, Left(Float.NaN)),
-        (FpOperation.Mul, Float.NegativeInfinity, Float.NaN, Left(Float.NaN)),
-        (FpOperation.Mul, Float.NaN, Float.NegativeInfinity, Left(Float.NaN)),
-
-        (FpOperation.FpToInt, 1.0f, 0.0f, Right(1)),
-        (FpOperation.FpToInt, -1.0f, 0.0f, Right(-1)),
-        (FpOperation.FpToInt, 0.0f, 0.0f, Right(0)),
-        (FpOperation.FpToInt, 1234.56f, 0.0f, Right(1234)),
-        (FpOperation.FpToInt, 0.1234f, 0.0f, Right(0)),
-        (FpOperation.FpToInt, -5543.1f, 0.0f, Right(-5543)),
-        (FpOperation.FpToInt, Float.NaN, 0.0f, Right(0)),
-        (FpOperation.FpToInt, Float.PositiveInfinity, 0.0f, Right(0x7fffffff)),
-        (FpOperation.FpToInt, Float.NegativeInfinity, 0.0f, Right(0x80000000)),
-        (FpOperation.FpToInt, 2000000000.0f, 0.0f, Right(2000000000)),
-        (FpOperation.FpToInt, -2000000000.0f, 0.0f, Right(-2000000000)),
-        (FpOperation.FpToInt, 3000000000.0f, 0.0f, Right(0x7fffffff)),
-        (FpOperation.FpToInt, -3000000000.0f, 0.0f, Right(-0x7fffffff)),
-        (FpOperation.FpToInt, 1E+30f, 0.0f, Right(0x7fffffff)),
-        (FpOperation.FpToInt, -1E+30f, 0.0f, Right(-0x7fffffff)),
-        (FpOperation.FpToInt, 1E-30f, 0.0f, Right(0)),
-        (FpOperation.FpToInt, -1E-30f, 0.0f, Right(0)),
-      )
-
-      for (cycle <- 0 until testVectors.length + pipelineDelay) {
-        if (cycle < testVectors.length) {
-          val testValues = testVectors(cycle)
-
-          dut.io.operation #= testValues._1
-
-          val bits1: Long = java.lang.Float.floatToIntBits(testValues._2.toFloat).toLong & 0xFFFFFFFFL
-          dut.io.operand1.raw #= bits1
-
-          val bits2: Long = java.lang.Float.floatToIntBits(testValues._3.toFloat).toLong & 0xFFFFFFFFL
-          dut.io.operand2.raw #= bits2
-        }
-
-        if (cycle >= pipelineDelay) {
-          val testValues = testVectors(cycle - pipelineDelay)
-          val expectedBits: Long = testValues._4 match {
-            case Left(floatVal) =>
-              java.lang.Float.floatToIntBits(floatVal).toLong & 0xFFFFFFFFL
-            case Right(intVal) =>
-              intVal.toLong & 0xFFFFFFFFL
-          }
-
-          val actualBits: Long = dut.io.result.toLong & 0xFFFFFFFFL
-
-          // We allow an error of 1ulp because we're truncating rounding so the host machine may
-          // represent our expected values differently.
+      runFpPipelineTest(
+        dut,
+        3,
+        testVectors,
+        (dut:FpAddSub, test: TestVector) => {
+          dut.io.subtract #= test._1
+          dut.io.operand1.raw #= this.floatToRawBits(test._2)
+          dut.io.operand2.raw #= this.floatToRawBits(test._3)
+        },
+        (dut: FpAddSub, test: TestVector, index: Int) => {
+          val expectedBits = this.floatToRawBits(test._4)
+          val actualBits: Long = dut.io.result.raw.toLong & 0xffffffffL
           if (math.abs(expectedBits - actualBits) > 1) {
-            val a = testValues._2
-            val b = testValues._3
-
-            println(f"mismatch at test entry ${cycle - pipelineDelay}: $a%.3f $b%.3f")
-
-            testValues._4 match {
-              case Left(floatVal) => {
-                val actualFloat = java.lang.Float.intBitsToFloat(actualBits.toInt)
-                println(f"  expected = $floatVal%.6f  (0x$expectedBits%08x)")
-                println(f"  actual   = $actualFloat%.6f  (0x$actualBits%08x)")
-              }
-              case Right(intVal) => {
-                println(f"  expected = $intVal 0x$intVal%08x")
-                println(f"  actual   = ${actualBits.toInt} 0x$actualBits%08x")
-              }
-            }
+            reportTestFailure(index, test._2, test._3, test._4,
+              java.lang.Float.intBitsToFloat(actualBits.toInt))
             simFailure()
           }
         }
+      )
+    }
+  }
 
-        dut.clockDomain.waitSampling()
-      }
+  test("fp multiplier") {
+    TestConfig.testSim.compile(new FpMul()).doSim { dut =>
+      type TestVector = (Float, Float, Float)
+      val testVectors: Seq[TestVector] = Seq(
+        ( 100.0f, 25.0f, 2500.0f), // positive * positive
+        ( -10.0f, 32.0f, -320.0f), // negative * positive
+        ( 0.5f, -90.0f, -45.0f), // positive * negative
+        ( -15.0f, -4.0f, 60.0f), // negative * negative
+        ( -15.0f, 0.0f, -0.0f), // zero identity, negative
+        ( 0.0f, 15.0f, 0.0f), // zero identity, positive
+        ( 0.00001f, 12345.0f, 0.12345f),
+        ( 200000.5f, 123.0f, 24600061.5f),
+        ( 1.0E25f, 1.0E25f, Float.PositiveInfinity), // Overflow
+        ( 1.0E-20f, 1.0E-20f, 0.0f), // Underflow
+        ( Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
+        ( Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
+        ( Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
+        ( Float.NegativeInfinity, -1.0f, Float.PositiveInfinity),
+        ( Float.PositiveInfinity, -1.0f, Float.NegativeInfinity),
+        ( 0.0f, Float.NegativeInfinity, Float.NaN),
+        ( 0.0f, Float.PositiveInfinity, Float.NaN),
+        ( Float.NegativeInfinity, 0.0f, Float.NaN),
+        ( Float.PositiveInfinity, 0.0f, Float.NaN),
+        ( Float.PositiveInfinity, Float.NegativeInfinity, Float.NegativeInfinity),
+        ( Float.NaN, 1.0f, Float.NaN),
+        ( 1.0f, Float.NaN, Float.NaN),
+        ( Float.NaN, Float.NaN, Float.NaN),
+        ( Float.NaN, Float.PositiveInfinity, Float.NaN),
+        ( Float.PositiveInfinity, Float.NaN, Float.NaN),
+        ( Float.NegativeInfinity, Float.NaN, Float.NaN),
+        ( Float.NaN, Float.NegativeInfinity, Float.NaN),
+      )
+
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.io.operand1.raw #= 0
+      dut.io.operand2.raw #= 0
+      dut.clockDomain.waitSampling() // Wait for reset to complete
+
+      runFpPipelineTest(
+        dut,
+        3,
+        testVectors,
+        (dut: FpMul, test: TestVector) => {
+          dut.io.operand1.raw #= this.floatToRawBits(test._1)
+          dut.io.operand2.raw #= this.floatToRawBits(test._2)
+        },
+        (dut: FpMul, test: TestVector, index: Int) => {
+          val expectedBits = this.floatToRawBits(test._3)
+          val actualBits: Long = dut.io.result.raw.toLong & 0xffffffffL
+          if (math.abs(expectedBits - actualBits) > 1) {
+            reportTestFailure(index, test._1, test._2, test._3,
+              java.lang.Float.intBitsToFloat(actualBits.toInt))
+            simFailure()
+          }
+        }
+      )
+    }
+  }
+
+  test("fp recip") {
+    TestConfig.testSim.compile(new FpReciprocalEstimate()).doSim { dut =>
+      type TestVector = (Float, Float)
+      val testVectors: Seq[TestVector] = Seq(
+        (1.0f, 1.0f),
+        (2.0f, 0.5f),
+        (0.5f, 2.0f),
+        (4.0f, 0.25f),
+        (3.0f, this.fpTruncate(0.333333f)),
+        (1.5f, this.fpTruncate(0.666666f)),
+        (0.333333f, this.fpTruncate(3.0f)),
+        (1000.0f, this.fpTruncate(0.001f)),
+        (0.99999f, 1.0f), // Last table entry
+        (0.0f, Float.NaN), // Division by zero
+        (Float.NegativeInfinity, -0.0f), // Division by inf
+        (Float.PositiveInfinity, 0.0f), // Division by inf
+      )
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.io.operand.raw #= 0
+      dut.clockDomain.waitSampling() // Wait for reset to complete
+
+      runFpPipelineTest(
+        dut,
+        1,
+        testVectors,
+        (dut: FpReciprocalEstimate, test: TestVector) => {
+          dut.io.operand.raw #= this.floatToRawBits(test._1)
+        },
+        (dut: FpReciprocalEstimate, test: TestVector, index: Int) => {
+          val expectedBits = this.floatToRawBits(test._2)
+          val actualBits: Long = dut.io.result.raw.toLong & 0xffffffffL
+          if (math.abs(expectedBits - actualBits) > 1) {
+            reportTestFailure(index, test._1, 0.0f, test._2,
+              java.lang.Float.intBitsToFloat(actualBits.toInt))
+            simFailure()
+          }
+        }
+      )
+    }
+  }
+
+  test("fp to int") {
+    TestConfig.testSim.compile(new FpToInt()).doSim { dut =>
+      type TestVector = (Float, Int)
+      val testVectors: Seq[TestVector] = Seq(
+        (1.0f, 1),
+        (-1.0f, -1),
+        (0.0f, 0),
+        (1234.56f, 1234),
+        (0.1234f, 0),
+        (-5543.1f, -5543),
+        (Float.NaN, 0),
+        (Float.PositiveInfinity, Int.MaxValue),
+        (Float.NegativeInfinity, Int.MinValue),
+        (2000000000.0f, 2000000000),
+        (-2000000000.0f, -2000000000),
+        (3000000000.0f, Int.MaxValue),
+        (-3000000000.0f, Int.MinValue),
+        (1E+30f, Int.MaxValue),
+        (-1E+30f, Int.MinValue),
+        (1E-30f, 0),
+        (-1E-30f, 0),
+      )
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.io.operand.raw #= 0
+      dut.clockDomain.waitSampling() // Wait for reset to complete
+
+      runFpPipelineTest(
+        dut,
+        1,
+        testVectors,
+        (dut: FpToInt, test: TestVector) => {
+          dut.io.operand.raw #= this.floatToRawBits(test._1)
+        },
+        (dut: FpToInt, test: TestVector, index: Int) => {
+          val expectedBits = test._2.toLong & 0xffffffffL
+          val actualBits: Long = dut.io.result.toLong & 0xffffffffL
+          if (expectedBits != actualBits) {
+            println(f"mismatch at test entry $index: ${test._1}%.3f")
+            println(f"  expected = (0x${expectedBits}%08x)")
+            println(f"  actual   = (0x${actualBits}%08x)")
+            simFailure()
+          }
+        }
+      )
     }
   }
 }
