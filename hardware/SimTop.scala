@@ -56,6 +56,9 @@ class SimTop extends Component {
   tileBuffer.io.clearDepth := U(0xffffff, GpuConfig.depthBits bits)
   tileBuffer.io.startFlush := io.startFlush
   tileBuffer.io.flushBufferSel := RenderBufferId.Color
+  tileBuffer.io.enableDepthCheck := True
+  tileBuffer.io.enableDepthWrite := True
+  tileBuffer.io.enableBlend := True
   io.flushData << tileBuffer.io.flushData
   setup.io.input << io.inputTriangle
 }

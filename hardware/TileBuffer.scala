@@ -32,10 +32,9 @@
 //   memory.
 //
 // Open Questions/To do:
-// - Currently hard coded 32 bpp output, ABGR format. Make this configurable.
 // - Stencil buffers
 // - How does early-Z connect with this module?
-// - Implement configurable blend modes and depth checks
+// - Implement configurable blend modes and depth check modes
 // - On flush, support different formats, e.g. abgr, bgra, rgba
 //
 
@@ -69,6 +68,11 @@ class TileBuffer extends Module {
     val flushData = master(Stream(Bits(32 bits)))
     val clearColor = in(RgbaColor())
     val clearDepth = in(UInt(GpuConfig.depthBits bits))
+
+    // Configuration
+    val enableDepthWrite = in(Bool())
+    val enableDepthCheck = in(Bool())
+    val enableBlend = in(Bool())
   }
 
   val memorySize = GpuConfig.tileSizeQuads * GpuConfig.tileSizeQuads
@@ -132,8 +136,15 @@ class TileBuffer extends Module {
   for (pixel <- 0 until pixelsPerQuad) {
     val colorData = Mux(flushActive, io.clearColor, colorWriteVal(pixel))
     val depthData = Mux(flushActive, io.clearDepth, depthWriteVal(pixel))
-    colorMemory(pixel).write(writeAddress, colorData, colorWriteMask(pixel))
-    depthMemory(pixel).write(writeAddress, depthData, depthWriteMask(pixel))
+    colorMemory(pixel).write(
+      address = writeAddress,
+      data = colorData,
+      enable = colorWriteMask(pixel)
+    )
+    depthMemory(pixel).write(
+      address = writeAddress,
+      data = depthData,
+      enable = depthWriteMask(pixel) && (flushActive || io.enableDepthWrite))
   }
 
   io.flushData.payload := io.flushBufferSel.mux(
@@ -172,12 +183,15 @@ class TileBuffer extends Module {
       val oldWeightedColor = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
       val newColor = RegNext(stage1.newColor)
       val newDepth = RegNext(stage1.newDepth)
-      val mask = RegNext(stage1.mask && (stage1.newDepth < depthReadVal(pixel))).init(false)
+      val mask = RegNext(stage1.mask &&
+        (!io.enableDepthCheck || stage1.newDepth < depthReadVal(pixel))).init(false)
     }
 
     // Stage 3: Blend, flush.
     val _ = new Area {
-      val blended = stage2.oldWeightedColor +| stage2.newColor
+      val blended = Mux(io.enableBlend,
+        stage2.oldWeightedColor +| stage2.newColor,
+        stage2.newColor)
       quadWriteLanes(pixel) := stage2.mask && !flushActive
       colorWriteVal(pixel) := blended
       depthWriteVal(pixel) := stage2.newDepth
@@ -253,7 +267,6 @@ class TileBufferReference {
   }
 }
 
-// Test suite
 class TileBufferTests extends AnyFunSuite {
   val compiledModel = TestConfig.testSim.compile({
     new TileBuffer {
@@ -352,6 +365,9 @@ class TileBufferTests extends AnyFunSuite {
 
       dut.io.valid #= false
       dut.io.startFlush #= false
+      dut.io.enableBlend #= true
+      dut.io.enableDepthCheck #= true
+      dut.io.enableDepthWrite #= true
       dut.clockDomain.forkStimulus(period = 10)
       dut.clockDomain.waitSampling() // Ensure we are out of reset.
 
@@ -378,6 +394,108 @@ class TileBufferTests extends AnyFunSuite {
     }
   }
 
+  test("depth check disable") {
+    compiledModel.doSim { dut =>
+      this.clearBuffers(dut)
+      dut.io.valid #= false
+      dut.io.startFlush #= false
+      dut.io.enableBlend #= true
+      dut.io.enableDepthCheck #= false
+      dut.io.enableDepthWrite #= true
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.clockDomain.waitSampling() // Ensure we are out of reset.
+
+      writeQuad(dut, 0, 0, 0xf,
+        Seq(0xff0080ff, 0xff0080ff, 0xff0080ff, 0xff0080ff),
+        Seq(2, 2, 2, 2))
+
+      // Flush pixels
+      dut.clockDomain.waitSampling(4)
+
+      // Depth is greater. When checking is enabled, this iwl not write
+      writeQuad(dut, 0, 0, 0xf,
+        Seq(0x00000000, 0x80ffffff, 0xffabcde7, 0x80808080),
+        Seq(3, 3, 3, 3))
+
+      // Flush pipeline
+      dut.clockDomain.waitSampling(4)
+
+      val depth = this.getBufferContent(dut, RenderBufferId.Depth)
+      assert(depth(0) == 3)
+      assert(depth(1) == 3)
+      assert(depth(GpuConfig.tileSizePixels) == 3)
+      assert(depth(GpuConfig.tileSizePixels + 1) == 3)
+
+      // The last pixel written should have won.
+      val color = this.getBufferContent(dut, RenderBufferId.Color)
+      assert(color(0) == 0xff0080ff)
+      assert(color(1) == 0xffffffff)
+      assert(color(GpuConfig.tileSizePixels) == 0xffabcde7)
+      assert(color(GpuConfig.tileSizePixels + 1) == 0xff80bfff)
+    }
+  }
+
+  test("depth write disable") {
+    compiledModel.doSim { dut =>
+      this.clearBuffers(dut)
+      dut.io.valid #= false
+      dut.io.startFlush #= false
+      dut.io.enableBlend #= true
+      dut.io.enableDepthCheck #= true
+      dut.io.enableDepthWrite #= false
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.clockDomain.waitSampling() // Ensure we are out of reset.
+
+      writeQuad(dut, 0, 0, 0xf,
+        Seq(0xff00aaff, 0xff00bbff, 0xff00ccff, 0xff00ddff),
+        Seq(2, 2, 2, 2))
+
+      // Flush pipeline
+      dut.clockDomain.waitSampling(4)
+
+      // Depth is not written
+      val depth = this.getBufferContent(dut, RenderBufferId.Depth)
+      assert(depth(0) == 0xffffff)
+      assert(depth(1) == 0xffffff)
+      assert(depth(GpuConfig.tileSizePixels) == 0xffffff)
+      assert(depth(GpuConfig.tileSizePixels + 1) == 0xffffff)
+
+      // Color is written
+      val color = this.getBufferContent(dut, RenderBufferId.Color)
+      assert(color(0) == 0xff00aaff)
+      assert(color(1) == 0xff00bbff)
+      assert(color(GpuConfig.tileSizePixels) == 0xff00ccff)
+      assert(color(GpuConfig.tileSizePixels + 1) == 0xff00ddff)
+    }
+  }
+
+  test("alpha blend disable") {
+    compiledModel.doSim { dut =>
+      this.clearBuffers(dut)
+      dut.io.valid #= false
+      dut.io.startFlush #= false
+      dut.io.enableBlend #= false
+      dut.io.enableDepthCheck #= true
+      dut.io.enableDepthWrite #= true
+      dut.clockDomain.forkStimulus(period = 10)
+      dut.clockDomain.waitSampling() // Ensure we are out of reset.
+
+      writeQuad(dut, 0, 0, 0xf,
+        Seq(0x80ffff80, 0x80ffff80, 0x80ffff80, 0x80ffff80),
+        Seq(2, 2, 2, 2))
+
+      // Flush pipeline
+      dut.clockDomain.waitSampling(4)
+
+      // All pixels shoudl be written full intensity
+      val color = this.getBufferContent(dut, RenderBufferId.Color)
+      assert(color(0) == 0x80ffff80)
+      assert(color(1) == 0x80ffff80)
+      assert(color(GpuConfig.tileSizePixels) == 0x80ffff80)
+      assert(color(GpuConfig.tileSizePixels + 1) == 0x80ffff80)
+    }
+  }
+
   test("random tile write") {
     compiledModel.doSim { dut =>
       SimTimeout(1000000)
@@ -386,6 +504,9 @@ class TileBufferTests extends AnyFunSuite {
       this.clearBuffers(dut)
 
       dut.io.valid #= false
+      dut.io.enableBlend #= true
+      dut.io.enableDepthCheck #= true
+      dut.io.enableDepthWrite #= true
       dut.io.startFlush #= false
       dut.clockDomain.forkStimulus(period = 10)
       dut.clockDomain.waitSampling() // Ensure we are out of reset.
