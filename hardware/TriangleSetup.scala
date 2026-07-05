@@ -329,7 +329,7 @@ class TriangleSetup extends Component {
   when (uInst.dest === 12) { setupResult.initialValue(2) := result }
 }
 
-class TriangleSetupSpec extends AnyFunSuite {
+class TriangleSetupTests extends AnyFunSuite {
   val compiledModel = TestConfig.testSim.compile(new TriangleSetup())
 
   def computeExpectedValues(bbLeft: Int, bbTop: Int,

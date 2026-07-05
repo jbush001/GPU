@@ -15,7 +15,7 @@
 //
 
 //
-// Floating point pipeline
+// Floating point blocks
 // - This does not support subnormal numbers and treats them as zero
 // - It only supports round towards zero
 //
@@ -28,7 +28,7 @@ import org.scalatest.funsuite.AnyFunSuite
 
 // IEEE754 single precision floating point value, binary32 format.
 // https://en.wikipedia.org/wiki/Single-precision_floating-point_format
-class SingleFloat extends Bundle {
+class Float32 extends Bundle {
   val raw = Bits(32 bits)
 
   def negative = raw(31)
@@ -44,19 +44,19 @@ class SingleFloat extends Bundle {
   // This adds the leading hidden bit
   def fullFraction = (!this.isZero ## this.fraction).asUInt
 
-  def absLargerThan(that: SingleFloat): Bool = {
+  def absLargerThan(that: Float32): Bool = {
     ((this.exponent > that.exponent)
       || ((this.exponent === that.exponent)
       && this.fullFraction >= that.fullFraction))
   }
 }
 
-object SingleFloat {
+object Float32 {
   val exponentWidth = 8
   val fractionWidth = 23 // As encoded (not including hidden bit)
   def exponentBias = U(127, exponentWidth bits) // This is an exponent of zero
 
-  def apply() = new SingleFloat()
+  def apply() = new Float32()
 }
 
 object FpOperation extends SpinalEnum {
@@ -66,8 +66,8 @@ object FpOperation extends SpinalEnum {
 class FloatingPointPipeline extends Component {
   val io = new Bundle {
     val result = out(Bits())
-    val operand1 = in(SingleFloat())
-    val operand2 = in(SingleFloat())
+    val operand1 = in(Float32())
+    val operand2 = in(Float32())
     val operation = in(FpOperation())
   }
 
@@ -75,8 +75,8 @@ class FloatingPointPipeline extends Component {
   val opStage2 = RegNext(opStage1) init(FpOperation.Add)
   val opStage3 = RegNext(opStage2) init(FpOperation.Add)
 
-  val addPipeline = new FpAddPipeline
-  val mulPipeline = new FpMulPipeline
+  val addPipeline = new FpAddSub
+  val mulPipeline = new FpMul
   val reciprocal = new FpReciprocalEstimate
   val fpToInt = new FpToInt
 
@@ -102,11 +102,11 @@ class FloatingPointPipeline extends Component {
 }
 
 // This has three cycles of latency
-class FpAddPipeline extends Component {
+class FpAddSub extends Component {
   val io = new Bundle {
-    val result = out(SingleFloat())
-    val operand1 = in(SingleFloat())
-    val operand2 = in(SingleFloat())
+    val result = out(Float32())
+    val operand1 = in(Float32())
+    val operand2 = in(Float32())
     val subtract = in(Bool())
   }
 
@@ -123,11 +123,11 @@ class FpAddPipeline extends Component {
       io.operand1.exponent - io.operand2.exponent,
       io.operand2.exponent - io.operand1.exponent)
 
-    val alignShift = UInt(log2Up(SingleFloat.fractionWidth) bits)
-    when (exponentDiff <= SingleFloat.fractionWidth + 1) {
+    val alignShift = UInt(log2Up(Float32.fractionWidth) bits)
+    when (exponentDiff <= Float32.fractionWidth + 1) {
       alignShift := exponentDiff(4 downto 0)
     } otherwise {
-      alignShift := SingleFloat.fractionWidth + 1
+      alignShift := Float32.fractionWidth + 1
     }
 
     val largerFractionNext = Mux(op1IsLarger, io.operand1.fullFraction, io.operand2.fullFraction)
@@ -153,7 +153,7 @@ class FpAddPipeline extends Component {
   // - Add/subtract
   //
   val stage2 = new Area {
-    val resultWidth = SingleFloat.fractionWidth + 2
+    val resultWidth = Float32.fractionWidth + 2
     val sumResult = RegNext(Mux(stage1.logicalSubtract,
       stage1.largerFraction.resize(resultWidth) - stage1.smallerFractionAligned.resize(resultWidth),
       stage1.largerFraction.resize(resultWidth) + stage1.smallerFractionAligned.resize(resultWidth))) init(0)
@@ -178,16 +178,16 @@ class FpAddPipeline extends Component {
       }
     }
 
-    val normalizedSum = (stage2.sumResult << normalizeShift)(SingleFloat.fractionWidth downto 1)
+    val normalizedSum = (stage2.sumResult << normalizeShift)(Float32.fractionWidth downto 1)
 
-    val resultFraction = UInt(SingleFloat.fractionWidth bits)
-    val resultExponent = UInt(SingleFloat.exponentWidth bits)
+    val resultFraction = UInt(Float32.fractionWidth bits)
+    val resultExponent = UInt(Float32.exponentWidth bits)
     when (stage2.isInf) {
       resultFraction := 0
-      resultExponent :=  U(0xff, SingleFloat.exponentWidth bits)
+      resultExponent :=  U(0xff, Float32.exponentWidth bits)
     } elsewhen (stage2.isNaN) {
       resultFraction := 0x400000
-      resultExponent := U(0xff, SingleFloat.exponentWidth bits)
+      resultExponent := U(0xff, Float32.exponentWidth bits)
     } elsewhen (isZeroResult) {
       resultFraction := 0
       resultExponent := 0
@@ -203,11 +203,11 @@ class FpAddPipeline extends Component {
 }
 
 // This has three cycles of latency
-class FpMulPipeline extends Component {
+class FpMul extends Component {
   val io = new Bundle {
-    val result = out(SingleFloat())
-    val operand1 = in(SingleFloat())
-    val operand2 = in(SingleFloat())
+    val result = out(Float32())
+    val operand1 = in(Float32())
+    val operand2 = in(Float32())
   }
 
   // Stage 1
@@ -218,10 +218,10 @@ class FpMulPipeline extends Component {
       || (io.operand1.isZero && io.operand2.isInf))
 
     val mulExpSum = io.operand1.exponent.resize(10) + io.operand2.exponent.resize(10) -
-      SingleFloat.exponentBias
-    val mulExponentUnderflow = mulExpSum(SingleFloat.exponentWidth + 1)
-    val mulExponentCarry = mulExpSum(SingleFloat.exponentWidth)
-    val mulExponentNext = mulExpSum(SingleFloat.exponentWidth - 1 downto 0)
+      Float32.exponentBias
+    val mulExponentUnderflow = mulExpSum(Float32.exponentWidth + 1)
+    val mulExponentCarry = mulExpSum(Float32.exponentWidth)
+    val mulExponentNext = mulExpSum(Float32.exponentWidth - 1 downto 0)
 
     val isInfNext = (io.operand1.isInf || io.operand2.isInf
       || (mulExponentCarry && !mulExponentUnderflow))
@@ -254,15 +254,15 @@ class FpMulPipeline extends Component {
     // One position shift to normalize if the product has overflown
     val normShift = stage2.fractionProduct(24)
     val normalizedFraction = Mux(normShift,
-      stage2.fractionProduct(SingleFloat.fractionWidth downto 1),
-      stage2.fractionProduct(SingleFloat.fractionWidth - 1 downto 0))
+      stage2.fractionProduct(Float32.fractionWidth downto 1),
+      stage2.fractionProduct(Float32.fractionWidth - 1 downto 0))
     val adjustedExponent = Mux(normShift, stage2.mulExponent + 1, stage2.mulExponent)
 
     val resultNext = Bits(32 bits)
     when (stage2.isNaN) {
-      resultNext := False ## B(0xff, SingleFloat.exponentWidth bits) ## B(0x400000, SingleFloat.fractionWidth bits)
+      resultNext := False ## B(0xff, Float32.exponentWidth bits) ## B(0x400000, Float32.fractionWidth bits)
     } elsewhen (stage2.isInf) {
-      resultNext := stage2.isNegative ## B(0xff, SingleFloat.exponentWidth bits) ## B(0, SingleFloat.fractionWidth bits)
+      resultNext := stage2.isNegative ## B(0xff, Float32.exponentWidth bits) ## B(0, Float32.fractionWidth bits)
     } elsewhen (stage2.isZero) {
       resultNext := stage2.isNegative ## B(0, 31 bits)
     } otherwise {
@@ -276,8 +276,8 @@ class FpMulPipeline extends Component {
 // This has one cycle of latency
 class FpReciprocalEstimate extends Component {
   val io = new Bundle {
-    val result = out(SingleFloat())
-    val operand = in(SingleFloat())
+    val result = out(Float32())
+    val operand = in(Float32())
   }
 
   // Generate fraction lookup table.
@@ -308,12 +308,12 @@ class FpReciprocalEstimate extends Component {
   val resultNext = Bits(32 bits)
   when (io.operand.isZero || io.operand.isNaN) {
     // Division by zero or NaN = NaN
-    resultNext := False ## U(0xff, SingleFloat.exponentWidth bits) ## B(0x400000, SingleFloat.fractionWidth bits)
+    resultNext := False ## U(0xff, Float32.exponentWidth bits) ## B(0x400000, Float32.fractionWidth bits)
   } elsewhen (io.operand.isInf) {
     // Division by +/- inf = 0.0
     resultNext := io.operand.negative ## U(0, 8 bits) ## U(0, 23 bits)
   } otherwise {
-    resultNext := io.operand.negative ## exponentNext ## B(fractionNext << 17, SingleFloat.fractionWidth bits)
+    resultNext := io.operand.negative ## exponentNext ## B(fractionNext << 17, Float32.fractionWidth bits)
   }
 
   io.result.raw := RegNext(resultNext) init(0)
@@ -323,22 +323,22 @@ class FpReciprocalEstimate extends Component {
 class FpToInt extends Component {
   val io = new Bundle {
     val result = out(UInt(32 bits))
-    val operand = in(SingleFloat())
+    val operand = in(Float32())
   }
 
   val unsignedResult = UInt(32 bits)
-  when (io.operand.exponent < SingleFloat.exponentBias || io.operand.isNaN) {
+  when (io.operand.exponent < Float32.exponentBias || io.operand.isNaN) {
     // Number is less than zero
     unsignedResult := 0
-  } elsewhen (io.operand.exponent > SingleFloat.exponentBias + 30 || (io.operand.isInf && !io.operand.negative)) {
+  } elsewhen (io.operand.exponent > Float32.exponentBias + 30 || (io.operand.isInf && !io.operand.negative)) {
     // Number is too large to fit
     unsignedResult := 0x7fffffff
   } elsewhen (io.operand.isInf && io.operand.negative) {
     unsignedResult := U(0x80000000L, 32 bits)
   } otherwise {
     // Shift to align whole portion
-    val shiftAmount = SingleFloat.exponentBias - io.operand.exponent + 32
-    unsignedResult := ((io.operand.fullFraction ## U(0, 32 - SingleFloat.fractionWidth bits)) >>
+    val shiftAmount = Float32.exponentBias - io.operand.exponent + 32
+    unsignedResult := ((io.operand.fullFraction ## U(0, 32 - Float32.fractionWidth bits)) >>
       shiftAmount).asUInt.resize(32)
   }
 
@@ -348,7 +348,7 @@ class FpToInt extends Component {
   io.result := RegNext(resultNext) init(0)
 }
 
-class FloatingPointSpec extends AnyFunSuite {
+class FloatingPointTests extends AnyFunSuite {
   // Helper for reciprocal tests
   def fpTruncate(value: Float): Float =
     java.lang.Float.intBitsToFloat(java.lang.Float.floatToIntBits(value) & 0xfffe0000)

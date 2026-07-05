@@ -17,14 +17,13 @@
 //
 // The TileBuffer stores rendered depth, and color information for a
 // small square portion of the framebuffer (a tile).  It performs alpha
-// blending, depth and other checks checks. It has a three stage
-// read/modify/write pipeline and can accept one 2x2 quad per cycle. When
-// rendering is finished for the tile, this can be commanded to go into a
-// flush phase to copy its contents to memory.
+// blending, depth and other checks. It has a three stage read/modify/write
+// pipeline and can accept one 2x2 quad per cycle. When rendering is finished
+// for the tile, this can be commanded to go into a flush phase to copy its
+// contents to memory.
 //
 // Constraints:
-// - The same quad location cannot be written twice within 2 cycles. I'm assuming
-//   this won't be a problem in practice.
+// - The same quad location cannot be written twice within 2 cycles.
 // - There must be 3 cycles after the last write before a flush to flush
 //   pipeline
 // - It always clears the framebuffer during a flush (which assumes the client
@@ -255,7 +254,7 @@ class TileBufferReference {
 }
 
 // Test suite
-class TileBufferSpec extends AnyFunSuite {
+class TileBufferTests extends AnyFunSuite {
   val compiledModel = TestConfig.testSim.compile({
     new TileBuffer {
       // This is requred for getBufferContent

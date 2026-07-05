@@ -41,7 +41,6 @@ object Consts {
 }
 
 class RasterizerSetupParams extends Bundle {
-
   val bbLeft = ScreenCoord()
   val bbTop = ScreenCoord()
   val bbRight = ScreenCoord()
@@ -194,7 +193,7 @@ class Rasterizer extends Component {
   io.output.mask := pixelCheck
 }
 
-class RasterizerSpec extends AnyFunSuite {
+class RasterizerTests extends AnyFunSuite {
   val compiledModel = TestConfig.testSim.compile(new Rasterizer())
 
   def rasterizeTriangle(dut: Rasterizer,
