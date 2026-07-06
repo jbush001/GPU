@@ -145,8 +145,8 @@ class Rasterizer extends Component {
       io.input.ready := True
       when (startRasterize) {
         stepCommand := StepCommand.Reset
-        x := io.input.bbLeft
-        y := io.input.bbTop
+        x := inParams.bbLeft
+        y := inParams.bbTop
         goto(STEP_RIGHT)
       }
     }
@@ -159,12 +159,12 @@ class Rasterizer extends Component {
             goto(IDLE)
           }.otherwise {
             stepCommand := StepCommand.Down;
-            y := y + 1
+            y := y + 2
             goto(STEP_LEFT)
           }
         }.otherwise {
           stepCommand := StepCommand.Right;
-          x := x + 1
+          x := x + 2
         }
       }
     }
@@ -177,19 +177,20 @@ class Rasterizer extends Component {
             goto(IDLE)
           }.otherwise {
             stepCommand := StepCommand.Down;
-            y := y + 1
+            y := y + 2
             goto(STEP_RIGHT)
           }
         }.otherwise {
           stepCommand := StepCommand.Left;
-          x := x - 1
+          x := x - 2
         }
       }
     }
   }
 
-  io.output.x := x
-  io.output.y := y
+  // Coordinates need to be relative to bounding box.
+  io.output.x := x - inParams.bbLeft
+  io.output.y := y - inParams.bbTop
   io.output.mask := pixelCheck
 }
 
@@ -227,17 +228,17 @@ class RasterizerTests extends AnyFunSuite {
     // Edge 0->1
     dut.io.input.payload.xStep(0) #= y1 - y0
     dut.io.input.payload.yStep(0) #= x0 - x1
-    dut.io.input.payload.initialValue(0) #= ((bbLeft * 2) - x0) * (y1 - y0) - ((bbTop * 2) - y0) * (x1 - x0)
+    dut.io.input.payload.initialValue(0) #= (bbLeft - x0) * (y1 - y0) - (bbTop - y0) * (x1 - x0)
 
     // Edge 1->2
     dut.io.input.payload.xStep(1) #= y2 - y1
     dut.io.input.payload.yStep(1) #= x1 - x2
-    dut.io.input.payload.initialValue(1) #= ((bbLeft * 2) - x1) * (y2 - y1) - ((bbTop * 2) - y1) * (x2 - x1)
+    dut.io.input.payload.initialValue(1) #= (bbLeft - x1) * (y2 - y1) - (bbTop - y1) * (x2 - x1)
 
     // Edge 2->0
     dut.io.input.payload.xStep(2) #= y0 - y2
     dut.io.input.payload.yStep(2) #= x2 - x0
-    dut.io.input.payload.initialValue(2) #= ((bbLeft * 2) - x2) * (y0 - y2) - ((bbTop * 2) - y2) * (x0 - x2)
+    dut.io.input.payload.initialValue(2) #= (bbLeft - x2) * (y0 - y2) - (bbTop - y2) * (x0 - x2)
     dut.io.input.valid #= true
 
     while(!dut.io.input.ready.toBoolean) {
@@ -247,7 +248,7 @@ class RasterizerTests extends AnyFunSuite {
     dut.clockDomain.waitSampling()
     dut.io.input.valid #= false
 
-    val outputBuffer = Array.ofDim[Boolean]((bbRight + 1) * 2, (bbBottom + 1) * 2);
+    val outputBuffer = Array.ofDim[Boolean](bbRight - bbLeft + 2, bbBottom - bbTop + 2);
 
     val rng = new Random(42)
     dut.io.output.ready #= true
@@ -260,15 +261,13 @@ class RasterizerTests extends AnyFunSuite {
         assert(!dut.io.input.ready.toBoolean)
         val x = dut.io.output.x.toInt
         val y = dut.io.output.y.toInt
-        assert(x >= bbLeft)
-        assert(y >= bbTop)
-        assert(x <= bbRight)
-        assert(y <= bbBottom)
+        assert(x <= (bbRight - bbLeft))
+        assert(y <= (bbBottom - bbTop))
         val mask = dut.io.output.mask.toInt
-        if ((mask & 1) != 0) outputBuffer(y * 2)(x * 2) = true
-        if ((mask & 2) != 0) outputBuffer(y * 2)(x * 2 + 1) = true
-        if ((mask & 4) != 0) outputBuffer(y * 2 + 1)(x * 2) = true
-        if ((mask & 8) != 0) outputBuffer(y * 2 + 1)(x * 2 + 1) = true
+        if ((mask & 1) != 0) outputBuffer(y)(x) = true
+        if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
+        if ((mask & 4) != 0) outputBuffer(y + 1)(x) = true
+        if ((mask & 8) != 0) outputBuffer(y + 1)(x + 1) = true
       }
 
       dut.clockDomain.waitSampling()
@@ -288,8 +287,9 @@ class RasterizerTests extends AnyFunSuite {
 
   test("rasterize") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, false);
-      val expected = """................
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 14, 14, false);
+      val expected = """
+................
 ................
 ........X.......
 ........X.......
@@ -310,42 +310,35 @@ class RasterizerTests extends AnyFunSuite {
     }
   }
 
-  test("partial left") {
+  test("clip right") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 4, 4, false);
-      val expected = """..........
-..........
-........X.
-........X.
-.......XXX
-.......XXX
-......XXXX
-......XXXX
-.....XXXXX
-.....XXXXX"""
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 6, 6, false);
+      val expected = """
+........
+........
+........
+........
+.......X
+.......X
+......XX
+......XX"""
       assert(output.trim == expected.stripMargin.trim)
     }
   }
 
-  test("partial right") {
+  // Test non-zero bounding box offset
+  test("clip left") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 4, 4, 7, 7, false);
-      val expected =  """................
-................
-................
-................
-................
-................
-................
-................
-........XXXX....
-........XXXX....
-........XXXXX...
-........XXXXX...
-........XXXXXX..
-........XXXXXX..
-........XXXXXXX.
-................"""
+      val output = rasterizeTriangle(dut, 16, 1, 22, 22, 1, 16, 16, 16, 22, 22, false);
+      val expected =  """
+XXXXX...
+XXXXX...
+XXXXX...
+XXXXXX..
+XXXXXX..
+...XXX..
+........
+........"""
 
       assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
     }
@@ -354,7 +347,7 @@ class RasterizerTests extends AnyFunSuite {
   // Won't display anything
   test("reverse winding") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 7, 7, false);
+      val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 14, 14, false);
       val expected =  """................
 ................
 ................
@@ -377,7 +370,7 @@ class RasterizerTests extends AnyFunSuite {
 
   test("output flow control") {
     compiledModel.doSim { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 7, 7, true);
+      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 14, 14, true);
       val expected = """................
 ................
 ........X.......

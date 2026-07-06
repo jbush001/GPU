@@ -21,6 +21,11 @@
 // To optimize area, this runs a small microsequencer that performs the
 // calculations (rather than just doing it all in parallel).
 //
+// TODO:
+// - This needs to be reworked to compute in floating point.
+// - For a top of left edge (y1 > y2 || (y1 == y2 && x2 > x1)), we should
+//   adjust the equations up by one to fix overlap (top left fill convention)
+//
 
 package gpu
 
@@ -282,7 +287,7 @@ class TriangleSetup extends Component {
   val microcodeRom = Mem(UInst(), initialContent = microcode.map(x => UInst(x._1, x._2, x._3, x._4, x._5, x._6, x._7)))
   val uInst = microcodeRom(upc)
   halt := uInst.halt
-  io.vpi.readEn := uInst.readEn
+  io.vpi.readEn := uInst.readEn && computing
   io.vpi.readAddress := uInst.readAddress
 
   when (computing) {
@@ -304,8 +309,8 @@ class TriangleSetup extends Component {
     acc0,
     acc1,
     acc2,
-    (inParams.bbLeft << 1).resize(32),
-    (inParams.bbTop << 1).resize(32),
+    inParams.bbLeft,
+    inParams.bbTop,
     S(0, 32 bits),
     io.vpi.readData.intoSInt.resize(32)
   )
@@ -336,15 +341,15 @@ class TriangleSetupTests extends AnyFunSuite {
                             x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int) = {
     val xStep0 = y1 - y0
     val yStep0 = x0 - x1
-    val initialValue0 = ((bbLeft * 2) - x0) * (y1 - y0) - ((bbTop * 2) - y0) * (x1 - x0)
+    val initialValue0 = (bbLeft - x0) * (y1 - y0) - (bbTop - y0) * (x1 - x0)
 
     val xStep1 = y2 - y1
     val yStep1 = x1 - x2
-    val initialValue1 = ((bbLeft * 2) - x1) * (y2 - y1) - ((bbTop * 2) - y1) * (x2 - x1)
+    val initialValue1 = (bbLeft - x1) * (y2 - y1) - (bbTop - y1) * (x2 - x1)
 
     val xStep2 = y0 - y2
     val yStep2 = x2 - x0
-    val initialValue2 = ((bbLeft * 2) - x2) * (y0 - y2) - ((bbTop * 2) - y2) * (x0 - x2)
+    val initialValue2 = (bbLeft - x2) * (y0 - y2) - (bbTop - y2) * (x0 - x2)
 
     (xStep0, yStep0, initialValue0,
       xStep1, yStep1, initialValue1,
@@ -371,7 +376,6 @@ class TriangleSetupTests extends AnyFunSuite {
       val y1 = 110
       val x2 = 33
       val y2 = 107
-
 
       val vpData = Array(
         x0,

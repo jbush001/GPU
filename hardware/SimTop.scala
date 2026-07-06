@@ -22,7 +22,6 @@ import spinal.core.sim._
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
-import scala.collection.mutable.ArrayBuffer
 
 // This is a bit of a hack, as the components won't connect exactly like this
 // in a real configuration, but demonstrates things working end-to-end.
@@ -31,6 +30,7 @@ class SimTop extends Component {
     val inputTriangle = slave(spinal.lib.Stream(new TriangleSetupParams))
     val startFlush = in(Bool())
     val flushData = master(Stream(Bits(32 bits)))
+    val flushBufferSel = in(RenderBufferId()) // depth or color buffer
     val vpi = master(new VertexParameterInterface())
   }
 
@@ -55,7 +55,7 @@ class SimTop extends Component {
   tileBuffer.io.clearColor := RgbaColor(0, 0, 0, 0)
   tileBuffer.io.clearDepth := U(0xffffff, GpuConfig.depthBits bits)
   tileBuffer.io.startFlush := io.startFlush
-  tileBuffer.io.flushBufferSel := RenderBufferId.Color
+  tileBuffer.io.flushBufferSel := io.flushBufferSel
   tileBuffer.io.enableDepthCheck := True
   tileBuffer.io.enableDepthWrite := True
   tileBuffer.io.enableBlend := True
@@ -65,18 +65,16 @@ class SimTop extends Component {
 
 object Simulation {
   def run() = {
-    val sim = SimConfig.workspacePath("hardware/gen/simulation")
-    if (System.getProperty("trace", "false").toBoolean) {
-      sim.withFstWave
-    } else {
-      sim
-    }.compile(new SimTop()).doSim { dut =>
+    SimConfig.workspacePath("hardware/gen/simulation")
+ //     .withFstWave
+      .compile(new SimTop()).doSim { dut =>
       dut.io.startFlush #= false
       dut.io.inputTriangle.valid #= false
       dut.clockDomain.forkStimulus(period = 10)
       dut.clockDomain.waitSampling(100)
 
-      val vpmData = Array(5, 7, 61, 49, 23, 60)
+      // Simulate vertex parameter memory
+      val vpmData = Array(5, 7, 118, 49, 23, 110)
 
       fork {
         while (true) {
@@ -87,53 +85,87 @@ object Simulation {
         }
       }
 
-      // Run a resolve to clear out the buffer initially
-      resolve(dut)
+      // Run a flush to clear out the buffer initially
+      flushBuffer(dut, None, 0, 0)
 
-      // Set up a triangle
-      dut.io.inputTriangle.bbLeft #= 0
-      dut.io.inputTriangle.bbTop #= 0
-      dut.io.inputTriangle.bbRight #= GpuConfig.tileSizeQuads
-      dut.io.inputTriangle.bbBottom #= GpuConfig.tileSizeQuads
-      dut.io.inputTriangle.valid #= true
-      dut.clockDomain.waitSampling()
-      dut.io.inputTriangle.valid #= false
+      val fbSize = 128
+      val fbData = new Array[Int](fbSize * fbSize)
+      for (tile <- 0 until 4) {
+        val tileRow = tile / 2
+        val tileColumn = tile % 2
 
-      // Render stuff. Note that we don't check for completion, just run for
-      // enough cycles we know it should finish.
-      for (_ <- 0 until 1500) {
+        // Set up a triangle
+        dut.io.inputTriangle.bbLeft #= tileColumn * GpuConfig.tileSizePixels
+        dut.io.inputTriangle.bbTop #= tileRow * GpuConfig.tileSizePixels
+        dut.io.inputTriangle.bbRight #= (tileColumn + 1) * GpuConfig.tileSizePixels - 2
+        dut.io.inputTriangle.bbBottom #= (tileRow + 1) * GpuConfig.tileSizePixels - 2
+
+        dut.io.inputTriangle.valid #= true
         dut.clockDomain.waitSampling()
+        dut.io.inputTriangle.valid #= false
+
+        // Render stuff. Note that we don't check for completion, just run for
+        // enough cycles we know it should finish.
+        for (_ <- 0 until 1500) {
+          dut.clockDomain.waitSampling()
+        }
+
+        // Read out the final data
+        val offset = (fbSize * GpuConfig.tileSizePixels * tileRow) +
+          (GpuConfig.tileSizePixels * tileColumn)
+        flushBuffer(dut, Some(fbData), offset, fbSize)
       }
 
-      // Read out the final data
-      val fbData = resolve(dut)
-
       // Write an image file
-      val canvas = new BufferedImage(GpuConfig.tileSizePixels, GpuConfig.tileSizePixels,
-        BufferedImage.TYPE_INT_ARGB)
-      canvas.setRGB(0, 0, GpuConfig.tileSizePixels, GpuConfig.tileSizePixels, fbData.toArray, 0,
-        GpuConfig.tileSizePixels)
+      val canvas = new BufferedImage(fbSize, fbSize, BufferedImage.TYPE_INT_ARGB)
+      canvas.setRGB(0, 0, fbSize, fbSize, fbData.toArray, 0, fbSize)
       val outputFile = new File("output.png")
       ImageIO.write(canvas, "png", outputFile)
     }
   }
 
-  def resolve(dut: SimTop): Array[Int] = {
-    val fbData = ArrayBuffer[Int]()
+  def flushBuffer(dut: SimTop, out: Option[Array[Int]], start: Int, stride: Int) = {
     dut.io.startFlush #= true
+    dut.io.flushBufferSel #= RenderBufferId.Color
     dut.clockDomain.waitSampling()
     dut.io.startFlush #= false
     dut.io.flushData.ready #= true
 
-    val totalPixels = GpuConfig.tileSizePixels * GpuConfig.tileSizePixels
-    while (fbData.length < totalPixels) {
-      dut.clockDomain.waitSampling()
-      if (dut.io.flushData.valid.toBoolean &&
-        dut.io.flushData.ready.toBoolean) {
-        fbData += dut.io.flushData.payload.toInt | 0xff000000 // Set alpha channel
+    var fbIndex = start
+
+    for (_ <- 0 until GpuConfig.tileSizePixels) {
+      for (_ <- 0 until GpuConfig.tileSizePixels) {
+        dut.clockDomain.waitSampling()
+        while (!(dut.io.flushData.valid.toBoolean &&
+          dut.io.flushData.ready.toBoolean)) {
+          dut.clockDomain.waitSampling()
+        }
+
+        out match {
+          case Some(arr) => {
+            arr(fbIndex) = dut.io.flushData.payload.toInt | 0xff000000 // Set alpha channel
+          }
+          case None => {}
+        }
+
+        fbIndex += 1
       }
+
+      fbIndex += stride - GpuConfig.tileSizePixels
     }
 
-    fbData.toArray
+    // Need to read the depth buffer in order to clear it.
+    dut.io.startFlush #= true
+    dut.io.flushBufferSel #= RenderBufferId.Depth
+    dut.clockDomain.waitSampling()
+    dut.io.startFlush #= false
+
+    for (_ <- 0 until GpuConfig.tileSizePixels * GpuConfig.tileSizePixels) {
+        dut.clockDomain.waitSampling()
+        while (!(dut.io.flushData.valid.toBoolean &&
+          dut.io.flushData.ready.toBoolean)) {
+          dut.clockDomain.waitSampling()
+        }
+    }
   }
 }

@@ -27,16 +27,13 @@ object GpuConfig {
   val tileSizePixels: Int = 64;
   val edgeFunctionBits = 32;
 
-  // Derived constants
-  val tileSizeQuads = tileSizePixels / 2
-  val tileCoordBits = log2Up(tileSizeQuads)
+  val tileCoordBits = log2Up(tileSizePixels)
 
   assert((GpuConfig.tileSizePixels & (GpuConfig.tileSizePixels - 1)) == 0) // Must be power of two tile
 }
 
+// A vertical or horizontal screen coordinate in pixels
 // TODO:
-// - this currently is used for both quad coordinates and pixel coordinates
-//   in different places.
 // - This doesn't provide any type safety, as it is just a wrapper to produce
 //   a consistent type.
 // - This should probably be a fixed point value (maybe 14.4) to rasterize

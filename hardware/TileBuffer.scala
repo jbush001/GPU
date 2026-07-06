@@ -75,7 +75,7 @@ class TileBuffer extends Module {
     val enableBlend = in(Bool())
   }
 
-  val memorySize = GpuConfig.tileSizeQuads * GpuConfig.tileSizeQuads
+  val memorySize = (GpuConfig.tileSizePixels * GpuConfig.tileSizePixels) / pixelsPerQuad
   val memoryAddrBits = log2Up(memorySize)
   val flushActive = Reg(Bool()) init(False)
 
@@ -91,8 +91,8 @@ class TileBuffer extends Module {
   val depthMemory = Seq.fill(pixelsPerQuad)(Mem(UInt(GpuConfig.depthBits bits), wordCount = memorySize))
 
   // Each quad stores its pixels across four banks, but during a flush, we
-  // need to send them to memory in linear raster order. These do the bit
-  // twiddling to flatten them.
+  // need to send them to memory in linear raster order. These do the shuffling
+  // to flatten them.
   val coordBits = log2Up(GpuConfig.tileSizePixels)
   val flushX = flushCounterNext(coordBits - 1 downto 0)
   val flushY = flushCounterNext(coordBits * 2 - 1 downto coordBits)
@@ -102,9 +102,10 @@ class TileBuffer extends Module {
   val flushBank = RegNext(Cat(flushY(0), flushX(0)).asUInt)
 
   // The memory read ports are shared between flush and pixel operations
-  // (which are never happening at the same time)
-  val inputQuadAddress = Cat(io.quadY(GpuConfig.tileCoordBits - 1 downto 0),
-    io.quadX(GpuConfig.tileCoordBits - 1 downto 0)).asUInt
+  // (which are never happening at the same time). Note we divide each
+  // coordinate by two here to get the quad address from the pixel address.
+  val inputQuadAddress = Cat(io.quadY(GpuConfig.tileCoordBits - 1 downto 1),
+    io.quadX(GpuConfig.tileCoordBits - 1 downto 1)).asUInt
   val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
   val colorReadVal = colorMemory.map(_.readSync(readAddress, io.valid
     || flushActive))
@@ -205,7 +206,7 @@ class TileBufferReference {
   val depths = Array.fill(GpuConfig.tileSizePixels * GpuConfig.tileSizePixels)(0xffffff)
 
   private def rasterIndex(quadX: Int, quadY: Int, pixel: Int): Int = {
-    val offset = quadY * 2 * GpuConfig.tileSizePixels + quadX * 2
+    val offset = quadY * GpuConfig.tileSizePixels + quadX
     pixel match {
       case 0 => offset
       case 1 => offset + 1
@@ -329,7 +330,7 @@ class TileBufferTests extends AnyFunSuite {
 
   // For test setup, manually force framebuffer to a known state
   def clearBuffers(dut: TileBuffer) = {
-    for (i <- 0 until (GpuConfig.tileSizeQuads * GpuConfig.tileSizeQuads)) {
+    for (i <- 0 until (GpuConfig.tileSizePixels * GpuConfig.tileSizePixels) / 4) {
       for (pixel <- 0 until 4) {
         dut.colorMemory(pixel).setBigInt(i, 0)
         dut.depthMemory(pixel).setBigInt(i, 0xffffff)
@@ -521,8 +522,8 @@ class TileBufferTests extends AnyFunSuite {
         // We can't generate the same quad within 3 cycles, so ensure that doesn't happen.
         var regenerateCoord = true
         while (regenerateCoord) {
-          quadX = rng.nextInt(GpuConfig.tileSizeQuads)
-          quadY = rng.nextInt(GpuConfig.tileSizeQuads)
+          quadX = rng.nextInt(GpuConfig.tileSizePixels) & ~1
+          quadY = rng.nextInt(GpuConfig.tileSizePixels) & ~1
           regenerateCoord = coordHistory.contains((quadX, quadY))
         }
 
@@ -566,8 +567,8 @@ class TileBufferTests extends AnyFunSuite {
 
       // Fill the framebuffer with random data
       val rng = new Random(42)
-      for (y <- 0 until GpuConfig.tileSizeQuads) {
-        for (x <- 0 until GpuConfig.tileSizeQuads) {
+      for (y <- 0 until GpuConfig.tileSizePixels by 2) {
+        for (x <- 0 until GpuConfig.tileSizePixels by 2) {
           val colors = Seq.fill(4) { rng.nextInt() }
           val depths = Seq.fill(4) { rng.nextInt(0xffffff) }
           writeQuad(dut, x, y, 0xf, colors, depths)
