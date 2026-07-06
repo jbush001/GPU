@@ -8,9 +8,11 @@ We compute the reciprocal of w once per vertex, and then apply that to the
 other variables to perspective correct their locations:
 
 ```math
-x_{screen} = x_{clip} \cdot w^{-1}\\
-y_{screen} = y_{clip} \cdot w^{-1}\\
+\begin{aligned}
+x_{screen} = x_{clip} \cdot w^{-1} \\
+y_{screen} = y_{clip} \cdot w^{-1} \\
 z_{screen} = z_{clip} \cdot w^{-1}
+\end{aligned}
 ```
 
 ## Triangle setup, rasterization, pixel processing
@@ -38,7 +40,7 @@ properly, we first need to normalize them. At any point, the three edges
 will always sum to the same value, which is the 2 times the area of the triangle:
 
 ```math
-\lambda_n = \frac{E_n}{E_0 + E_1 + E_2} \\
+\lambda_n = \frac{E_n}{E_0 + E_1 + E_2} 
 ```
 
 The normalized values can then be used to trivially interpolate a parameter P
@@ -85,23 +87,27 @@ how this can be applied to perspective correct rendering, let's focus on the
 linear form. Since the three normalized $\lambda$ values add up to 1, we can simplify the calculation, given:
 
 ```math
-\lambda_0 + \lambda_1 + \lambda_2  = 1 \\
+\lambda_0 + \lambda_1 + \lambda_2  = 1
 ```
 
 We can substitute:
 
 ```math
+\begin{aligned}
 \lambda_0 = 1 - \lambda_1 - \lambda_2 \\
 q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0(1 - \lambda_1 - \lambda_2) + \lambda_1Q_1 + \lambda_2Q_2 \rightarrow \\
 q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0 - Q_0\lambda_1 - Q_0\lambda_2 + \lambda_1Q_1 + \lambda_2Q_2 \rightarrow \\
 q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0 + \lambda_1(Q_1 - Q_0) + \lambda_2(Q_2 - Q_0)
+\end{aligned}
 ```
 
 We precompute two values at triangle setup time:
 
 ```math
-dQ_1 = Q_1 - Q_0 \\
+\begin{aligned}
+dQ_1 = Q_1 - Q_0 \\\\
 dQ_2 = Q_2 - Q_0
+\end{aligned}
 ```
 
 Resulting in this formula:
