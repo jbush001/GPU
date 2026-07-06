@@ -66,8 +66,7 @@ class QuadOutput extends Bundle {
   val x = ScreenCoord()
   val y = ScreenCoord()
   val mask = Bits(Consts.pixelsPerQuad bits)
-  val lambda0 = Vec(SInt(32 bits), Consts.pixelsPerQuad)
-  val lambda1 = Vec(SInt(32 bits), Consts.pixelsPerQuad)
+  val lambda = Vec(Vec(SInt(32 bits), Consts.triangleEdges), Consts.pixelsPerQuad)
 }
 
 class Rasterizer extends Component {
@@ -96,11 +95,7 @@ class Rasterizer extends Component {
       // is on the inside of all three triangle edges, then it is inside the triangle.
       val edgeValue = Reg(SInt(32 bits))
 
-      if (edge == 0) {
-        io.output.lambda0(pixel) := edgeValue
-      } else if (edge == 1) {
-        io.output.lambda1(pixel) := edgeValue
-      }
+      io.output.lambda(pixel)(edge) := edgeValue
 
       switch(stepCommand) {
         is(StepCommand.Reset) {

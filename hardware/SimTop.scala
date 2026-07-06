@@ -42,7 +42,17 @@ class SimTop extends Component {
   io.vpi.readAddress := setup.io.vpi.readAddress
   setup.io.vpi.readData := io.vpi.readData
 
-  val fillColor = RgbaColor(0xff, 0, 0, 0xff)
+
+  val fillColors = Vec(RgbaColor(), 4)
+  val normFactor = rasterizer.io.output.lambda(0)(0) + rasterizer.io.output.lambda(0)(1) + rasterizer.io.output.lambda(0)(2)
+  for (pixel <- 0 until 4) {
+    for (component <- 0 until 3) {
+      fillColors(pixel).channels(component) := U(rasterizer.io.output.lambda(pixel)(component) * 255 / normFactor, 8 bits)
+    }
+
+    fillColors(pixel).channels(3) := 0xff
+  }
+
   val fillDepth = U(0, GpuConfig.depthBits bits)
 
   rasterizer.io.output.ready := True // No wait
@@ -50,7 +60,7 @@ class SimTop extends Component {
   tileBuffer.io.quadX  := rasterizer.io.output.payload.x
   tileBuffer.io.quadY  := rasterizer.io.output.payload.y
   tileBuffer.io.mask   := rasterizer.io.output.payload.mask
-  tileBuffer.io.colors := Vec.fill(4)(fillColor)
+  tileBuffer.io.colors := fillColors
   tileBuffer.io.depths := Vec.fill(4)(fillDepth)
   tileBuffer.io.clearColor := RgbaColor(0, 0, 0, 0)
   tileBuffer.io.clearDepth := U(0xffffff, GpuConfig.depthBits bits)
