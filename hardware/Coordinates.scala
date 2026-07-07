@@ -19,10 +19,8 @@ package gpu
 import spinal.core._
 
 class Point2D extends Bundle {
-  val width = 16;
-
-  val x = SInt(width bits)
-  val y = SInt(width bits)
+  val x = SInt(GpuConfig.coordinateBits bits)
+  val y = SInt(GpuConfig.coordinateBits bits)
 
   def -(that: Point2D): Point2D = {
     val result = new Point2D()
@@ -37,12 +35,10 @@ object Point2D {
 }
 
 class BoundingBox extends Bundle {
-  val width = 16;
-
-  val top = SInt(width bits)
-  val left = SInt(width bits)
-  val right = SInt(width bits)
-  val bottom = SInt(width bits)
+  val top = SInt(GpuConfig.coordinateBits bits)
+  val left = SInt(GpuConfig.coordinateBits bits)
+  val right = SInt(GpuConfig.coordinateBits bits)
+  val bottom = SInt(GpuConfig.coordinateBits bits)
 
   def topLeft: Point2D = {
     val point = Point2D()

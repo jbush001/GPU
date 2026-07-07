@@ -23,9 +23,10 @@ import spinal.core._
 //
 object GpuConfig {
   // Configurable parameters
-  val depthBits: Int = 24
-  val tileSizePixels: Int = 64;
+  val depthBits = 24
+  val tileSizePixels = 64;
   val edgeFunctionBits = 32;
+  val coordinateBits = 16;
 
   val tileCoordBits = log2Up(tileSizePixels)
 

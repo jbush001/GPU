@@ -62,20 +62,8 @@ object RgbaColor {
   val numChannels = 4;
   val channelBits = 8;
 
-  def apply(r: Int, g: Int, b: Int, a: Int = 255): RgbaColor = {
-    val c = new RgbaColor()
-    c.channels(0) := b
-    c.channels(1) := g
-    c.channels(2) := r
-    c.channels(3) := a
-    c
-  }
+  def apply() = new RgbaColor
 
-  def apply(): RgbaColor = {
-    new RgbaColor()
-  }
-
-  // Same as above
   def fromBits(bits: Bits): RgbaColor = {
     val res = RgbaColor()
     res.channels := Vec(bits.asBools.grouped(channelBits).map(g => Vec(g).asBits.asUInt).toSeq)

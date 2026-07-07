@@ -61,7 +61,10 @@ class SimTop extends Component {
   tileBuffer.io.mask   := rasterizer.io.output.payload.mask
   tileBuffer.io.colors := fillColors
   tileBuffer.io.depths := Vec.fill(4)(fillDepth)
-  tileBuffer.io.clearColor := RgbaColor(0, 0, 0, 0)
+  tileBuffer.io.clearColor.channels(0) := 0
+  tileBuffer.io.clearColor.channels(1) := 0
+  tileBuffer.io.clearColor.channels(2) := 0
+  tileBuffer.io.clearColor.channels(3) := 0
   tileBuffer.io.clearDepth := U(0xffffff, GpuConfig.depthBits bits)
   tileBuffer.io.startFlush := io.startFlush
   tileBuffer.io.flushBufferSel := io.flushBufferSel
