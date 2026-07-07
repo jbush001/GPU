@@ -57,8 +57,7 @@ class TileBuffer extends Module {
 
   val io = new Bundle {
     val valid = in(Bool())
-    val quadX = in(ScreenCoord())
-    val quadY = in(ScreenCoord())
+    val quadLoc = in(Point2D())
     val mask = in(Bits(pixelsPerQuad bits))
     val colors = in(Vec(RgbaColor(), pixelsPerQuad))
     val depths = in(Vec(UInt(GpuConfig.depthBits bits), pixelsPerQuad))
@@ -104,8 +103,8 @@ class TileBuffer extends Module {
   // The memory read ports are shared between flush and pixel operations
   // (which are never happening at the same time). Note we divide each
   // coordinate by two here to get the quad address from the pixel address.
-  val inputQuadAddress = Cat(io.quadY(GpuConfig.tileCoordBits - 1 downto 1),
-    io.quadX(GpuConfig.tileCoordBits - 1 downto 1)).asUInt
+  val inputQuadAddress = Cat(io.quadLoc.y(GpuConfig.tileCoordBits - 1 downto 1),
+    io.quadLoc.x(GpuConfig.tileCoordBits - 1 downto 1)).asUInt
   val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
   val colorReadVal = colorMemory.map(_.readSync(readAddress, io.valid
     || flushActive))
@@ -283,8 +282,8 @@ class TileBufferTests extends AnyFunSuite {
   def writeQuad(dut: TileBuffer, x: Int, y: Int, mask: Int, colors: Seq[Int],
     depths: Seq[Int]) = {
 
-    dut.io.quadX #= x
-    dut.io.quadY #= y
+    dut.io.quadLoc.x #= x
+    dut.io.quadLoc.y #= y
     for (pixel <- 0 until 4) {
       for (ch <- 0 until 4) {
         dut.io.colors(pixel).channels(ch) #= (colors(pixel) >> (ch * 8) & 0xff)

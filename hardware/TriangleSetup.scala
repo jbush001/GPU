@@ -35,13 +35,6 @@ import org.scalatest.funsuite.AnyFunSuite
 import spinal.core.sim._
 import scala.collection.mutable.ListBuffer
 
-class TriangleSetupParams extends Bundle {
-    val bbLeft = ScreenCoord()
-    val bbTop = ScreenCoord()
-    val bbRight = ScreenCoord()
-    val bbBottom = ScreenCoord()
-}
-
 class UInst extends Bundle {
   val opcode = UInt(1 bits)
   val dest = UInt(4 bits)
@@ -180,7 +173,7 @@ class VertexParameterInterface extends Bundle with IMasterSlave {
 
 class TriangleSetup extends Component {
   val io = new Bundle {
-    val input = slave(spinal.lib.Stream(new TriangleSetupParams))
+    val input = slave(spinal.lib.Stream(BoundingBox()))
     val output = master(spinal.lib.Stream(new RasterizerSetupParams))
     val vpi = master(new VertexParameterInterface())
   }
@@ -213,10 +206,7 @@ class TriangleSetup extends Component {
     }
   } otherwise {
     when (io.input.fire) {
-      setupResult.bbLeft := io.input.bbLeft
-      setupResult.bbRight := io.input.bbRight
-      setupResult.bbTop := io.input.bbTop
-      setupResult.bbBottom := io.input.bbBottom
+      setupResult.boundingBox := io.input
       computing := True
     }
   }
@@ -309,8 +299,8 @@ class TriangleSetup extends Component {
     acc0,
     acc1,
     acc2,
-    inParams.bbLeft,
-    inParams.bbTop,
+    inParams.left,
+    inParams.top,
     S(0, 32 bits),
     io.vpi.readData.intoSInt.resize(32)
   )
@@ -396,10 +386,10 @@ class TriangleSetupTests extends AnyFunSuite {
       }
 
       dut.io.input.valid #= true
-      dut.io.input.bbLeft #= bbLeft
-      dut.io.input.bbTop #= bbTop
-      dut.io.input.bbRight #= bbRight
-      dut.io.input.bbBottom #= bbBottom
+      dut.io.input.left #= bbLeft
+      dut.io.input.top #= bbTop
+      dut.io.input.right #= bbRight
+      dut.io.input.bottom #= bbBottom
 
       while (!dut.io.input.ready.toBoolean) {
         dut.clockDomain.waitSampling()
@@ -410,10 +400,10 @@ class TriangleSetupTests extends AnyFunSuite {
 
       // Clear the inputs to ensure it has latched them properly.
       dut.io.input.valid #= false
-      dut.io.input.bbLeft #= 0
-      dut.io.input.bbTop #= 0
-      dut.io.input.bbRight #= 0
-      dut.io.input.bbBottom #= 0
+      dut.io.input.left #= 0
+      dut.io.input.top #= 0
+      dut.io.input.right #= 0
+      dut.io.input.bottom #= 0
 
       while (!dut.io.output.valid.toBoolean) {
         dut.clockDomain.waitSampling()
@@ -434,10 +424,10 @@ class TriangleSetupTests extends AnyFunSuite {
       assert(dut.io.output.xStep(2).toInt == xStep2)
       assert(dut.io.output.yStep(2).toInt == yStep2)
       assert(dut.io.output.initialValue(2).toInt == initialValue2)
-      assert(dut.io.output.bbLeft.toInt == bbLeft)
-      assert(dut.io.output.bbTop.toInt == bbTop)
-      assert(dut.io.output.bbRight.toInt == bbRight)
-      assert(dut.io.output.bbBottom.toInt == bbBottom)
+      assert(dut.io.output.boundingBox.left.toInt == bbLeft)
+      assert(dut.io.output.boundingBox.top.toInt == bbTop)
+      assert(dut.io.output.boundingBox.right.toInt == bbRight)
+      assert(dut.io.output.boundingBox.bottom.toInt == bbBottom)
     }
   }
 }

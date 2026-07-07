@@ -27,7 +27,7 @@ import javax.imageio.ImageIO
 // in a real configuration, but demonstrates things working end-to-end.
 class SimTop extends Component {
   val io = new Bundle {
-    val inputTriangle = slave(spinal.lib.Stream(new TriangleSetupParams))
+    val inputTriangle = slave(spinal.lib.Stream(new BoundingBox))
     val startFlush = in(Bool())
     val flushData = master(Stream(Bits(32 bits)))
     val flushBufferSel = in(RenderBufferId()) // depth or color buffer
@@ -57,8 +57,7 @@ class SimTop extends Component {
 
   rasterizer.io.output.ready := True // No wait
   tileBuffer.io.valid  := rasterizer.io.output.valid
-  tileBuffer.io.quadX  := rasterizer.io.output.payload.x
-  tileBuffer.io.quadY  := rasterizer.io.output.payload.y
+  tileBuffer.io.quadLoc  := rasterizer.io.output.payload.location
   tileBuffer.io.mask   := rasterizer.io.output.payload.mask
   tileBuffer.io.colors := fillColors
   tileBuffer.io.depths := Vec.fill(4)(fillDepth)
@@ -105,10 +104,10 @@ object Simulation {
         val tileColumn = tile % 2
 
         // Set up a triangle
-        dut.io.inputTriangle.bbLeft #= tileColumn * GpuConfig.tileSizePixels
-        dut.io.inputTriangle.bbTop #= tileRow * GpuConfig.tileSizePixels
-        dut.io.inputTriangle.bbRight #= (tileColumn + 1) * GpuConfig.tileSizePixels - 2
-        dut.io.inputTriangle.bbBottom #= (tileRow + 1) * GpuConfig.tileSizePixels - 2
+        dut.io.inputTriangle.left #= tileColumn * GpuConfig.tileSizePixels
+        dut.io.inputTriangle.top #= tileRow * GpuConfig.tileSizePixels
+        dut.io.inputTriangle.right #= (tileColumn + 1) * GpuConfig.tileSizePixels - 2
+        dut.io.inputTriangle.bottom #= (tileRow + 1) * GpuConfig.tileSizePixels - 2
 
         dut.io.inputTriangle.valid #= true
         dut.clockDomain.waitSampling()

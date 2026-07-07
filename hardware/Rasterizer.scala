@@ -41,10 +41,7 @@ object Consts {
 }
 
 class RasterizerSetupParams extends Bundle {
-  val bbLeft = ScreenCoord()
-  val bbTop = ScreenCoord()
-  val bbRight = ScreenCoord()
-  val bbBottom = ScreenCoord()
+  val boundingBox = BoundingBox()
   val initialValue = Vec(SInt(GpuConfig.edgeFunctionBits bits), Consts.triangleEdges)
   val xStep = Vec(SInt(GpuConfig.edgeFunctionBits bits), Consts.triangleEdges)
   val yStep = Vec(SInt(GpuConfig.edgeFunctionBits bits), Consts.triangleEdges)
@@ -54,7 +51,7 @@ class RasterizerSetupParams extends Bundle {
 // pixels:
 //  0 1
 //  2 3
-// x and y are the coordinates (in quads) of the upper left corner, relative to
+// location contains the coordinates of the upper left corner, relative to
 // the left/top edges of the current tile bounding box.
 //
 // The lambda outputs contain unnormalized barycentric coordindates for the
@@ -63,8 +60,7 @@ class RasterizerSetupParams extends Bundle {
 // across the triangle.
 //
 class QuadOutput extends Bundle {
-  val x = ScreenCoord()
-  val y = ScreenCoord()
+  val location = Point2D()
   val mask = Bits(Consts.pixelsPerQuad bits)
   val lambda = Vec(Vec(SInt(32 bits), Consts.triangleEdges), Consts.pixelsPerQuad)
 }
@@ -84,8 +80,7 @@ class Rasterizer extends Component {
   val inParams = RegNextWhen(io.input.payload, io.input.fire)
   val startRasterize = RegNext(io.input.fire)
 
-  val x = Reg(ScreenCoord())
-  val y = Reg(ScreenCoord())
+  val quadLoc = Reg(Point2D())
 
   // We compute the visibility of four pixels in the quad in parallel.
   val pixelCheck = B(for (pixel <- 0 until Consts.pixelsPerQuad) yield {
@@ -140,8 +135,7 @@ class Rasterizer extends Component {
       io.input.ready := True
       when (startRasterize) {
         stepCommand := StepCommand.Reset
-        x := inParams.bbLeft
-        y := inParams.bbTop
+        quadLoc := inParams.boundingBox.topLeft
         goto(STEP_RIGHT)
       }
     }
@@ -149,17 +143,17 @@ class Rasterizer extends Component {
     STEP_RIGHT.whenIsActive {
       io.output.valid := pixelCheck =/= 0;
       when (io.output.ready) {
-        when(x === inParams.bbRight) {
-          when (y === inParams.bbBottom) {
+        when (quadLoc.x === inParams.boundingBox.right) {
+          when (quadLoc.y === inParams.boundingBox.bottom) {
             goto(IDLE)
           }.otherwise {
             stepCommand := StepCommand.Down;
-            y := y + 2
+            quadLoc.y := quadLoc.y + 2
             goto(STEP_LEFT)
           }
         }.otherwise {
           stepCommand := StepCommand.Right;
-          x := x + 2
+          quadLoc.x := quadLoc.x + 2
         }
       }
     }
@@ -167,25 +161,24 @@ class Rasterizer extends Component {
     STEP_LEFT.whenIsActive {
       io.output.valid := pixelCheck =/= 0;
       when (io.output.ready) {
-        when(x === inParams.bbLeft) {
-          when (y === inParams.bbBottom) {
+        when(quadLoc.x === inParams.boundingBox.left) {
+          when (quadLoc.y === inParams.boundingBox.bottom) {
             goto(IDLE)
           }.otherwise {
             stepCommand := StepCommand.Down;
-            y := y + 2
+            quadLoc.y := quadLoc.y + 2
             goto(STEP_RIGHT)
           }
         }.otherwise {
           stepCommand := StepCommand.Left;
-          x := x - 2
+          quadLoc.x := quadLoc.x - 2
         }
       }
     }
   }
 
   // Coordinates need to be relative to bounding box.
-  io.output.x := x - inParams.bbLeft
-  io.output.y := y - inParams.bbTop
+  io.output.location := quadLoc - inParams.boundingBox.topLeft
   io.output.mask := pixelCheck
 }
 
@@ -215,10 +208,10 @@ class RasterizerTests extends AnyFunSuite {
     dut.io.output.ready #= true
     dut.clockDomain.waitSampling()
 
-    dut.io.input.payload.bbLeft #= bbLeft
-    dut.io.input.payload.bbTop #= bbTop
-    dut.io.input.payload.bbRight #= bbRight
-    dut.io.input.payload.bbBottom #= bbBottom
+    dut.io.input.payload.boundingBox.left #= bbLeft
+    dut.io.input.payload.boundingBox.top #= bbTop
+    dut.io.input.payload.boundingBox.right #= bbRight
+    dut.io.input.payload.boundingBox.bottom #= bbBottom
 
     // Edge 0->1
     dut.io.input.payload.xStep(0) #= y1 - y0
@@ -254,8 +247,8 @@ class RasterizerTests extends AnyFunSuite {
 
       if (dut.io.output.valid.toBoolean && dut.io.output.ready.toBoolean) {
         assert(!dut.io.input.ready.toBoolean)
-        val x = dut.io.output.x.toInt
-        val y = dut.io.output.y.toInt
+        val x = dut.io.output.location.x.toInt
+        val y = dut.io.output.location.y.toInt
         assert(x <= (bbRight - bbLeft))
         assert(y <= (bbBottom - bbTop))
         val mask = dut.io.output.mask.toInt
