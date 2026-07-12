@@ -16,17 +16,17 @@
 
 package gpu
 
-import spinal.core._
-import spinal.core.sim._
+import chisel3._
+import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
 class RgbaColor extends Bundle {
-  val channels = Vec(UInt(RgbaColor.channelBits bits), RgbaColor.numChannels)
+  val channels = Vec(RgbaColor.numChannels, UInt(RgbaColor.channelBits.W))
   def alpha: UInt = channels(3)
 
   // Multiply
   def scale(factor: UInt): RgbaColor = {
-    val res = RgbaColor()
+    val res = Wire(new RgbaColor)
     for (ch <- 0 until RgbaColor.numChannels) {
       val prod = this.channels(ch) * factor
 
@@ -34,8 +34,8 @@ class RgbaColor extends Bundle {
       // product, we'd be dividing by *256*. The following maths
       // cheaply approximate division by 255.
       // TODO: handle rounding properly.
-      val sum = (prod + 1 + (prod >> RgbaColor.channelBits)) >> RgbaColor.channelBits
-      res.channels(ch) := sum(RgbaColor.channelBits - 1 downto 0)
+      val sum = (prod + 1.U + (prod >> RgbaColor.channelBits)) >> RgbaColor.channelBits
+      res.channels(ch) := sum(RgbaColor.channelBits - 1, 0)
     }
 
     res
@@ -43,9 +43,10 @@ class RgbaColor extends Bundle {
 
   // Saturated add
   def +|(that: RgbaColor): RgbaColor = {
-    val res = RgbaColor()
+    val res = Wire(new RgbaColor)
     for (ch <- 0 until RgbaColor.numChannels) {
-      res.channels(ch) := this.channels(ch) +| that.channels(ch)
+      val sumExt = this.channels(ch) +& that.channels(ch)
+      res.channels(ch) := Mux(sumExt(8), 255.U, sumExt(7, 0))
     }
 
     res
@@ -54,7 +55,7 @@ class RgbaColor extends Bundle {
   // TODO this implicity assumes ARGB format. Make this take a format parameter
   // and swizzle.
   def toPackedBits: Bits = {
-    this.channels.asBits
+    this.channels.asUInt
   }
 }
 
@@ -65,61 +66,72 @@ object RgbaColor {
   def apply() = new RgbaColor
 
   def fromBits(bits: Bits): RgbaColor = {
-    val res = RgbaColor()
-    res.channels := Vec(bits.asBools.grouped(channelBits).map(g => Vec(g).asBits.asUInt).toSeq)
-    res
+    val result = Wire(new RgbaColor) // Use 'new' to fix the bundle tracking bug
+  
+    for (ch <- 0 until numChannels) {
+      // Slice out the 8-bit chunk directly from the hardware bits vector
+      val lowBit  = ch * channelBits
+      val highBit = lowBit + channelBits - 1
+      result.channels(ch) := bits(highBit, lowBit).asUInt
+    }
+    
+    result
   }
 }
 
-class RgbaColorTests extends AnyFunSuite {
+class RgbaColorTests extends AnyFunSuite with ChiselSim {
   test("RgbaColor.scale") {
-    TestConfig.testSim.compile(new Component {
-      val rawBits = in(Bits(32 bits))
-      val scaleFactor = in(UInt(8 bits))
-      val color = RgbaColor.fromBits(rawBits)
-      val scaled = out(color.scale(scaleFactor).toPackedBits)
-    }).doSim(dut => {
-      dut.clockDomain.forkStimulus(period = 10)
-      dut.rawBits #= 0
-      dut.clockDomain.waitSampling() // wait for reset
+    simulate(new Module {
+      var io = IO(new Bundle {
+        val rawBits = Input(Bits(32.W))
+        val scaleFactor = Input(UInt(8.W))
+        val scaled = Output(Bits(32.W))
+      })
+
+      val color = RgbaColor.fromBits(io.rawBits)
+      io.scaled := color.scale(io.scaleFactor).toPackedBits
+    }) { dut =>
+      dut.io.rawBits.poke(0)
+      dut.clock.step() // wait for reset
 
       // 0 should completely clear
-      dut.rawBits #= BigInt("abcdef12", 16)
-      dut.scaleFactor #= 0
-      dut.clockDomain.waitSampling()
-      assert(dut.scaled.toLong == 0L)
+      dut.io.rawBits.poke(BigInt("abcdef12", 16))
+      dut.io.scaleFactor.poke(0)
+      dut.clock.step()
+      dut.io.scaled.expect(0.U)
 
       // Likewise 255 should not change it.
-      dut.rawBits #= BigInt("abcdef12", 16)
-      dut.scaleFactor #= 255
-      dut.clockDomain.waitSampling()
-      assert(dut.scaled.toLong == 0xabcdef12L)
+      dut.io.rawBits.poke(BigInt("abcdef12", 16))
+      dut.io.scaleFactor.poke(255)
+      dut.clock.step()
+      dut.io.scaled.expect(0xabcdef12L.U)
 
       // Half way
-      dut.rawBits #= BigInt("abcdef12", 16)
-      dut.scaleFactor #= 128
-      dut.clockDomain.waitSampling()
-      assert(dut.scaled.toLong == 0x55667709L)
-    })
+      dut.io.rawBits.poke(BigInt("abcdef12", 16))
+      dut.io.scaleFactor.poke(128)
+      dut.clock.step()
+      dut.io.scaled.expect(0x55667709L.U)
+    }
   }
 
   test("RgbaColor.satAdd") {
-    TestConfig.testSim.compile(new Component {
-      val rawBits1 = in(Bits(32 bits))
-      val color1 = RgbaColor.fromBits(rawBits1)
-      val rawBits2 = in(Bits(32 bits))
-      val color2 = RgbaColor.fromBits(rawBits2)
-
-      val result = out((color1 +| color2).toPackedBits)
-    }).doSim(dut => {
-      dut.clockDomain.forkStimulus(period = 10)
-      dut.rawBits1 #= 0
-      dut.rawBits2 #= 0
-      dut.clockDomain.waitSampling() // wait for reset
-      dut.rawBits1 #= BigInt("12345678", 16)
-      dut.rawBits2 #= BigInt("aaaaaaaa", 16)
-      dut.clockDomain.waitSampling()
-      assert(dut.result.toLong == 0xbcdeffffL)
-    })
+    simulate(new Module {
+      var io = IO(new Bundle {
+        val rawBits1 = Input(Bits(32.W))
+        val rawBits2 = Input(Bits(32.W))
+        val result = Output(Bits(32.W))
+      })
+      val color1 = RgbaColor.fromBits(io.rawBits1)
+      val color2 = RgbaColor.fromBits(io.rawBits2)
+      io.result := (color1 +| color2).toPackedBits
+    }) { dut =>
+      dut.io.rawBits1.poke(0)
+      dut.io.rawBits2.poke(0)
+      dut.clock.step() // wait for reset
+      dut.io.rawBits1.poke(BigInt("12345678", 16))
+      dut.io.rawBits2.poke(BigInt("aaaaaaaa", 16))
+      dut.clock.step()
+      dut.io.result.expect(0xbcdeffffL.U)
+    }
   }
 }

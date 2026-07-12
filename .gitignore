@@ -1,5 +1,4 @@
 *.png
 .bsp/
 .scala-build/
-hardware/gen/
-simWorkspace/
+build/

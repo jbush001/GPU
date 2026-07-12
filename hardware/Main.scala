@@ -16,8 +16,6 @@
 
 package gpu
 
-import spinal.core._
-
 object Main {
   def main(args: Array[String]): Unit = {
 
@@ -27,11 +25,7 @@ object Main {
     if (hasSim && !hasSyn) {
       Simulation.run()
     } else if (hasSyn && !hasSim) {
-      println("Generating Synthesizable RTL")
-
-      val config = SpinalConfig(targetDirectory = "hardware/gen/synthesis")
-      config.generateVerilog(new Rasterizer())
-      println("Verilog generation complete.")
+      println("Generating Synthesizable RTL... (not implemented)")
     } else {
       println("Error, must specify either --syn or --sim");
       sys.exit(1);

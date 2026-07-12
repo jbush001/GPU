@@ -16,14 +16,14 @@
 
 package gpu
 
-import spinal.core._
+import chisel3._
 
 class Point2D extends Bundle {
-  val x = SInt(GpuConfig.coordinateBits bits)
-  val y = SInt(GpuConfig.coordinateBits bits)
+  val x = SInt(GpuConfig.coordinateBits.W)
+  val y = SInt(GpuConfig.coordinateBits.W)
 
   def -(that: Point2D): Point2D = {
-    val result = new Point2D()
+    val result = Wire(new Point2D)
     result.x := this.x - that.x
     result.y := this.y - that.y
     result
@@ -35,13 +35,13 @@ object Point2D {
 }
 
 class BoundingBox extends Bundle {
-  val top = SInt(GpuConfig.coordinateBits bits)
-  val left = SInt(GpuConfig.coordinateBits bits)
-  val right = SInt(GpuConfig.coordinateBits bits)
-  val bottom = SInt(GpuConfig.coordinateBits bits)
+  val top = SInt(GpuConfig.coordinateBits.W)
+  val left = SInt(GpuConfig.coordinateBits.W)
+  val right = SInt(GpuConfig.coordinateBits.W)
+  val bottom = SInt(GpuConfig.coordinateBits.W)
 
   def topLeft: Point2D = {
-    val point = Point2D()
+    val point = Wire(new Point2D)
     point.x := this.left
     point.y := this.top
     point

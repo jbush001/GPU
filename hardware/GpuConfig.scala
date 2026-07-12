@@ -16,7 +16,8 @@
 
 package gpu
 
-import spinal.core._
+import chisel3._
+import chisel3.util._
 
 //
 // Global constants
