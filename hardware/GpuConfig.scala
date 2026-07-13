@@ -29,6 +29,7 @@ object GpuConfig {
   val edgeFunctionBits = 32;
   val coordinateBits = 16;
 
+  // Derived values
   val tileCoordBits = log2Up(tileSizePixels)
 
   assert((GpuConfig.tileSizePixels & (GpuConfig.tileSizePixels - 1)) == 0) // Must be power of two tile

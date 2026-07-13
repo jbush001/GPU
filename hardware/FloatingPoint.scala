@@ -14,12 +14,6 @@
 //   limitations under the License.
 //
 
-//
-// Floating point blocks
-// - This does not support subnormal numbers and treats them as zero
-// - It only supports round towards zero
-//
-
 package gpu
 
 import chisel3._
@@ -27,8 +21,10 @@ import chisel3.util._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-// IEEE754 single precision floating point value, binary32 format.
-// https://en.wikipedia.org/wiki/Single-precision_floating-point_format
+/** Represents a single precision floating point value, in IEEE754 binary32 
+  * format.
+  * [[https://en.wikipedia.org/wiki/Single-precision_floating-point_format]]
+  */
 class Float32 extends Bundle {
   val raw = Bits(32.W)
 
@@ -60,8 +56,17 @@ object Float32 {
   def apply() = new Float32()
 }
 
-// This has three cycles of latency
-class FpAddSub extends Module {
+/** These blocks
+  *
+  *   - Do not support subnormal numbers and treats them as zero
+  *   - Only support round towards zero
+  */
+trait FloatingPointBlock
+
+/**
+  * This has 3 cycles of latency
+  */
+class FpAddSub extends Module with FloatingPointBlock {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val operand1 = Input(Float32())
@@ -70,7 +75,6 @@ class FpAddSub extends Module {
   })
 
   //
-  // Stage 1
   // - Determine which operand has the larger absolute value and swap
   //   conditionally into proper lanes
   // - Compute alignment shift count, shift smaller value to align
@@ -110,8 +114,7 @@ class FpAddSub extends Module {
     val sumResultWidth = Float32.fractionWidth + 2
 
   //
-  // Stage 2
-  // - Add/subtract
+  // - Add/subtract aligned fractions
   //
   val stage2 = new {
     val sumResult = RegNext(Mux(stage1.logicalSubtract,
@@ -125,7 +128,6 @@ class FpAddSub extends Module {
   }
 
   //
-  // Stage 3
   // - Find leading zero, shift to renormalize
   //
   val stage3 = new {
@@ -162,16 +164,19 @@ class FpAddSub extends Module {
   }
 }
 
-// This has three cycles of latency
-class FpMul extends Module {
+/**
+ * This has 3 cycles of latency
+ */
+class FpMul extends Module with FloatingPointBlock {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val operand1 = Input(Float32())
     val operand2 = Input(Float32())
   })
 
-  // Stage 1
+  //
   // Add exponents, multiply fractions
+  //
   val stage1 = new {
     val isNanNext = (io.operand1.isNaN || io.operand2.isNaN
       || (io.operand1.isInf && io.operand2.isZero)
@@ -197,10 +202,12 @@ class FpMul extends Module {
     val fractionProduct = RegNext(fractionProductNext, 0.U)
   }
 
+  //
   // This stage is a passthrough. Synthesis tools like Vivado can absorb
   // registers (specifically fractionProduct in this case) into the DSP
   // multiplier blocks to take advantage of their pipelining capabilities.
   // (e.g. Vivado Design Suite User Guide UG901, chapter 4)
+  //
   val stage2  = new {
     val isZero = RegNext(stage1.isZero, false.B)
     val isNaN = RegNext(stage1.isNaN, false.B)
@@ -233,21 +240,23 @@ class FpMul extends Module {
   }
 }
 
-// This has one cycle of latency
-class FpReciprocalEstimate extends Module {
+/**
+ * This has one cycle of latency
+ */
+class FpReciprocalEstimate extends Module with FloatingPointBlock {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val operand = Input(Float32())
   })
 
-  // Generate fraction lookup table.
+  // Generate the fraction lookup table.
   // Because the floating point significant is normalized, its value ranges
-  // from [1.0, 2.0). The reciprocal of this range therefore is (0.5, 1.0].
+  // from [1.0, 2.0). The reciprocal of this range therefore spans (0.5, 1.0].
   // For the table calculation, we treat the table entries as 1.6 fixed point
-  // numbers, so the numerator for our calculations is 64^2. However, 0.5 is
+  // numbers, so the numerator for our calculations is 64 * 64. However, 0.5 is
   // not representable in a normalized value, so we need to also multiply by
-  // two (we will compensate in hardware by adjusting the exponent to
-  // renormalize)
+  // two (we will compensate in hardware by shifting and adjusting the exponent 
+  // to renormalize)
   val numEntries = 64 // Must be a power of two
   val entryWidth = log2Up(numEntries)
   val numerator = (numEntries * numEntries * 2)
@@ -280,7 +289,7 @@ class FpReciprocalEstimate extends Module {
 }
 
 // This has one cycle of latency
-class FpToInt extends Module {
+class FpToInt extends Module with FloatingPointBlock {
   val io = IO(new Bundle {
     val result = Output(UInt(32.W))
     val operand = Input(Float32())

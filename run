@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -e
+
+case "$1" in
+  test)     scala-cli test hardware ${2:+-- -z "$2"} ;;
+  test-wave) scala-cli test hardware -- -DemitVcd=1 -DfirtoolOpts="-g" ${2:+-z "$2"} ;;
+  sim)      scala-cli run hardware -- --sim ;;
+  syn)      scala-cli run hardware -- --syn ;;
+  doc)      scala-cli doc hardware -skip-by-regex:"chisel3\..*" -f -o docs/gen ;;
+  *)        echo "Usage: $0 {test|test-vcd|sim|syn|doc} [test_name]" ;;
+esac

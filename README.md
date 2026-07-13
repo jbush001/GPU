@@ -9,26 +9,30 @@ https://www.chisel-lang.org/docs/installation
 
 **To run all automated tests:**
 
-    scala-cli test hardware
+    ./run test
 
 **To run a specific test:**
 
-    scala-cli test hardware -- -z "<name, as passed to test()>"
+    ./run test "my test name"
 
-**To enable dumping waveform files:**
+**To run a test and dumping waveform files:**
 
-    scala-cli test hardware -- -DemitVcd=1 -DfirtoolOpts="-g"
+    ./run test-wave "my test name"
 
 The output waveform will be written to build/chiselsim/.../workdir-verilator/trace.vcd
 
 **To run the full design in simulation**
 
-    scala-cli run hardware -- --sim
+    ./run sim
 
 This will write the rendered framebuffer into "output.png"
 
-**To generate synthesizable code**
+**To generate synthesizable design**
 
-    scala-cli run hardware -- --syn
+    ./run syn
 
-The resulting RTL will be in hardware/gen/synthesis
+(currently not implemented)
+
+**Generating API documentation**
+
+    ./run doc

@@ -24,7 +24,12 @@ class RgbaColor extends Bundle {
   val channels = Vec(RgbaColor.numChannels, UInt(RgbaColor.channelBits.W))
   def alpha: UInt = channels(3)
 
-  // Multiply
+
+  /** Multiplies all color components by a fixed point scale factor.
+    * 
+    * The factor is treated as a fixed-point value 0-255, so the result
+    * is re-normalized by dividing by 255.
+    */
   def scale(factor: UInt): RgbaColor = {
     val res = Wire(new RgbaColor)
     for (ch <- 0 until RgbaColor.numChannels) {
@@ -41,7 +46,9 @@ class RgbaColor extends Bundle {
     res
   }
 
-  // Saturated add
+  /** Adds each component of the given color to this color, clamping the 
+    * results to 255.
+    */
   def +|(that: RgbaColor): RgbaColor = {
     val res = Wire(new RgbaColor)
     for (ch <- 0 until RgbaColor.numChannels) {

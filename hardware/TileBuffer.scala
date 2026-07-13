@@ -14,30 +14,6 @@
 //   limitations under the License.
 //
 
-//
-// The TileBuffer stores rendered depth, and color information for a
-// small square portion of the framebuffer (a tile).  It performs alpha
-// blending, depth and other checks. It has a three stage read/modify/write
-// pipeline and can accept one 2x2 quad per cycle. When rendering is finished
-// for the tile, this can be commanded to go into a flush phase to copy its
-// contents to memory.
-//
-// Constraints:
-// - The same quad location cannot be written twice within 2 cycles.
-// - There must be 3 cycles after the last write before a flush to flush
-//   pipeline
-// - It always clears the framebuffer during a flush (which assumes the client
-//   is clearing a the beginning of a frame). In order to retain previously
-//   rendered data in the next frame, it would need another port to read back from
-//   memory.
-//
-// Open Questions/To do:
-// - Stencil buffers
-// - How does early-Z connect with this module?
-// - Implement configurable blend modes and depth check modes
-// - On flush, support different formats, e.g. abgr, bgra, rgba
-//
-
 package gpu
 
 import chisel3._
@@ -52,6 +28,29 @@ object RenderBufferId extends ChiselEnum {
   val Color, Depth = Value
 }
 
+/** Stores rendered depth, and color information for square portion of the 
+  * framebuffer.  
+  * 
+  * This module performs alpha blending, depth tests, and other pixel-level 
+  * checks. It has a three stage read/modify/write pipeline that accepts one
+  * 2x2 quad per cycle. It stores all information in on-chip SRAM. When 
+  * rendering completes for a tile, a flush copies the buffer contents to
+  * external memory.
+  *
+  * Constraints:
+  *
+  *   - The same quad location cannot be written within 2 consecutive cycles.
+  *   - A minimum of 3 cycles must pass after the last write before initiating
+  *     a flush sequence to allow it to move through the pipeline.
+  *   - This module automatically clears the framebuffer data during a flush 
+  *     operation. Retaining data across frames would require an additional 
+  *     read-back operation.
+  *
+  * @todo Stencil buffers
+  * @todo How does early-Z connect with this module?
+  * @todo Implement configurable blend modes and depth check modes
+  * @todo On flush, support different formats, e.g. abgr, bgra, rgba
+  */
 class TileBuffer extends Module {
   val pixelsPerQuad = 4
 

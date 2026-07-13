@@ -22,46 +22,80 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
 object MemoryConsts {
-  val addrWidth: Int = 32
-  val dataWidth: Int = 32
+  val addrBits: Int = 32
+  val dataBits: Int = 32
+  val lengthBits: Int = 8
 }
 
-// length is number of words to transfer minus one (zero based)
-
-class MemReadPort extends Bundle {
+/** A simple burst-oriented memory read port.
+  *
+  * Protocol:
+  *
+  *   - On the next clock edge after `request` goes high, a burst becomes
+  *     active and the arbiter latches `address` and `length`. The client
+  *     MAY change `address`/`length` after the burst starts, but changes
+  *     are ignored until the next burst begins.
+  *   - `length` is the number of beats in the burst minus one (0 == one
+  *     transfer).
+  *   - A data word is consumed iff both `data.valid` and `data.ready` are
+  *     true; the arbiter advances to the next word only after a word is
+  *     consumed.
+  *   - After the arbiter has asserted `data.valid`, it MUST NOT deassert
+  *     it or change the contents of `data.bits`.
+  *   - A burst completes on the clock edge the last word is consumed.
+  *   - The client MUST NOT raise `request` while a burst is active.
+  *   - `data.valid` and `data.ready` MUST NOT be combinationally dependent
+  *     on each other.
+  *   - The arbiter MAY raise `data.valid` before a burst is active; the
+  *     client MAY consume this data early.
+  */
+ class MemReadPort extends Bundle {
   val request = Output(Bool())
-  val address = Output(UInt(MemoryConsts.addrWidth.W))
-  val length = Output(UInt(5.W)) 
-  val data = Flipped(Decoupled(UInt(MemoryConsts.dataWidth.W)))
+  val address = Output(UInt(MemoryConsts.addrBits.W))
+  val length = Output(UInt(MemoryConsts.lengthBits.W)) 
+  val data = Flipped(Decoupled(UInt(MemoryConsts.dataBits.W)))
 }
 
+
+/** A simple burst-oriented memory write port. Same protocol as
+  * [[MemReadPort]], except anywhere where the data is referenced
+  * the roles of the client and arbiter are reversed.
+  */
 class MemWritePort extends Bundle {
   val request = Output(Bool())
-  val address = Output(UInt(MemoryConsts.addrWidth.W))
-  val length = Output(UInt(5.W))
-  val data = Decoupled(UInt(MemoryConsts.dataWidth.W))
+  val address = Output(UInt(MemoryConsts.addrBits.W))
+  val length = Output(UInt(MemoryConsts.lengthBits.W))
+  val data = Decoupled(UInt(MemoryConsts.dataBits.W))
 }
 
+/** Multiplexes [[numReadPorts]] read clients and [[numWritePorts]] write
+  * clients onto a single memory, using the burst protocol documented on
+  * [[MemReadPort]] and [[MemWritePort]].
+  *
+  * @todo The implementation of this is currently a stub impementation,
+  * with memory stored inside the block rather than connecting to 
+  * an external bus.
+  */  
 class MemoryArbiter(
   var numReadPorts: Int = 2,
   var numWritePorts: Int = 2
 ) extends Module {
   val io = IO(new Bundle {
     val readPorts = Vec(numReadPorts, Flipped(new MemReadPort))
-    val writePorts = Vec(numReadPorts, Flipped(new MemWritePort))
+    val writePorts = Vec(numWritePorts, Flipped(new MemWritePort))
   })
 
-  // TODO: for now, this is a stub implementation with the memory inside 
-  // this block, but the proper implementation will interface with an external
-  // bus.
   val memorySize = 0x10000
-  val mem = SyncReadMem(memorySize, UInt(MemoryConsts.dataWidth.W))
+  val mem = SyncReadMem(memorySize, UInt(MemoryConsts.dataBits.W))
 
   for (i <- 0 until numReadPorts) {
     val nextAddress = Wire(UInt(log2Up(memorySize).W))
     val address = RegNext(nextAddress)
     val count = Reg(UInt(5.W)) // How many remain to be consumed
     val burstActive = RegInit(false.B)
+
+    assert(!(burstActive && io.readPorts(i).request), 
+      "PROTOCOL VIOLATION: Reader raised 'request' while a burst was already active.")
 
     io.readPorts(i).data.valid := burstActive
     io.readPorts(i).data.bits := mem.read(nextAddress)
@@ -86,8 +120,11 @@ class MemoryArbiter(
   for (i <- 0 until numWritePorts) {
     val nextAddress = Wire(UInt(log2Up(memorySize).W))
     val address = RegNext(nextAddress)
-    val count = Reg(UInt(5.W)) // How many remain to be consumed
+    val count = Reg(UInt(MemoryConsts.lengthBits.W)) // How many remain to be consumed
     val burstActive = RegInit(false.B)
+
+    assert(!(burstActive && io.writePorts(i).request), 
+      "PROTOCOL VIOLATION: Writer raised 'request' while a burst was already active.")
 
     io.writePorts(i).data.ready := burstActive
 

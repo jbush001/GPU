@@ -18,6 +18,10 @@ package gpu
 
 import chisel3._
 
+/** Represents a point in whole-pixel raster coordinates on the screen.
+  * The origin (0, 0) is the upper left corner. Coordinate values increase
+  * to the right (x-axis) and down (y-axis)
+  */
 class Point2D extends Bundle {
   val x = SInt(GpuConfig.coordinateBits.W)
   val y = SInt(GpuConfig.coordinateBits.W)
@@ -34,6 +38,10 @@ object Point2D {
   def apply() = new Point2D()
 }
 
+/** Represents a rectangular region on the screen, using the same coordinate 
+  * convention as [[Point2D]]. 
+  * All boundary coordinates are inclusive.
+  */
 class BoundingBox extends Bundle {
   val top = SInt(GpuConfig.coordinateBits.W)
   val left = SInt(GpuConfig.coordinateBits.W)

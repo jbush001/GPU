@@ -14,17 +14,6 @@
 //   limitations under the License.
 //
 
-//
-// Given a triangle, the rasterizer determines which pixels it covers.
-// This sweeps over the triangle in a fashion similar to that described by
-// Pineda "A parallel algorithm for polygon rasterization" (SIGGRAPH 88).
-// It outputs 2x2 aligned quads with one bit per pixel to indicate coverage.
-//
-// TODO
-// - Support MSAA, which would return an N Bit mask for each of the quads.
-// - This is inefficient in some cases because it sweeps over the entire tile
-//   rather than to the edges of the triangle or recursing.
-//
 
 package gpu
 
@@ -46,24 +35,39 @@ class RasterizerSetupParams extends Bundle {
   val yStep = Vec(Consts.triangleEdges, SInt(GpuConfig.edgeFunctionBits.W))
 }
 
-// The output mask has one bit per pixel in the quad that represents covered
-// pixels:
-//  0 1
-//  2 3
-// location contains the coordinates of the upper left corner, relative to
-// the left/top edges of the current tile bounding box.
-//
-// The lambda outputs contain unnormalized barycentric coordindates for the
-// first two vertices (the third can be inferred from the others, since they
-// always add up to the same value). These is used to interpolate varyings
-// across the triangle.
-//
+/** Contains coverage and interpolation data for a single 2x2 pixel quad.
+  */
 class QuadOutput extends Bundle {
+  /** Coordinates of the upper left corner, relative to the left/top edges 
+    * of the current tile bounding box.
+    */
   val location = Point2D()
+  
+  /** Indicates which pixels are covered, with one bit per pixel using the 
+    * following layout:
+    *
+    *     0 1
+    *     2 3
+    */
   val mask = Bits(Consts.pixelsPerQuad.W)
+
+  /** Unnormalized barycentric coordindates of the pixels relative to the 
+    * first two vertices.
+    * The third can be inferred from the others, since they always add up to the
+    * same value). These is used to interpolate varyings across the triangle.
+    */
   val lambda = Vec(Consts.pixelsPerQuad, Vec(Consts.triangleEdges, SInt(32.W)))
 }
 
+/** Determines pixel coverage for a triangle.
+  * 
+  * This sweeps over the triangle using an approach based on Pineda "A parallel
+  * algorithm for polygon rasterization" (SIGGRAPH 88). It outputs 2x2 aligned 
+  * quads with one bit per pixel to indicate coverage.
+  *
+  * @todo Support MSAA, which would return an N-bit mask for each of the quads.
+  * @todo Optimize the sweep algorithm; it currently scans the entire tile.
+  */
 class Rasterizer extends Module {
   val io = IO(new Bundle {
     val input = Flipped(Decoupled(new RasterizerSetupParams))
@@ -123,8 +127,6 @@ class Rasterizer extends Module {
   }
 
   val stateReg = RegInit(State.Idle)
-
-
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.

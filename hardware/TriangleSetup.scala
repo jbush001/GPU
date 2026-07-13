@@ -14,19 +14,6 @@
 //   limitations under the License.
 //
 
-//
-// This computes the edge equation coefficients used by the rasterizer.
-// This has an output buffer so the computation for the next triangle
-// overlaps rasterization of the current one.
-// To optimize area, this runs a small microsequencer that performs the
-// calculations (rather than just doing it all in parallel).
-//
-// TODO:
-// - This needs to be reworked to compute in floating point.
-// - For a top of left edge (y1 > y2 || (y1 == y2 && x2 > x1)), we should
-//   adjust the equations up by one to fix overlap (top left fill convention)
-//
-
 package gpu
 
 import chisel3._
@@ -62,11 +49,13 @@ object UInst {
   def apply() = new UInst()
 }
 
-// This implements a domain specific language for defining the microcode
-// program to set up the triangle parameters.
-// TODO some registers can be used as sources, some as destinations, some both.
-// I don't check that here for simplicity, but there are a number of ways to do
-// this at either compile or runtime.
+/** Implements a domain specific language for defining the microcode
+  * program to set up the triangle parameters.
+  *
+  * @todo some registers can be used as sources, some as destinations, some both.
+  * I don't check that here for simplicity, but there are a number of ways to do
+  * this at either compile or runtime.
+  */
 object MicrocodeAssembler {
   type Inst = (Int, Int, Int, Int, Boolean, Int, Boolean)
 
@@ -167,6 +156,18 @@ class VertexParameterInterface extends Bundle {
   val readData = Input(UInt(32.W))
 }
 
+/** Computes the edge equation coefficients used by the rasterizer.
+  *
+  * This has an output buffer so the computation for the next triangle
+  * overlaps rasterization of the current one. To optimize area, this uses
+  * a small microsequencer that performs the calculations (rather than just
+  * doing it all in parallel).
+  *
+  * @todo Rework to compute in floating point.
+  * @todo Implment top-left fill convention to properly handle shared edge 
+  *   overlap. For a top of left edge (y1 > y2 || (y1 == y2 && x2 > x1)), 
+  *   increment the edge values by one.
+  */
 class TriangleSetup extends Module {
   val io = IO(new Bundle {
     val input = Flipped(Decoupled(BoundingBox()))
