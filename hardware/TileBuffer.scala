@@ -28,7 +28,7 @@ object RenderBufferId extends ChiselEnum {
   val Color, Depth = Value
 }
 
-/** Stores rendered depth, and color information for square portion of the 
+/** Stores rendered depth, and color information for square subset of the 
   * framebuffer.  
   * 
   * This module performs alpha blending, depth tests, and other pixel-level 

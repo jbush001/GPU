@@ -35,8 +35,7 @@ class RasterizerSetupParams extends Bundle {
   val yStep = Vec(Consts.triangleEdges, SInt(GpuConfig.edgeFunctionBits.W))
 }
 
-/** Contains coverage and interpolation data for a single 2x2 pixel quad.
-  */
+/** Contains coverage and interpolation data for a single 2x2 pixel quad. */
 class QuadOutput extends Bundle {
   /** Coordinates of the upper left corner, relative to the left/top edges 
     * of the current tile bounding box.
@@ -51,10 +50,9 @@ class QuadOutput extends Bundle {
     */
   val mask = Bits(Consts.pixelsPerQuad.W)
 
-  /** Unnormalized barycentric coordindates of the pixels relative to the 
-    * first two vertices.
-    * The third can be inferred from the others, since they always add up to the
-    * same value). These is used to interpolate varyings across the triangle.
+  /** Unnormalized barycentric coordindates of the pixels relative to
+    * the triangle vertices. 
+    * [[https://en.wikipedia.org/wiki/Barycentric_coordinate_system]]
     */
   val lambda = Vec(Consts.pixelsPerQuad, Vec(Consts.triangleEdges, SInt(32.W)))
 }

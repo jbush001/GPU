@@ -18,7 +18,7 @@ package gpu
 
 import chisel3._
 
-/** Represents a point in whole-pixel raster coordinates on the screen.
+/** Represents a point in integer pixel raster coordinates on the screen.
   * The origin (0, 0) is the upper left corner. Coordinate values increase
   * to the right (x-axis) and down (y-axis)
   */
@@ -26,6 +26,7 @@ class Point2D extends Bundle {
   val x = SInt(GpuConfig.coordinateBits.W)
   val y = SInt(GpuConfig.coordinateBits.W)
 
+  /** Component-wise subtraction, returning a vector this - that */
   def -(that: Point2D): Point2D = {
     val result = Wire(new Point2D)
     result.x := this.x - that.x
