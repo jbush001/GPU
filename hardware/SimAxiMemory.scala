@@ -42,25 +42,25 @@ class SimAxiMemory(memorySize: Int) extends Module {
 
   val state = RegInit(State.Idle)
   val writeLatched = RegInit(false.B)
-  val writeRequest = RegInit(0.U(AxiConsts.addressBits.W))
+  val writeAddress = RegInit(0.U(AxiConsts.addressBits.W))
   val writeLength = RegInit(0.U(AxiConsts.burstLengthBits.W))
   val readLatched = RegInit(false.B)
-  val readRequest = RegInit(0.U(AxiConsts.addressBits.W))
+  val readAddress = RegInit(0.U(AxiConsts.addressBits.W))
   val readLength = RegInit(0.U(AxiConsts.burstLengthBits.W))
   val burstAddress = RegInit(0.U(AxiConsts.addressBits.W))
   val burstLength = RegInit(0.U(AxiConsts.burstLengthBits.W))
   val readAddressNext = Mux(io.axi.readData.fire, burstAddress + 1.U, burstAddress)
 
   when (!writeLatched && io.axi.writeRequest.valid) {
-      writeLatched := true.B
-      writeRequest := io.axi.writeRequest.bits.address >> 2.U
-      writeLength := io.axi.writeRequest.bits.length
+    writeLatched := true.B
+    writeAddress := io.axi.writeRequest.bits.address >> 2.U
+    writeLength := io.axi.writeRequest.bits.length
   }
 
   when (!readLatched && io.axi.readRequest.valid) {
-      readLatched := true.B
-      readRequest := io.axi.readRequest.bits.address >> 2.U
-      readLength := io.axi.readRequest.bits.length
+    readLatched := true.B
+    readAddress := io.axi.readRequest.bits.address >> 2.U
+    readLength := io.axi.readRequest.bits.length
   }
 
   io.axi.readData.bits.data := memory.read(readAddressNext)
@@ -73,12 +73,12 @@ class SimAxiMemory(memorySize: Int) extends Module {
   switch (state) {
     is (State.Idle) {
       when (writeLatched) {
-        burstAddress := writeRequest
+        burstAddress := writeAddress
         burstLength := writeLength
         writeLatched := false.B
         state := State.Write
       } .elsewhen (readLatched) {
-        burstAddress := readRequest
+        burstAddress := readAddress
         burstLength := readLength
         readLatched := false.B
         state := State.ReadSetup
@@ -99,7 +99,6 @@ class SimAxiMemory(memorySize: Int) extends Module {
     }
 
     is (State.WriteAck) {
-      io.axi.writeResponse.valid := true.B
       when (io.axi.writeResponse.ready) {
         state := State.Idle
       }
@@ -186,67 +185,84 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
     result.toSeq
   }
 
-  def writeBurst(dut: SimAxiMemory, address: Int, data: Seq[Long]): Unit = {
+  def writeBurst(dut: SimAxiMemory, rng: scala.util.Random, address: Int, data: Seq[Long]): Unit = {
     dut.io.axi.writeRequest.bits.address.poke(address.U)
     dut.io.axi.writeRequest.bits.length.poke((data.length - 1).U)
     dut.io.axi.writeRequest.valid.poke(true.B)
     dut.clock.step()
     dut.io.axi.writeRequest.valid.poke(false.B)
 
-    for (i <- data.indices) {
-      while (!dut.io.axi.writeData.ready.peek().litToBoolean) {
-        dut.clock.step()
+    var written = 0
+    while (written < data.length) {
+      dut.io.axi.writeData.bits.data.poke(data(written).U)
+      dut.io.axi.writeData.bits.last.poke(written == data.length - 1)
+      val valid = rng.nextBoolean()
+      dut.io.axi.writeData.valid.poke(valid)
+      if (valid && dut.io.axi.writeData.ready.peek().litToBoolean) {
+        written += 1
       }
 
-      dut.io.axi.writeData.bits.data.poke(data(i).U)
-      dut.io.axi.writeData.bits.last.poke(i == data.length - 1)
-      dut.io.axi.writeData.valid.poke(true.B)
       dut.clock.step()
-      dut.io.axi.writeData.valid.poke(false.B)
     }
+
+    dut.io.axi.writeData.valid.poke(false.B)
+    dut.io.axi.writeResponse.ready.poke(false.B)
+    for (_ <- 0 until rng.nextInt(3)) {
+      dut.clock.step()
+    }
+
+    dut.io.axi.writeResponse.ready.poke(true.B)
 
     while (!dut.io.axi.writeResponse.valid.peek().litToBoolean) {
       dut.clock.step()
     }
 
-    dut.io.axi.writeResponse.ready.poke(true.B)
     dut.clock.step()
-    dut.io.axi.writeResponse.ready.poke(false.B)
   }
 
   test("sim axi read") {
-    simulate(new SimAxiMemory(1024)) { dut =>
+    val memorySize = 256
+    simulate(new SimAxiMemory(memorySize)) { dut =>
       dut.io.axi.writeRequest.valid.poke(false.B)
       dut.io.axi.writeData.valid.poke(false.B)
       dut.io.axi.writeResponse.ready.poke(false.B)
       dut.io.axi.readRequest.valid.poke(false.B)
       dut.io.axi.readData.ready.poke(false.B)
 
-      val testData: Seq[Long] = (1 to 20).map(_.toLong)
-
+      val maxBurst = 64
       val rng = new scala.util.Random(42)
+      val testData: Seq[Long] = (1 to memorySize).map(i => i + 1024)
+      SimMemAccess.write(dut, 0, testData)
+
       for (_ <- 0 until 1000) {
-        val burstLength = rng.nextInt(testData.length - 1) + 1
-        val address = rng.nextInt(1000)
-        SimMemAccess.write(dut, address, testData)
+        val burstLength = rng.nextInt(maxBurst - 1) + 1
+        val address = rng.nextInt(memorySize - maxBurst) * 4
         val readData = this.readBurst(dut, rng, address, burstLength)
-        assert(readData == testData.slice(0, burstLength))
+        assert(readData == testData.slice(address / 4, address / 4 + burstLength))
       }
     }
   }
 
   test("sim axi write") {
-    simulate(new SimAxiMemory(128)) { dut =>
+    val memorySize = 0x1000
+    simulate(new SimAxiMemory(memorySize)) { dut =>
       dut.io.axi.writeRequest.valid.poke(false.B)
       dut.io.axi.writeData.valid.poke(false.B)
       dut.io.axi.writeResponse.ready.poke(false.B)
       dut.io.axi.readRequest.valid.poke(false.B)
       dut.io.axi.readData.ready.poke(false.B)
 
-      val testData = Seq[Long](10, 20, 30, 40, 50, 60, 70, 80)
-      val baseAddress = 10
-      this.writeBurst(dut, baseAddress, testData)
-      val readData = SimMemAccess.read(dut, baseAddress, testData.length)
+      val maxBurst = 32
+      val rng = new scala.util.Random(42)
+      val testData: Seq[Long] = (1 to memorySize).map(i => i + 1024)
+      var offset = 0
+      while (offset < memorySize) {
+        val burstLength = math.min(memorySize - offset, rng.nextInt(maxBurst - 1) + 1)
+        this.writeBurst(dut, rng, offset * 4, testData.slice(offset, offset + burstLength))
+        offset += burstLength
+      }
+
+      val readData = SimMemAccess.read(dut, 0, memorySize)
       assert(readData == testData)
     }
   }
