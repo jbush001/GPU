@@ -26,6 +26,7 @@ object AxiConsts {
 }
 
 /** AMBA AXI bus interface.
+  * @see ARM IHI 0022, Issue L
   * [[https://developer.arm.com/documentation/ihi0022/latest]]
   */
 class AxiBus extends Bundle {

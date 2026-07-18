@@ -21,209 +21,344 @@ import chisel3.util._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-object MemoryConsts {
-  val addrBits: Int = 32
-  val dataBits: Int = 32
-  val lengthBits: Int = 8
-}
-
 /** A simple burst-oriented memory read port.
   *
   * Protocol:
   *
-  *   - On the next clock edge after `request` goes high, a burst becomes
-  *     active and the arbiter latches `address` and `length`. The client
-  *     MAY change `address`/`length` after the burst starts, but changes
-  *     are ignored until the next burst begins.
-  *   - `length` is the number of beats in the burst minus one (0 == one
-  *     transfer).
+  *   - On the next clock edge after `valid` goes high, the `address` and
+  *     `length` are latched by the arbiter. The client MAY issue the next
+  *     request while a burst is active, but MUST NOT issue more than one
+  *     outstanding request ahead of the active burst.
+  *   - `length` is the number of transfer cycles in the burst minus one
+  *     (0 = one transfer).
   *   - A data word is consumed iff both `data.valid` and `data.ready` are
   *     true; the arbiter advances to the next word only after a word is
   *     consumed.
   *   - After the arbiter has asserted `data.valid`, it MUST NOT deassert
   *     it or change the contents of `data.bits`.
   *   - A burst completes on the clock edge the last word is consumed.
-  *   - The client MUST NOT raise `request` while a burst is active.
+  *   - The client MUST NOT raise `valid` while a burst is active.
   *   - `data.valid` and `data.ready` MUST NOT be combinationally dependent
   *     on each other.
   *   - The arbiter MAY raise `data.valid` before a burst is active; the
   *     client MAY consume this data early.
   */
  class MemReadPort extends Bundle {
-  val request = Output(Bool())
-  val address = Output(UInt(MemoryConsts.addrBits.W))
-  val length = Output(UInt(MemoryConsts.lengthBits.W)) 
-  val data = Flipped(Decoupled(UInt(MemoryConsts.dataBits.W)))
+  val valid = Output(Bool())
+  val address = Output(UInt(AxiConsts.addressBits.W))
+  val length = Output(UInt(AxiConsts.burstLengthBits.W))
+  val data = Flipped(Decoupled(UInt(AxiConsts.dataBits.W)))
 }
-
 
 /** A simple burst-oriented memory write port. Same protocol as
   * [[MemReadPort]], except anywhere where the data is referenced
   * the roles of the client and arbiter are reversed.
   */
 class MemWritePort extends Bundle {
-  val request = Output(Bool())
-  val address = Output(UInt(MemoryConsts.addrBits.W))
-  val length = Output(UInt(MemoryConsts.lengthBits.W))
-  val data = Decoupled(UInt(MemoryConsts.dataBits.W))
+  val valid = Output(Bool())
+  val address = Output(UInt(AxiConsts.addressBits.W))
+  val length = Output(UInt(AxiConsts.burstLengthBits.W))
+  val data = Decoupled(UInt(AxiConsts.dataBits.W))
 }
 
 /** Multiplexes [[numReadPorts]] read clients and [[numWritePorts]] write
   * clients onto a single memory, using the burst protocol documented on
   * [[MemReadPort]] and [[MemWritePort]].
-  *
-  * @todo The implementation of this is currently a stub impementation,
-  * with memory stored inside the block rather than connecting to 
-  * an external bus.
-  */  
+  */
 class MemoryArbiter(
-  var numReadPorts: Int = 2,
-  var numWritePorts: Int = 2
+  val numReadPorts: Int = 2,
+  val numWritePorts: Int = 2
 ) extends Module {
   val io = IO(new Bundle {
-    val readPorts = Vec(numReadPorts, Flipped(new MemReadPort))
+    val readPorts  = Vec(numReadPorts, Flipped(new MemReadPort))
     val writePorts = Vec(numWritePorts, Flipped(new MemWritePort))
+    val axiBus     = new AxiBus
   })
 
-  val memorySize = 0x10000
-  val mem = SyncReadMem(memorySize, UInt(MemoryConsts.dataBits.W))
+  //
+  // Read channel logic
+  //
+  {
+    val readRequests = VecInit(io.readPorts.map { port =>
+      val request = Wire(Decoupled(chiselTypeOf(io.axiBus.readRequest.bits)))
 
-  for (i <- 0 until numReadPorts) {
-    val nextAddress = Wire(UInt(log2Up(memorySize).W))
-    val address = RegNext(nextAddress)
-    val count = Reg(UInt(5.W)) // How many remain to be consumed
-    val burstActive = RegInit(false.B)
+      request.valid := port.valid
+      request.bits.address := port.address
+      request.bits.length := port.length
 
-    assert(!(burstActive && io.readPorts(i).request), 
-      "PROTOCOL VIOLATION: Reader raised 'request' while a burst was already active.")
+      // Latch requests from clients
+      val queue = Queue(request, entries = 1)
+      assert(request.ready || !port.valid, "Client initiated overlapping transaction")
+      queue
+    })
 
-    io.readPorts(i).data.valid := burstActive
-    io.readPorts(i).data.bits := mem.read(nextAddress)
+    val readArb = Module(new RRArbiter(chiselTypeOf(readRequests(0).bits), numReadPorts))
+    readArb.io.in <> readRequests
 
-    nextAddress := address
-    when (burstActive) {
-      when (io.readPorts(i).data.fire) {
-        when (count === 0.U) {
-          burstActive := false.B
-        }.otherwise {
-          nextAddress := address + 1.U
-          count := count - 1.U
-        }
+    val readBurstActive = RegInit(false.B)
+    val readActiveClient = Reg(UInt(log2Ceil(numReadPorts).W))
+    val readBurstCount = RegInit(0.U(io.axiBus.readRequest.bits.length.getWidth.W))
+
+    io.axiBus.readRequest.valid := readArb.io.out.valid && !readBurstActive
+    io.axiBus.readRequest.bits.address := readArb.io.out.bits.address
+    io.axiBus.readRequest.bits.length := readArb.io.out.bits.length
+
+    // This ensures we only have one request active at a time. We could optimize
+    // this by issuing requests whenever the AXI bus is ready, but that would
+    // require more complex tracking logic
+    readArb.io.out.ready := io.axiBus.readRequest.ready && !readBurstActive
+
+    assert(
+      !(io.axiBus.readRequest.fire && io.axiBus.readData.fire),
+      "AXI read request and read data fired on the same clock cycle"
+    )
+
+    when (io.axiBus.readRequest.fire) {
+      readBurstActive := true.B
+      readActiveClient := readArb.io.chosen
+      readBurstCount := readArb.io.out.bits.length
+    }.elsewhen (io.axiBus.readData.fire) {
+      when (readBurstCount === 0.U) {
+        readBurstActive := false.B
+      } .otherwise {
+        readBurstCount := readBurstCount - 1.U
       }
-    }.elsewhen (io.readPorts(i).request) {
-      burstActive := true.B
-      nextAddress := io.readPorts(i).address
-      count := io.readPorts(i).length
     }
+
+    for (i <- 0 until numReadPorts) {
+      val port = io.readPorts(i)
+      port.data.valid := io.axiBus.readData.valid && readBurstActive && (readActiveClient === i.U)
+      port.data.bits  := io.axiBus.readData.bits.data
+    }
+
+    io.axiBus.readData.ready := readBurstActive && io.readPorts(readActiveClient).data.ready
   }
 
-  for (i <- 0 until numWritePorts) {
-    val nextAddress = Wire(UInt(log2Up(memorySize).W))
-    val address = RegNext(nextAddress)
-    val count = Reg(UInt(MemoryConsts.lengthBits.W)) // How many remain to be consumed
-    val burstActive = RegInit(false.B)
+  //
+  // Write channel logic
+  //
+  {
+    val writeRequests = VecInit(io.writePorts.map { port =>
+      val request = Wire(Decoupled(chiselTypeOf(io.axiBus.writeRequest.bits)))
 
-    assert(!(burstActive && io.writePorts(i).request), 
-      "PROTOCOL VIOLATION: Writer raised 'request' while a burst was already active.")
+      request.valid := port.valid
+      request.bits.address := port.address
+      request.bits.length := port.length
 
-    io.writePorts(i).data.ready := burstActive
+      // Latch requests from clients
+      val queue = Queue(request, entries = 1)
+      assert(request.ready || !port.valid, "Client initiated overlapping transaction")
+      queue
+    })
 
-    nextAddress := address
-    when (burstActive) {
-      when (io.writePorts(i).data.fire) {
-        nextAddress := address + 1.U
-        when (count === 0.U) {
-          burstActive := false.B
-        }.otherwise {
-          count := count - 1.U
-        }
+    val writeArb = Module(new RRArbiter(chiselTypeOf(writeRequests(0).bits), numWritePorts))
+    writeArb.io.in <> writeRequests
+
+    val writeBurstActive = RegInit(false.B)
+    val writeActiveClient = Reg(UInt(log2Ceil(numWritePorts).W))
+    val writeBurstCount = RegInit(0.U(io.axiBus.writeRequest.bits.length.getWidth.W))
+
+    io.axiBus.writeRequest.valid := writeArb.io.out.valid && !writeBurstActive
+    io.axiBus.writeRequest.bits.address := writeArb.io.out.bits.address
+    io.axiBus.writeRequest.bits.length := writeArb.io.out.bits.length
+
+    writeArb.io.out.ready := io.axiBus.writeRequest.ready && !writeBurstActive
+
+    assert(
+      !(io.axiBus.writeRequest.fire && io.axiBus.writeData.fire),
+      "AXI write request and write data fired on the same clock cycle"
+    )
+
+    when (io.axiBus.writeRequest.fire) {
+      writeBurstActive := true.B
+      writeActiveClient := writeArb.io.chosen
+      writeBurstCount := writeArb.io.out.bits.length
+    }.elsewhen (io.axiBus.writeData.fire) {
+      when (writeBurstCount =/= 0.U) {
+        writeBurstCount := writeBurstCount - 1.U
       }
-    }
-    
-    when (io.writePorts(i).request) {
-      burstActive := true.B
-      nextAddress := io.writePorts(i).address
-      count := io.writePorts(i).length
+    }.elsewhen (io.axiBus.writeResponse.fire) {
+      writeBurstActive := false.B
     }
 
-    when (io.writePorts(i).data.fire) {
-      mem.write(address, io.writePorts(i).data.bits)
+    for (i <- 0 until numWritePorts) {
+      io.writePorts(i).data.ready := (io.axiBus.writeData.ready && writeBurstActive &&
+        (writeActiveClient === i.U))
     }
+
+    io.axiBus.writeData.valid := writeBurstActive && io.writePorts(writeActiveClient).data.valid
+    io.axiBus.writeData.bits.data := io.writePorts(writeActiveClient).data.bits
+    io.axiBus.writeData.bits.last := writeBurstCount === 0.U
+
+    io.axiBus.writeResponse.ready := writeBurstActive
   }
 }
 
 class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
-  def testDataForAddr(i: Int): Long = ((1L << (i % 32)) ^ i) & 0xffffffffL
+  test("MemoryArbiter read burst") {
+    simulate(new MemoryArbiter(2, 1)) { dut =>
+      // Initialize inputs
+      dut.io.readPorts.foreach(_.valid.poke(true.B))
 
-  test("memory arbiter round trip") {
-    simulate(new MemoryArbiter(1, 1)) { dut =>
-      val rng = new scala.util.Random(42)
-
-      // Write burst, fill with a known pattern
-      val writeAddress = 8
-      val writeBurstLength = 64
-      dut.io.writePorts(0).address.poke(writeAddress.U)
-      dut.io.writePorts(0).length.poke((writeBurstLength - 1).U)
-      dut.io.writePorts(0).request.poke(true.B)
+      // Issue two read requests.
+      dut.io.readPorts(0).address.poke(33)
+      dut.io.readPorts(0).length.poke(5)
+      dut.io.readPorts(1).address.poke(55)
+      dut.io.readPorts(1).length.poke(6)
+      dut.io.axiBus.readRequest.ready.poke(false.B)
+      dut.io.axiBus.readData.valid.poke(false.B)
       dut.clock.step()
-      dut.io.writePorts(0).request.poke(false.B)
+      dut.io.readPorts.foreach(_.valid.poke(false.B))
+
+      // Issue a few wait states.
+      for (_ <- 0 until 2) {
+        dut.clock.step()
+
+        // We're making an assumption here about the behavior of the arbiter
+        dut.io.axiBus.readRequest.valid.expect(true.B)
+        dut.io.axiBus.readRequest.bits.address.expect(55.U)
+        dut.io.axiBus.readRequest.bits.length.expect(6.U)
+      }
+
+      // Drive ready high to accept the address request
+      dut.io.axiBus.readRequest.ready.poke(true.B)
+      dut.clock.step()
+
+      // On the next cycle, readRequest.valid must drop to false because burstActive is now true
+      dut.io.axiBus.readRequest.valid.expect(false.B)
+      dut.io.axiBus.readRequest.ready.poke(false.B)
+
+      val expectedData = Seq(10, 20, 30, 40, 50, 60, 70)
+
+      dut.io.readPorts(1).data.ready.poke(true.B)
+
+      for (i <- 0 until 7) {
+        dut.io.axiBus.readData.valid.poke(true.B)
+        dut.io.axiBus.readData.bits.data.poke(expectedData(i).U)
+
+        dut.io.readPorts(1).data.valid.expect(true.B)
+        dut.io.readPorts(1).data.bits.expect(expectedData(i).U)
+        dut.io.readPorts(0).data.valid.expect(false.B)
+
+        dut.clock.step()
+      }
+
+      dut.io.axiBus.readData.valid.poke(false.B)
+
+      dut.clock.step()
+      dut.clock.step()
+
+      // The read path should now be unlocked and arbitrate to the other port
+      dut.io.axiBus.readRequest.valid.expect(true.B)
+      dut.io.axiBus.readRequest.bits.address.expect(33.U)
+      dut.io.axiBus.readRequest.bits.length.expect(5.U)
+
+      // Drive ready high to accept the address request
+      dut.io.axiBus.readRequest.ready.poke(true.B)
+      dut.clock.step()
+
+      val expectedData2 = Seq(99, 88, 77, 66, 55, 44)
+
+      dut.io.readPorts(0).data.ready.poke(true.B)
+
+      for (i <- 0 until 6) {
+        dut.io.axiBus.readData.valid.poke(true.B)
+        dut.io.axiBus.readData.bits.data.poke(expectedData2(i).U)
+
+        // Assert that data is correctly routed exclusively to port 0
+        dut.io.readPorts(0).data.valid.expect(true.B)
+        dut.io.readPorts(0).data.bits.expect(expectedData2(i).U)
+        dut.io.readPorts(1).data.valid.expect(false.B)
+
+        dut.clock.step()
+      }
+
+      dut.io.axiBus.readData.valid.poke(false.B)
+
+      dut.clock.step()
+      dut.clock.step()
+    }
+  }
+
+  test("MemoryArbiter write burst") {
+    simulate(new MemoryArbiter(1, 2)) { dut =>
+      // Initialize inputs
+      dut.io.writePorts.foreach(_.valid.poke(true.B))
+
+      // Issue two write requests.
+      dut.io.writePorts(0).address.poke(33)
+      dut.io.writePorts(0).length.poke(5)
+      dut.io.writePorts(1).address.poke(55)
+      dut.io.writePorts(1).length.poke(6)
+      dut.io.axiBus.writeRequest.ready.poke(false.B)
+      dut.io.axiBus.writeData.ready.poke(false.B)
+      dut.clock.step()
+      dut.io.writePorts.foreach(_.valid.poke(false.B))
+
+      // Issue a few wait states.
+      for (_ <- 0 until 2) {
+        dut.clock.step()
+
+        // We're making an assumption here about the behavior of the arbiter
+        dut.io.axiBus.writeRequest.valid.expect(true.B)
+        dut.io.axiBus.writeRequest.bits.address.expect(55.U)
+        dut.io.axiBus.writeRequest.bits.length.expect(6.U)
+      }
+
+      // Drive ready high to accept the address request
+      dut.io.axiBus.writeRequest.ready.poke(true.B)
+      dut.clock.step()
+
+      // On the next cycle, readRequest.valid must drop to false because burstActive is now true
+      dut.io.axiBus.writeRequest.valid.expect(false.B)
+      dut.io.axiBus.writeRequest.ready.poke(false.B)
+
+      val expectedData = Seq(10, 20, 30, 40, 50, 60, 70)
+
+      dut.io.writePorts(1).data.valid.poke(true.B)
+
+      for (i <- 0 until 7) {
+        dut.io.writePorts(1).data.valid.poke(true.B)
+        dut.io.writePorts(1).data.bits.poke(expectedData(i).U)
+        dut.io.axiBus.writeData.ready.poke(true.B)
+        dut.io.axiBus.writeData.bits.data.expect(expectedData(i).U)
+        dut.clock.step()
+      }
+
+      dut.io.axiBus.writeData.ready.poke(false.B)
+
+      dut.clock.step()
+      dut.clock.step()
+
+      dut.io.axiBus.writeResponse.ready.expect(true.B)
+      dut.io.axiBus.writeResponse.valid.poke(true.B)
+      dut.clock.step()
+
+      // The write path should now be unlocked and arbitrate to the other port
+      dut.io.axiBus.writeRequest.valid.expect(true.B)
+      dut.io.axiBus.writeRequest.bits.address.expect(33.U)
+      dut.io.axiBus.writeRequest.bits.length.expect(5.U)
+
+      // Drive ready high to accept the address request
+      dut.io.axiBus.writeRequest.ready.poke(true.B)
+      dut.clock.step()
+
+      val expectedData2 = Seq(99, 88, 77, 66, 55, 44)
+
       dut.io.writePorts(0).data.valid.poke(true.B)
 
-      // TODO toggle valid to ensure it is respected
-      for (i <- 0 until writeBurstLength) {
-        dut.io.writePorts(0).data.bits.poke(testDataForAddr(writeAddress + i).U)
+      for (i <- 0 until 6) {
+        dut.io.writePorts(0).data.valid.poke(true.B)
+        dut.io.writePorts(0).data.bits.poke(expectedData2(i).U)
+        dut.io.axiBus.writeData.ready.poke(true.B)
+        dut.io.axiBus.writeData.bits.data.expect(expectedData2(i).U)
         dut.clock.step()
       }
 
-      dut.io.writePorts(0).data.valid.poke(false.B)
+      dut.io.axiBus.writeData.ready.poke(false.B)
 
-      val readAddress1 = 8
-      val readBurstLength1 = 8
-      dut.io.readPorts(0).address.poke(readAddress1.U)
-      dut.io.readPorts(0).length.poke((readBurstLength1 - 1).U) 
-      dut.io.readPorts(0).request.poke(true.B)
       dut.clock.step()
-      dut.io.readPorts(0).request.poke(false.B) // De-assert request immediately
-
-      var wordsRead = 0
-      while (wordsRead < readBurstLength1) {
-        val ready = rng.nextBoolean()
-        dut.io.readPorts(0).data.ready.poke(ready.B)
-        
-        if (dut.io.readPorts(0).data.valid.peek().litToBoolean && ready) {
-          val expected = testDataForAddr(readAddress1 + wordsRead)
-          dut.io.readPorts(0).data.bits.expect(expected.U)
-          wordsRead += 1
-        }
-        dut.clock.step()
-      }
-
-      dut.io.readPorts(0).data.valid.expect(false.B)
-
-      // Second burst. Ensure the arbiter can start a second burst successfully and
-      // that it works with different offsets/length
-      val burstAddress2 = 16
-      val burstLength2 = 12
-      dut.io.readPorts(0).address.poke(burstAddress2.U)
-      dut.io.readPorts(0).length.poke((burstLength2 - 1).U)
-      dut.io.readPorts(0).request.poke(true.B)
       dut.clock.step()
-      dut.io.readPorts(0).request.poke(false.B)
-
-      wordsRead = 0
-      while (wordsRead < burstLength2) {
-        val ready = rng.nextBoolean().B
-        dut.io.readPorts(0).data.ready.poke(ready)
-        
-        if (dut.io.readPorts(0).data.valid.peek().litToBoolean && ready.litToBoolean) {
-          val expected = testDataForAddr(burstAddress2 + wordsRead)
-          dut.io.readPorts(0).data.bits.expect(expected.U)
-          wordsRead += 1
-        }
-        dut.clock.step()
-      }
-
-      dut.io.readPorts(0).data.valid.expect(false.B)
     }
   }
 }
