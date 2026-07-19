@@ -20,6 +20,8 @@ import chisel3._
 import chisel3.util._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Random
 
 /** A simple burst-oriented memory read port.
   *
@@ -281,6 +283,184 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
 
       dut.io.axiBus.writeData.ready.poke(false.B)
+    }
+  }
+
+  //
+  // Stress test
+  // TODO: this does not exercise queuing the next address before the previous
+  // transaction has completed.
+  //
+  test("MemoryArbiter stress") {
+    val numReaders = 4
+    val numWriters = 4
+    val memorySize = 1024
+
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val readPorts  = Vec(numReaders, Flipped(new MemReadPort))
+        val writePorts = Vec(numWriters, Flipped(new MemWritePort))
+        val dap = new DirectAccessPort
+      })
+      val arbiter = Module(new MemoryArbiter(numReaders, numWriters))
+      val memory  = Module(new SimAxiMemory(memorySize))
+
+      arbiter.io.readPorts  <> io.readPorts
+      arbiter.io.writePorts <> io.writePorts
+      arbiter.io.axiBus <> memory.io.axi
+      memory.dap <> io.dap
+    }) { dut =>
+      val maxBurstLength = 8
+
+      // Initialize memory with a known pattern.
+      val reference = Array.fill(memorySize)(Random.nextLong() & 0xffffffffL)
+
+      SimMemAccess.write(dut.clock, dut.io.dap, 0, reference.toSeq)
+
+      val activeRanges = ArrayBuffer[(Int, Int)]()
+      val rng = new Random(42)
+
+      // Initialize DUT inputs to safe defaults
+      for (i <- 0 until numReaders) {
+        dut.io.readPorts(i).valid.poke(false.B)
+        dut.io.readPorts(i).address.poke(0.U)
+        dut.io.readPorts(i).length.poke(0.U)
+        dut.io.readPorts(i).data.ready.poke(false.B)
+      }
+      for (i <- 0 until numWriters) {
+        dut.io.writePorts(i).valid.poke(false.B)
+        dut.io.writePorts(i).address.poke(0.U)
+        dut.io.writePorts(i).length.poke(0.U)
+        dut.io.writePorts(i).data.valid.poke(false.B)
+        dut.io.writePorts(i).data.bits.poke(0.U)
+      }
+
+      def getRandomRange(): (Int, Int) = {
+        var start = 0
+        var end = 0
+        var found = false
+        while (!found) {
+          start = rng.nextInt(memorySize - maxBurstLength - 2)
+          end = start + rng.nextInt(maxBurstLength) + 1
+          if (!activeRanges.exists { case (es, ee) => es <= end && ee >= start }) {
+            found = true
+          }
+        }
+        val range = (start, end)
+        activeRanges += range
+        range
+      }
+
+      def unlockRange(range: (Int, Int)) = {
+        activeRanges -= range
+      }
+
+      def makeReader(portNum: Int): () => Unit = {
+        val port = dut.io.readPorts(portNum)
+        var currentRange = (0, 0)
+        var burstActive = false
+        var currentAddr = 0
+        var wordsRemaining = 0
+
+        () => {
+          port.valid.poke(false.B) // Default value
+          if (burstActive) {
+            val ready = rng.nextBoolean()
+            port.data.ready.poke(ready.B)
+
+            if (ready && port.data.valid.peek().litToBoolean) {
+              val expectedData = reference(currentAddr)
+              val actualData = port.data.bits.peek().litValue.toLong & 0xffffffffL
+              assert(actualData == expectedData, f"Reader $portNum mismatched at addr $currentAddr")
+              currentAddr += 1
+              wordsRemaining -= 1
+
+              if (wordsRemaining == 0) {
+                burstActive = false
+                unlockRange(currentRange)
+              }
+            }
+          } else if (rng.nextInt(10) < 3) { // 30% chance to start new burst
+            // Start new burst
+            currentRange = getRandomRange()
+            val len = currentRange._2 - currentRange._1 + 1
+            currentAddr = currentRange._1
+            wordsRemaining = len
+            burstActive = true
+
+            port.valid.poke(true.B)
+            port.address.poke((currentAddr * 4).U)
+            port.length.poke((len - 1).U)
+          }
+        }
+      }
+
+      var finishSimulation = false
+
+      def makeWriter(portNum: Int): () => Unit = {
+        val port = dut.io.writePorts(portNum)
+        var currentRange = (0, 0)
+        var burstActive = false
+        var currentAddr = 0
+        var wordsRemaining = 0
+
+        () => {
+          // Drive data transmission
+          port.valid.poke(false.B)
+          if (burstActive) {
+            val valid = rng.nextBoolean() || finishSimulation
+            port.data.valid.poke(valid.B)
+
+            // We updated the data in the reference below when we started the burst.
+            port.data.bits.poke(reference(currentAddr).U)
+
+            if (valid && port.data.ready.peek().litToBoolean) {
+              currentAddr += 1
+              wordsRemaining -= 1
+
+              if (wordsRemaining == 0) {
+                burstActive = false
+                unlockRange(currentRange)
+              }
+            }
+          } else if (!finishSimulation && rng.nextInt(10) < 3) {
+            currentRange = getRandomRange()
+            val len = currentRange._2 - currentRange._1 + 1
+            currentAddr = currentRange._1
+            wordsRemaining = len
+            burstActive = true
+
+            // Write new data here. This range is locked, so the reader won't get the wrong
+            // data until the burst finishes.
+            for (_ <- currentRange._1 to currentRange._2) {
+              //reference(i) = rng.nextLong() & 0xffffffffL
+            }
+
+            port.valid.poke(true.B)
+            port.address.poke((currentAddr * 4).U)
+            port.length.poke((len - 1).U)
+          }
+        }
+      }
+
+      val readers = (0 until numReaders).map(makeReader)
+      val writers = (0 until numWriters).map(makeWriter)
+
+      for (_ <- 0 until 5000) {
+        readers.foreach(r => r())
+        writers.foreach(w => w())
+        dut.clock.step()
+      }
+
+      // Flush all pending writes so memory is consistent
+      finishSimulation = true
+      for (_ <- 0 until 200) {
+        writers.foreach(w => w())
+        dut.clock.step()
+      }
+
+      val finalMem = SimMemAccess.read(dut.clock, dut.io.dap, 0, memorySize)
+      assert(finalMem == reference.toSeq)
     }
   }
 }

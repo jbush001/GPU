@@ -21,18 +21,23 @@ import chisel3.util._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
+class DirectAccessPort extends Bundle {
+  val readEn = Input(Bool())
+  val readAddress = Input(UInt(AxiConsts.addressBits.W))
+  val readData = Output(UInt(AxiConsts.dataBits.W))
+  val writeEn = Input(Bool())
+  val writeAddress = Input(UInt(AxiConsts.addressBits.W))
+  val writeData = Input(UInt(AxiConsts.dataBits.W))
+}
+
 class SimAxiMemory(memorySize: Int) extends Module {
   val io = IO(new Bundle {
       val axi = Flipped(new AxiBus)
 
       // Simulator accessors for testing
-      val simReadEn = Input(Bool())
-      val simReadAddress = Input(UInt(AxiConsts.addressBits.W))
-      val simReadData = Output(UInt(AxiConsts.dataBits.W))
-      val simWriteEn = Input(Bool())
-      val simWriteAddress = Input(UInt(AxiConsts.addressBits.W))
-      val simWriteData = Input(UInt(AxiConsts.dataBits.W))
   })
+
+  val dap = IO(new DirectAccessPort)
 
   val memory = SyncReadMem(memorySize, UInt(AxiConsts.dataBits.W))
 
@@ -88,7 +93,6 @@ class SimAxiMemory(memorySize: Int) extends Module {
     is (State.Write) {
       when (io.axi.writeData.valid) {
         memory.write(burstAddress, io.axi.writeData.bits.data)
-
         when (burstLength === 0.U) {
           state := State.WriteAck
         } .otherwise {
@@ -121,41 +125,41 @@ class SimAxiMemory(memorySize: Int) extends Module {
   }
 
   // Simulation
-  when (io.simReadEn) {
-    io.simReadData := memory.read(io.simReadAddress >> 2.U)
+  when (dap.readEn) {
+    dap.readData := memory.read(dap.readAddress >> 2.U)
   } .otherwise {
-    io.simReadData := 0.U
+    dap.readData := 0.U
   }
 
-  when (io.simWriteEn) {
-    memory.write(io.simWriteAddress >> 2.U, io.simWriteData)
+  when (dap.writeEn) {
+    memory.write(dap.writeAddress >> 2.U, dap.writeData)
   }
 }
 
 object SimMemAccess {
   import chisel3.simulator.PeekPokeAPI._
 
-  def write(dut: SimAxiMemory, address: Long, data: Seq[Long]): Unit = {
-    dut.io.simWriteEn.poke(true.B)
+  def write(clock: Clock, dap: DirectAccessPort, address: Long, data: Seq[Long]): Unit = {
+    dap.writeEn.poke(true.B)
     for (i <- data.indices) {
-      dut.io.simWriteAddress.poke((address + i * 4).U)
-      dut.io.simWriteData.poke((data(i) & 0xffffffffL).U)
-      dut.clock.step()
+      dap.writeAddress.poke((address + i * 4).U)
+      dap.writeData.poke((data(i) & 0xffffffffL).U)
+      clock.step()
     }
 
-    dut.io.simWriteEn.poke(false.B)
+    dap.writeEn.poke(false.B)
   }
 
-  def read(dut: SimAxiMemory, address: Long, length: Int): Seq[Long] = {
+  def read(clock: Clock, dap: DirectAccessPort, address: Long, length: Int): Seq[Long] = {
     val result = scala.collection.mutable.ArrayBuffer[Long]()
-    dut.io.simReadEn.poke(true.B)
+    dap.readEn.poke(true.B)
     for (i <- 0 until length) {
-      dut.io.simReadAddress.poke((address + i * 4).U)
-      dut.clock.step()
-      result += dut.io.simReadData.peek().litValue.toLong & 0xffffffffL
+      dap.readAddress.poke((address + i * 4).U)
+      clock.step()
+      result += dap.readData.peek().litValue.toLong & 0xffffffffL
     }
 
-    dut.io.simReadEn.poke(false.B)
+    dap.readEn.poke(false.B)
     result.toSeq
   }
 }
@@ -220,7 +224,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
     dut.clock.step()
   }
 
-  test("sim axi read") {
+  test("SimAxiMemory read") {
     val memorySize = 256
     simulate(new SimAxiMemory(memorySize)) { dut =>
       dut.io.axi.writeRequest.valid.poke(false.B)
@@ -232,7 +236,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
       val maxBurst = 64
       val rng = new scala.util.Random(42)
       val testData: Seq[Long] = (1 to memorySize).map(i => i + 1024)
-      SimMemAccess.write(dut, 0, testData)
+      SimMemAccess.write(dut.clock, dut.dap, 0, testData)
 
       for (_ <- 0 until 1000) {
         val burstLength = rng.nextInt(maxBurst - 1) + 1
@@ -243,7 +247,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("sim axi write") {
+  test("SimAxiMemory write") {
     val memorySize = 0x1000
     simulate(new SimAxiMemory(memorySize)) { dut =>
       dut.io.axi.writeRequest.valid.poke(false.B)
@@ -262,7 +266,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
         offset += burstLength
       }
 
-      val readData = SimMemAccess.read(dut, 0, memorySize)
+      val readData = SimMemAccess.read(dut.clock, dut.dap, 0, memorySize)
       assert(readData == testData)
     }
   }
