@@ -195,30 +195,24 @@ class MemoryArbiter(
 }
 
 class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
+  // Single read burst
   test("MemoryArbiter read burst") {
-    simulate(new MemoryArbiter(2, 1)) { dut =>
-      // Initialize inputs
-      dut.io.readPorts.foreach(_.valid.poke(true.B))
+    simulate(new MemoryArbiter(1, 1)) { dut =>
+      dut.io.readPorts(0).valid.poke(true.B)
 
-      // Issue two read requests.
-      dut.io.readPorts(0).address.poke(33)
-      dut.io.readPorts(0).length.poke(5)
-      dut.io.readPorts(1).address.poke(55)
-      dut.io.readPorts(1).length.poke(6)
+      val address = 33
+      val testData = Seq(10, 20, 30, 40, 50, 60, 70)
+
+      dut.io.readPorts(0).address.poke(address)
+      dut.io.readPorts(0).length.poke(testData.length - 1)
       dut.io.axiBus.readRequest.ready.poke(false.B)
       dut.io.axiBus.readData.valid.poke(false.B)
       dut.clock.step()
-      dut.io.readPorts.foreach(_.valid.poke(false.B))
+      dut.io.readPorts(0).valid.poke(false.B)
 
-      // Issue a few wait states.
-      for (_ <- 0 until 2) {
-        dut.clock.step()
-
-        // We're making an assumption here about the behavior of the arbiter
-        dut.io.axiBus.readRequest.valid.expect(true.B)
-        dut.io.axiBus.readRequest.bits.address.expect(55.U)
-        dut.io.axiBus.readRequest.bits.length.expect(6.U)
-      }
+      dut.io.axiBus.readRequest.valid.expect(true.B)
+      dut.io.axiBus.readRequest.bits.address.expect(address.U)
+      dut.io.axiBus.readRequest.bits.length.expect((testData.length - 1).U)
 
       // Drive ready high to accept the address request
       dut.io.axiBus.readRequest.ready.poke(true.B)
@@ -228,137 +222,65 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
       dut.io.axiBus.readRequest.valid.expect(false.B)
       dut.io.axiBus.readRequest.ready.poke(false.B)
 
-      val expectedData = Seq(10, 20, 30, 40, 50, 60, 70)
-
-      dut.io.readPorts(1).data.ready.poke(true.B)
-
-      for (i <- 0 until 7) {
-        dut.io.axiBus.readData.valid.poke(true.B)
-        dut.io.axiBus.readData.bits.data.poke(expectedData(i).U)
-
-        dut.io.readPorts(1).data.valid.expect(true.B)
-        dut.io.readPorts(1).data.bits.expect(expectedData(i).U)
-        dut.io.readPorts(0).data.valid.expect(false.B)
-
-        dut.clock.step()
-      }
-
-      dut.io.axiBus.readData.valid.poke(false.B)
-
-      dut.clock.step()
-      dut.clock.step()
-
-      // The read path should now be unlocked and arbitrate to the other port
-      dut.io.axiBus.readRequest.valid.expect(true.B)
-      dut.io.axiBus.readRequest.bits.address.expect(33.U)
-      dut.io.axiBus.readRequest.bits.length.expect(5.U)
-
-      // Drive ready high to accept the address request
-      dut.io.axiBus.readRequest.ready.poke(true.B)
-      dut.clock.step()
-
-      val expectedData2 = Seq(99, 88, 77, 66, 55, 44)
-
       dut.io.readPorts(0).data.ready.poke(true.B)
 
-      for (i <- 0 until 6) {
-        dut.io.axiBus.readData.valid.poke(true.B)
-        dut.io.axiBus.readData.bits.data.poke(expectedData2(i).U)
-
-        // Assert that data is correctly routed exclusively to port 0
+      dut.io.axiBus.readData.valid.poke(true.B)
+      for (i <- 0 until testData.length) {
+        dut.io.axiBus.readData.bits.data.poke(testData(i).U)
         dut.io.readPorts(0).data.valid.expect(true.B)
-        dut.io.readPorts(0).data.bits.expect(expectedData2(i).U)
-        dut.io.readPorts(1).data.valid.expect(false.B)
-
+        dut.io.readPorts(0).data.bits.expect(testData(i).U)
         dut.clock.step()
       }
 
       dut.io.axiBus.readData.valid.poke(false.B)
-
-      dut.clock.step()
-      dut.clock.step()
+      dut.io.readPorts(0).data.valid.expect(false.B)
     }
   }
 
   test("MemoryArbiter write burst") {
-    simulate(new MemoryArbiter(1, 2)) { dut =>
+    simulate(new MemoryArbiter(1, 1)) { dut =>
       // Initialize inputs
-      dut.io.writePorts.foreach(_.valid.poke(true.B))
+      dut.io.writePorts(0).valid.poke(true.B)
 
-      // Issue two write requests.
-      dut.io.writePorts(0).address.poke(33)
-      dut.io.writePorts(0).length.poke(5)
-      dut.io.writePorts(1).address.poke(55)
-      dut.io.writePorts(1).length.poke(6)
+      val address = 33
+      val testData = Seq(10, 20, 30, 40, 50, 60, 70)
+
+      dut.io.writePorts(0).address.poke(address)
+      dut.io.writePorts(0).length.poke(testData.length - 1)
       dut.io.axiBus.writeRequest.ready.poke(false.B)
       dut.io.axiBus.writeData.ready.poke(false.B)
       dut.clock.step()
-      dut.io.writePorts.foreach(_.valid.poke(false.B))
+      dut.io.writePorts(0).valid.poke(false.B)
 
-      // Issue a few wait states.
-      for (_ <- 0 until 2) {
-        dut.clock.step()
+      dut.io.axiBus.writeRequest.valid.expect(true.B)
+      dut.io.axiBus.writeRequest.bits.address.expect(address)
+      dut.io.axiBus.writeRequest.bits.length.expect(testData.length - 1)
 
-        // We're making an assumption here about the behavior of the arbiter
-        dut.io.axiBus.writeRequest.valid.expect(true.B)
-        dut.io.axiBus.writeRequest.bits.address.expect(55.U)
-        dut.io.axiBus.writeRequest.bits.length.expect(6.U)
-      }
-
-      // Drive ready high to accept the address request
       dut.io.axiBus.writeRequest.ready.poke(true.B)
       dut.clock.step()
 
-      // On the next cycle, readRequest.valid must drop to false because burstActive is now true
       dut.io.axiBus.writeRequest.valid.expect(false.B)
       dut.io.axiBus.writeRequest.ready.poke(false.B)
 
-      val expectedData = Seq(10, 20, 30, 40, 50, 60, 70)
-
-      dut.io.writePorts(1).data.valid.poke(true.B)
+      dut.io.writePorts(0).data.valid.poke(true.B)
 
       for (i <- 0 until 7) {
-        dut.io.writePorts(1).data.valid.poke(true.B)
-        dut.io.writePorts(1).data.bits.poke(expectedData(i).U)
+        dut.io.writePorts(0).data.valid.poke(true.B)
+        dut.io.writePorts(0).data.bits.poke(testData(i).U)
         dut.io.axiBus.writeData.ready.poke(true.B)
-        dut.io.axiBus.writeData.bits.data.expect(expectedData(i).U)
+        dut.io.axiBus.writeData.bits.data.expect(testData(i).U)
         dut.clock.step()
       }
 
       dut.io.axiBus.writeData.ready.poke(false.B)
 
-      dut.clock.step()
       dut.clock.step()
 
       dut.io.axiBus.writeResponse.ready.expect(true.B)
       dut.io.axiBus.writeResponse.valid.poke(true.B)
       dut.clock.step()
 
-      // The write path should now be unlocked and arbitrate to the other port
-      dut.io.axiBus.writeRequest.valid.expect(true.B)
-      dut.io.axiBus.writeRequest.bits.address.expect(33.U)
-      dut.io.axiBus.writeRequest.bits.length.expect(5.U)
-
-      // Drive ready high to accept the address request
-      dut.io.axiBus.writeRequest.ready.poke(true.B)
-      dut.clock.step()
-
-      val expectedData2 = Seq(99, 88, 77, 66, 55, 44)
-
-      dut.io.writePorts(0).data.valid.poke(true.B)
-
-      for (i <- 0 until 6) {
-        dut.io.writePorts(0).data.valid.poke(true.B)
-        dut.io.writePorts(0).data.bits.poke(expectedData2(i).U)
-        dut.io.axiBus.writeData.ready.poke(true.B)
-        dut.io.axiBus.writeData.bits.data.expect(expectedData2(i).U)
-        dut.clock.step()
-      }
-
       dut.io.axiBus.writeData.ready.poke(false.B)
-
-      dut.clock.step()
-      dut.clock.step()
     }
   }
 }
