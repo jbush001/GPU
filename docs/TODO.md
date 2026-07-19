@@ -4,9 +4,10 @@
 - [x] Floating point multiplication pipeline
 - [x] Reciprocal estimate
 - [x] Floating point to integer conversion
+- [x] Memory Arbiter
+- [ ] TileBufferDma
+- [ ] Shader processor
 - [ ] ParameterMemory
-- [ ] Rewrite TriangleSetup to use floating point pipeline
+- [ ] Rewrite TriangleSetup to use floating point pipeline(?)
 - [ ] Integer to floating point conversion (in add pipeline)
-- [ ] Memory Arbiter/CDMA controller
-- [ ] Floating point comparison
 - [ ] Quad Collector

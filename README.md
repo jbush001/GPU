@@ -27,12 +27,6 @@ The output waveform will be written to build/chiselsim/.../workdir-verilator/tra
 
 This will write the rendered framebuffer into "output.png"
 
-**To generate synthesizable design**
-
-    ./run syn
-
-(currently not implemented)
-
 **Generating API documentation**
 
     ./run doc

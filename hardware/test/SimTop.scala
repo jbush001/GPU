@@ -75,63 +75,61 @@ class SimTop extends Module {
   setup.io.input <> io.inputTriangle
 }
 
-object Simulation {
-  def main(args: Array[String]): Unit = {
-    simulate(new SimTop()) { dut =>
-      dut.reset.poke(true.B)
-      dut.io.startFlush.poke(false)
+object Simulation extends App {
+  simulate(new SimTop()) { dut =>
+    dut.reset.poke(true.B)
+    dut.io.startFlush.poke(false)
+    dut.io.inputTriangle.valid.poke(false)
+    dut.clock.step(5)
+    dut.reset.poke(false.B)
+    dut.clock.step(1)
+
+    // Simulate vertex parameter memory
+    val vpmData = Array(5, 7, 118, 49, 23, 110)
+
+    // Run a flush to clear out the buffer initially
+    flushBuffer(dut, None, 0, 0)
+
+    val fbSize = 128
+    val fbData = new Array[Int](fbSize * fbSize)
+    for (tile <- 0 until 4) {
+      val tileRow = tile / 2
+      val tileColumn = tile % 2
+
+      // Set up a triangle
+      dut.io.inputTriangle.bits.left.poke(tileColumn * GpuConfig.tileSizePixels)
+      dut.io.inputTriangle.bits.top.poke(tileRow * GpuConfig.tileSizePixels)
+      dut.io.inputTriangle.bits.right.poke((tileColumn + 1) * GpuConfig.tileSizePixels - 2)
+      dut.io.inputTriangle.bits.bottom.poke((tileRow + 1) * GpuConfig.tileSizePixels - 2)
+
+      dut.io.inputTriangle.valid.poke(true)
+      dut.clock.step()
       dut.io.inputTriangle.valid.poke(false)
-      dut.clock.step(5)
-      dut.reset.poke(false.B)
-      dut.clock.step(1)
 
-      // Simulate vertex parameter memory
-      val vpmData = Array(5, 7, 118, 49, 23, 110)
-
-      // Run a flush to clear out the buffer initially
-      flushBuffer(dut, None, 0, 0)
-
-      val fbSize = 128
-      val fbData = new Array[Int](fbSize * fbSize)
-      for (tile <- 0 until 4) {
-        val tileRow = tile / 2
-        val tileColumn = tile % 2
-
-        // Set up a triangle
-        dut.io.inputTriangle.bits.left.poke(tileColumn * GpuConfig.tileSizePixels)
-        dut.io.inputTriangle.bits.top.poke(tileRow * GpuConfig.tileSizePixels)
-        dut.io.inputTriangle.bits.right.poke((tileColumn + 1) * GpuConfig.tileSizePixels - 2)
-        dut.io.inputTriangle.bits.bottom.poke((tileRow + 1) * GpuConfig.tileSizePixels - 2)
-
-        dut.io.inputTriangle.valid.poke(true)
-        dut.clock.step()
-        dut.io.inputTriangle.valid.poke(false)
-
-        // Render stuff. Note that we don't check for completion, just run for
-        // enough cycles we know it should finish.
-        for (_ <- 0 until 1500) {
-          if (dut.io.vpi.readEn.peek().litValue.toInt != 0) {
-            val readData = vpmData(dut.io.vpi.readAddress.peek().litValue.toInt)
-            dut.clock.step()
-            dut.io.vpi.readData.poke(readData)
-          } else {
-            dut.clock.step()
-          }
+      // Render stuff. Note that we don't check for completion, just run for
+      // enough cycles we know it should finish.
+      for (_ <- 0 until 1500) {
+        if (dut.io.vpi.readEn.peek().litValue.toInt != 0) {
+          val readData = vpmData(dut.io.vpi.readAddress.peek().litValue.toInt)
+          dut.clock.step()
+          dut.io.vpi.readData.poke(readData)
+        } else {
+          dut.clock.step()
         }
-
-        // Read out the final data
-        val offset = (fbSize * GpuConfig.tileSizePixels * tileRow) +
-          (GpuConfig.tileSizePixels * tileColumn)
-        flushBuffer(dut, Some(fbData), offset, fbSize)
       }
 
-      // Write an image file
-      val canvas = new BufferedImage(fbSize, fbSize, BufferedImage.TYPE_INT_ARGB)
-      canvas.setRGB(0, 0, fbSize, fbSize, fbData.toArray, 0, fbSize)
-      val outputFile = new File("output.png")
-      ImageIO.write(canvas, "png", outputFile)
-      println("wrote output file to output.png")
+      // Read out the final data
+      val offset = (fbSize * GpuConfig.tileSizePixels * tileRow) +
+        (GpuConfig.tileSizePixels * tileColumn)
+      flushBuffer(dut, Some(fbData), offset, fbSize)
     }
+
+    // Write an image file
+    val canvas = new BufferedImage(fbSize, fbSize, BufferedImage.TYPE_INT_ARGB)
+    canvas.setRGB(0, 0, fbSize, fbSize, fbData.toArray, 0, fbSize)
+    val outputFile = new File("output.png")
+    ImageIO.write(canvas, "png", outputFile)
+    println("wrote output file to output.png")
   }
 
   def flushBuffer(dut: SimTop, out: Option[Array[Int]], start: Int, stride: Int) = {
