@@ -14,7 +14,7 @@
 //   limitations under the License.
 //
 
-package gpu
+package simulate
 
 import chisel3._
 import chisel3.util._
@@ -22,6 +22,7 @@ import chisel3.simulator.EphemeralSimulator._
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import gpu._
 
 // This is a bit of a hack, as the components won't connect exactly like this
 // in a real configuration, but demonstrates things working end-to-end.
@@ -75,7 +76,7 @@ class SimTop extends Module {
 }
 
 object Simulation {
-  def run() = {
+  def main(args: Array[String]): Unit = {
     simulate(new SimTop()) { dut =>
       dut.reset.poke(true.B)
       dut.io.startFlush.poke(false)
@@ -129,6 +130,7 @@ object Simulation {
       canvas.setRGB(0, 0, fbSize, fbSize, fbData.toArray, 0, fbSize)
       val outputFile = new File("output.png")
       ImageIO.write(canvas, "png", outputFile)
+      println("wrote output file to output.png")
     }
   }
 
@@ -151,7 +153,7 @@ object Simulation {
         out match {
           case Some(arr) => {
             // Set alpha channel
-            arr(fbIndex) = (dut.io.flushData.bits.peek().litValue.toLong | 0xff000000L).toInt 
+            arr(fbIndex) = (dut.io.flushData.bits.peek().litValue.toLong | 0xff000000L).toInt
           }
           case None => {}
         }
