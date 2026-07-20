@@ -178,9 +178,9 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   }
 
   // Fill entire framebuffer
-  test("Rasterize fill") {
+  test("Rasterizer fill") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, 0, 0, 30, 30, 0, 30, 0, 0, 14, 14, false);
+      val output = rasterizeTriangle(dut, -1, -1, 40, -1, -1, 40, 0, 0, 14, 14, false);
       assert(output.filterNot(_.isWhitespace) == "X" * 256)
     }
   }
