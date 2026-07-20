@@ -54,7 +54,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     bbTop: Int,
     bbRight: Int,
     bbBottom: Int,
-    randomizeReady: Boolean) : String = {
+    rng: Option[Random]) : String = {
 
     dut.io.input.valid.poke(false)
     dut.io.output.ready.poke(false)
@@ -93,11 +93,14 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
     val outputBuffer = Array.ofDim[Boolean](bbRight - bbLeft + 2, bbBottom - bbTop + 2);
 
-    val rng = new Random(42)
     dut.io.output.ready.poke(true)
-    for (_ <- 0 until 2048) {
-      if (randomizeReady) {
-        dut.io.output.ready.poke(rng.nextBoolean())
+
+    dut.clock.step()
+
+    while (!dut.io.input.ready.peek().litToBoolean) {
+      rng match {
+        case Some(rng) => dut.io.output.ready.poke(rng.nextBoolean())
+        case None => {}
       }
 
       if (dut.io.output.valid.peek().litValue.toLong != 0
@@ -117,7 +120,6 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
     }
 
-    dut.io.input.ready.expect(1)
     val sb = new StringBuilder()
     for (y <- 0 until outputBuffer.length) {
       for (x <- 0 until outputBuffer(0).length) {
@@ -152,7 +154,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   test("Rasterizer rasterize") {
     simulate(new Rasterizer()) { dut =>
       val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, false);
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
       val expected = """
 ................
 ................
@@ -179,7 +181,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   test("Rasterizer fill") {
     simulate(new Rasterizer()) { dut =>
       val coeffs = computeEdgeCoefficient(-1, -1, 40, -1, -1, 40, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, false);
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
       assert(output.filterNot(_.isWhitespace) == "X" * 256)
     }
   }
@@ -210,9 +212,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
         val coeffs = computeEdgeCoefficient(x0, y0, x1, y1, x2, y2, left, top)
         val expected = computeReference(coeffs, right - left, bottom - top)
 
-        val output = rasterizeTriangle(dut,
-          coeffs,
-          left, top, right - 2, bottom - 2, false);
+        val output = rasterizeTriangle(dut, coeffs, left, top, right - 2,
+          bottom - 2, Some(rng));
         assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
       }
     }
@@ -222,7 +223,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   test("Rasterizer reverse winding") {
     simulate(new Rasterizer()) { dut =>
       val coeffs = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, false);
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
       val expected =  """................
 ................
 ................
@@ -239,31 +240,6 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 ................
 ................
 ................"""
-      assert(output.trim == expected.stripMargin.trim)
-    }
-  }
-
-  test("Rasterizer output flow control") {
-    simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, true);
-      val expected = """................
-................
-........X.......
-........X.......
-.......XXX......
-.......XXX......
-......XXXXX.....
-......XXXXX.....
-.....XXXXXXX....
-.....XXXXXXX....
-....XXXXXXXXX...
-....XXXXXXXXX...
-...XXXXXXXXXXX..
-...XXXXXXXXXXX..
-..XXXXXXXXXXXXX.
-................"""
-
       assert(output.trim == expected.stripMargin.trim)
     }
   }
