@@ -20,7 +20,32 @@ import scala.util.Random
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
+class EdgeCoefficients {
+  val edges = 3
+  val xStep = Array.ofDim[Int](edges)
+  val yStep = Array.ofDim[Int](edges)
+  val initialValue = Array.ofDim[Int](edges)
+}
+
 class RasterizerTests extends AnyFunSuite with ChiselSim {
+  def computeEdgeCoefficient(x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int,
+  startX: Int, startY: Int): EdgeCoefficients = {
+    val coeffs = new EdgeCoefficients()
+    coeffs.xStep(0) = y1 - y0
+    coeffs.yStep(0) = x0 - x1
+    coeffs.initialValue(0) = (startX - x0) * (y1 - y0) - (startY - y0) * (x1 - x0)
+
+    coeffs.xStep(1) = y2 - y1
+    coeffs.yStep(1) = x1 - x2
+    coeffs.initialValue(1) = (startX - x1) * (y2 - y1) - (startY - y1) * (x2 - x1)
+
+    coeffs.xStep(2) = y0 - y2
+    coeffs.yStep(2) = x2 - x0
+    coeffs.initialValue(2) = (startX - x2) * (y0 - y2) - (startY - y2) * (x0 - x2)
+
+    return coeffs
+  }
+
   def rasterizeTriangle(dut: Rasterizer,
     x0: Int,
     y0: Int,
@@ -107,7 +132,27 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     sb.toString()
   }
 
-  test("rasterize") {
+  def computeReference(coeffs: EdgeCoefficients, width: Int, height: Int): String = {
+    val sb = new StringBuilder()
+    for (y <- 0 until height) {
+      for (x <- 0 until width) {
+        val covered = (0 until 3).forall(i =>
+          (coeffs.initialValue(i) +
+            coeffs.xStep(i) * x +
+            coeffs.yStep(i) * y
+          ) < 0
+        )
+
+        sb.append(if (covered) "X" else ".")
+      }
+
+      sb.append("\n")
+    }
+
+    sb.toString()
+  }
+
+  test("Rasterizer rasterize") {
     simulate(new Rasterizer()) { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 14, 14, false);
       val expected = """
@@ -132,42 +177,50 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("clip right") {
+  // Fill entire framebuffer
+  test("Rasterize fill") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 6, 6, false);
-      val expected = """
-........
-........
-........
-........
-.......X
-.......X
-......XX
-......XX"""
-      assert(output.trim == expected.stripMargin.trim)
+      val output = rasterizeTriangle(dut, 0, 0, 30, 30, 0, 30, 0, 0, 14, 14, false);
+      assert(output.filterNot(_.isWhitespace) == "X" * 256)
     }
   }
 
-  // Test non-zero bounding box offset
-  test("clip left") {
+  test("Rasterizer random") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, 16, 1, 22, 22, 1, 16, 16, 16, 22, 22, false);
-      val expected =  """
-XXXXX...
-XXXXX...
-XXXXX...
-XXXXXX..
-XXXXXX..
-...XXX..
-........
-........"""
+      val rng = new Random(42)
+      val blockSize = 32
+      for (_ <- 0 until 200) {
+        val x0 = rng.nextInt(blockSize * 2)
+        val y0 = rng.nextInt(blockSize * 2)
+        val x1 = rng.nextInt(blockSize * 2)
+        val y1 = rng.nextInt(blockSize * 2)
 
-      assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
+        // Ensure these are wound clockwise using the cross product.
+        var x2 = 0
+        var y2 = 0
+        while ((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) < 0) {
+          x2 = rng.nextInt(blockSize * 2)
+          y2 = rng.nextInt(blockSize * 2)
+        }
+
+        val left = rng.nextInt(blockSize)
+        val top = rng.nextInt(blockSize)
+        val right = left + blockSize
+        val bottom = top + blockSize
+
+        val coeffs = computeEdgeCoefficient(x0, y0, x1, y1, x2, y2, left, top)
+        val expected = computeReference(coeffs, right - left, bottom - top)
+
+        val output = rasterizeTriangle(dut,
+          x0, y0, x1, y1, x2, y2,
+          left, top, right - 2, bottom - 2, false);
+        assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
+      }
     }
   }
 
   // Won't display anything
-  test("reverse winding") {
+  test("Rasterizer reverse winding") {
     simulate(new Rasterizer()) { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 14, 14, false);
       val expected =  """................
@@ -190,7 +243,7 @@ XXXXXX..
     }
   }
 
-  test("output flow control") {
+  test("Rasterizer output flow control") {
     simulate(new Rasterizer()) { dut =>
       val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 14, 14, true);
       val expected = """................
