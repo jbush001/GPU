@@ -134,7 +134,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
       arbiter.io.readPorts  <> io.readPorts
       arbiter.io.writePorts <> io.writePorts
-      arbiter.io.axiBus <> memory.io.axi
+      arbiter.io.axiBus <> memory.io
       memory.dap <> io.dap
     }) { dut =>
       val maxBurstLength = 8

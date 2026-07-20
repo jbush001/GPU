@@ -33,7 +33,7 @@ class AxiBus extends Bundle {
   // Write request channel (B1.1.1)
   val writeRequest = Decoupled(new Bundle {
     val address = UInt(AxiConsts.addressBits.W) // AWADDR Address to write to
-    val length = UInt(AxiConsts.burstLengthBits.W) // AWADDR Number of data transfers in burst
+    val length = UInt(AxiConsts.burstLengthBits.W) // AWLEN Number of data transfers in burst
   })
 
   // Write data channel (B1.1.2)
