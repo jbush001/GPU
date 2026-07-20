@@ -14,6 +14,8 @@
 //   limitations under the License.
 //
 
+// TODO: does not check lambda outputs.
+
 package gpu
 
 import scala.util.Random
@@ -47,12 +49,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   }
 
   def rasterizeTriangle(dut: Rasterizer,
-    x0: Int,
-    y0: Int,
-    x1: Int,
-    y1: Int,
-    x2: Int,
-    y2: Int,
+    coeffs: EdgeCoefficients,
     bbLeft: Int,
     bbTop: Int,
     bbRight: Int,
@@ -72,19 +69,19 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     dut.io.input.bits.boundingBox.bottom.poke(bbBottom)
 
     // Edge 0->1
-    dut.io.input.bits.xStep(0).poke(y1 - y0)
-    dut.io.input.bits.yStep(0).poke(x0 - x1)
-    dut.io.input.bits.initialValue(0).poke((bbLeft - x0) * (y1 - y0) - (bbTop - y0) * (x1 - x0))
+    dut.io.input.bits.xStep(0).poke(coeffs.xStep(0))
+    dut.io.input.bits.yStep(0).poke(coeffs.yStep(0))
+    dut.io.input.bits.initialValue(0).poke(coeffs.initialValue(0))
 
     // Edge 1->2
-    dut.io.input.bits.xStep(1).poke(y2 - y1)
-    dut.io.input.bits.yStep(1).poke(x1 - x2)
-    dut.io.input.bits.initialValue(1).poke((bbLeft - x1) * (y2 - y1) - (bbTop - y1) * (x2 - x1))
+    dut.io.input.bits.xStep(1).poke(coeffs.xStep(1))
+    dut.io.input.bits.yStep(1).poke(coeffs.yStep(1))
+    dut.io.input.bits.initialValue(1).poke(coeffs.initialValue(1))
 
     // Edge 2->0
-    dut.io.input.bits.xStep(2).poke(y0 - y2)
-    dut.io.input.bits.yStep(2).poke(x2 - x0)
-    dut.io.input.bits.initialValue(2).poke((bbLeft - x2) * (y0 - y2) - (bbTop - y2) * (x0 - x2))
+    dut.io.input.bits.xStep(2).poke(coeffs.xStep(2))
+    dut.io.input.bits.yStep(2).poke(coeffs.yStep(2))
+    dut.io.input.bits.initialValue(2).poke(coeffs.initialValue(2))
     dut.io.input.valid.poke(true)
 
     while (dut.io.input.ready.peek().litValue.toLong == 0) {
@@ -154,7 +151,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
   test("Rasterizer rasterize") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 14, 14, false);
+      val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, false);
       val expected = """
 ................
 ................
@@ -180,7 +178,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   // Fill entire framebuffer
   test("Rasterizer fill") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, -1, -1, 40, -1, -1, 40, 0, 0, 14, 14, false);
+      val coeffs = computeEdgeCoefficient(-1, -1, 40, -1, -1, 40, 0, 0)
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, false);
       assert(output.filterNot(_.isWhitespace) == "X" * 256)
     }
   }
@@ -212,7 +211,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
         val expected = computeReference(coeffs, right - left, bottom - top)
 
         val output = rasterizeTriangle(dut,
-          x0, y0, x1, y1, x2, y2,
+          coeffs,
           left, top, right - 2, bottom - 2, false);
         assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
       }
@@ -222,7 +221,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   // Won't display anything
   test("Rasterizer reverse winding") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 1, 15, 15, 15, 0, 0, 14, 14, false);
+      val coeffs = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, false);
       val expected =  """................
 ................
 ................
@@ -245,7 +245,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
   test("Rasterizer output flow control") {
     simulate(new Rasterizer()) { dut =>
-      val output = rasterizeTriangle(dut, 8, 1, 15, 15, 1, 15, 0, 0, 14, 14, true);
+      val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
+      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, true);
       val expected = """................
 ................
 ........X.......
