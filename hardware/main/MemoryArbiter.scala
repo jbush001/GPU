@@ -35,11 +35,8 @@ import chisel3.util._
   *   - After the arbiter has asserted `data.valid`, it MUST NOT deassert
   *     it or change the contents of `data.bits`.
   *   - A burst completes on the clock edge the last word is consumed.
-  *   - The client MUST NOT raise `valid` while a burst is active.
   *   - `data.valid` and `data.ready` MUST NOT be combinationally dependent
   *     on each other.
-  *   - The arbiter MAY raise `data.valid` before a burst is active; the
-  *     client MAY consume this data early.
   */
  class MemReadPort extends Bundle {
   val valid = Output(Bool())
@@ -94,7 +91,7 @@ class MemoryArbiter(
     readArb.io.in <> readRequests
 
     val readBurstActive = RegInit(false.B)
-    val readActiveClient = Reg(UInt(log2Ceil(numReadPorts).W))
+    val readActiveClient = RegInit(0.U(log2Ceil(numReadPorts).W))
     val readBurstCount = RegInit(0.U(io.axiBus.readRequest.bits.length.getWidth.W))
 
     io.axiBus.readRequest.valid := readArb.io.out.valid && !readBurstActive
@@ -153,7 +150,7 @@ class MemoryArbiter(
     writeArb.io.in <> writeRequests
 
     val writeBurstActive = RegInit(false.B)
-    val writeActiveClient = Reg(UInt(log2Ceil(numWritePorts).W))
+    val writeActiveClient = RegInit(0.U(log2Ceil(numWritePorts).W))
     val writeBurstCount = RegInit(0.U(io.axiBus.writeRequest.bits.length.getWidth.W))
 
     io.axiBus.writeRequest.valid := writeArb.io.out.valid && !writeBurstActive
