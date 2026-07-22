@@ -43,14 +43,14 @@ class SimTop extends Module {
   io.vpi.readAddress := setup.io.vpi.readAddress
   setup.io.vpi.readData := io.vpi.readData
 
-  val fillColors = Wire(Vec(4, new RgbaColor))
+  val fillColors = Wire(Vec(4, new Color))
   val normFactor = rasterizer.io.output.bits.lambda(0)(0) + rasterizer.io.output.bits.lambda(0)(1) + rasterizer.io.output.bits.lambda(0)(2)
   for (pixel <- 0 until 4) {
     for (component <- 0 until 3) {
-      fillColors(pixel).channels(component) := (rasterizer.io.output.bits.lambda(pixel)(component) * 255.S / normFactor).asUInt
+      fillColors(pixel).channels(component) := (rasterizer.io.output.bits.lambda(pixel)(component) * 1023.S / normFactor).asUInt
     }
 
-    fillColors(pixel).channels(3) := 0xff.U
+    fillColors(pixel).channels(3) := 0x3ff.U
   }
 
   val fillDepth = 0.U(GpuConfig.depthBits.W)

@@ -53,13 +53,13 @@ class TileBuffer extends Module {
     val valid = Input(Bool())
     val quadLoc = Input(Point2D())
     val mask = Input(Bits(pixelsPerQuad.W))
-    val colors = Input(Vec(pixelsPerQuad, RgbaColor()))
+    val colors = Input(Vec(pixelsPerQuad, Color()))
     val depths = Input(Vec(pixelsPerQuad, UInt(GpuConfig.depthBits.W)))
 
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val flushData = Decoupled(Bits(32.W))
-    val clearColor = Input(RgbaColor())
+    val clearColor = Input(Color())
     val clearDepth = Input(UInt(GpuConfig.depthBits.W))
 
     // Configuration
@@ -80,7 +80,7 @@ class TileBuffer extends Module {
     flushCounter + 1.U, flushCounter)
 
   // Memory is divided into four banks, one per pixel in the quad
-  val colorMemory = Seq.fill(pixelsPerQuad)(SyncReadMem(memorySize, RgbaColor()))
+  val colorMemory = Seq.fill(pixelsPerQuad)(SyncReadMem(memorySize, Color()))
   val depthMemory = Seq.fill(pixelsPerQuad)(SyncReadMem(memorySize, UInt(GpuConfig.depthBits.W)))
 
   // Each quad stores its pixels across four banks, but during a flush, we
@@ -112,7 +112,7 @@ class TileBuffer extends Module {
   // Same for write ports
   val quadWriteLanes = Wire(Vec(pixelsPerQuad, Bool())) // Set by pixel processing pipelines
   val writeAddress = Wire(UInt(memoryAddrBits.W))
-  val colorWriteVal = Wire(Vec(pixelsPerQuad, new RgbaColor))
+  val colorWriteVal = Wire(Vec(pixelsPerQuad, new Color))
   val depthWriteVal = Wire(Vec(pixelsPerQuad, UInt(GpuConfig.depthBits.W)))
 
   // Clear writes are delayed one cycle after reads.
@@ -138,9 +138,10 @@ class TileBuffer extends Module {
     }
   }
 
+  // @todo configure output conversion here.
   io.flushData.bits := Mux(io.flushBufferSel === RenderBufferId.Depth,
     depthReadVal(flushBank).pad(32),
-    colorReadVal(flushBank).toPackedBits
+    colorReadVal(flushBank).toPackedArgb32
   )
   val flushDataValid = RegInit(false.B)
   io.flushData.valid := flushDataValid
@@ -161,7 +162,7 @@ class TileBuffer extends Module {
   // Pixel processing pipeline
   for (pixel <- 0 until pixelsPerQuad) {
     // Stage 1: This waits for the read of the old color and depth values above,
-    // and passes through the other vlaues.
+    // and passes through the other values.
     object stage1 {
       val newColor = RegNext(io.colors(pixel))
       val newDepth = RegNext(io.depths(pixel))
@@ -170,7 +171,7 @@ class TileBuffer extends Module {
 
     // Stage 2: visibility checks, destination blending
     object stage2 {
-      val oneMinusAlpha = 0xff.U - stage1.newColor.alpha
+      val oneMinusAlpha = Color.maxChannelValue.U - stage1.newColor.alpha
       val oldWeightedColor = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
       val newColor = RegNext(stage1.newColor)
       val newDepth = RegNext(stage1.newDepth)

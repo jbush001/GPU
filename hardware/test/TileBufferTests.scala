@@ -23,9 +23,47 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Queue
 import scala.util.Random
 
-// For testing, this tracks ground truth for what should be in the buffer.
+case class ColorRef(r: Int, g: Int, b: Int, a: Int) {
+  def scale(component: Int, scaleFactor: Int): Int = {
+    val product = component * scaleFactor
+    (((product + (product >> Color.channelBits))
+      + (1 << (Color.channelBits - 1))) >> Color.channelBits)
+  }
+
+  def blend(incoming: ColorRef): ColorRef = {
+    val maxAlpha = (1 << Color.channelBits) - 1
+    val oneMinusAlpha = maxAlpha - incoming.a
+
+    val newR = (incoming.r + this.scale(this.r, oneMinusAlpha)).min(maxAlpha)
+    val newG = (incoming.g + this.scale(this.g, oneMinusAlpha)).min(maxAlpha)
+    val newB = (incoming.b + this.scale(this.b, oneMinusAlpha)).min(maxAlpha)
+    val newA = (incoming.a + this.scale(this.a, oneMinusAlpha)).min(maxAlpha)
+
+    ColorRef(newR, newG, newB, newA)
+  }
+
+  private def channel8Bit(ch: Int): Int = {
+    val rounded = (ch + 2) >> 2
+    rounded.min(255)
+  }
+
+  // Pack downsampled 8-bit channels into 32-bit ARGB
+  def toPackedArgb32: Int = {
+    val a8 = channel8Bit(a)
+    val r8 = channel8Bit(r)
+    val g8 = channel8Bit(g)
+    val b8 = channel8Bit(b)
+
+    (a8 << 24) | (r8 << 16) | (g8 << 8) | b8
+  }
+}
+
+/** For testing, this tracks ground truth for what should be in the buffer.
+  * This works in RGBA8888 space, what is expected to be flushed from the buffer
+  * although the internal color space is different.
+  */
 class TileBufferReference {
-  val colors = Array.fill(GpuConfig.tileSizePixels * GpuConfig.tileSizePixels)(0x00000000)
+  val colors = Array.fill(GpuConfig.tileSizePixels * GpuConfig.tileSizePixels)(ColorRef(0, 0, 0, 0))
   val depths = Array.fill(GpuConfig.tileSizePixels * GpuConfig.tileSizePixels)(0xffffff)
 
   private def rasterIndex(quadX: Int, quadY: Int, pixel: Int): Int = {
@@ -38,41 +76,13 @@ class TileBufferReference {
     }
   }
 
-  def clamp(x: Int): Int = {
-    x.min(255)
-  }
-
-  private def unpackChannel(value: Int, channel: Int): Int = {
-    (value >> (channel * 8)) & 0xff
-  }
-
-  private def packColor(r: Int, g: Int, b: Int, a: Int): Int = {
-    ((a & 0xff) << 24) | ((b & 0xff) << 16) | ((g & 0xff) << 8) | (r & 0xff)
-  }
-
-  def blend(newValue: Int, prevValue: Int): Int = {
-    val oldR = unpackChannel(prevValue, 0)
-    val oldG = unpackChannel(prevValue, 1)
-    val oldB = unpackChannel(prevValue, 2)
-    val oldA = unpackChannel(prevValue, 3)
-
-    val incomingA = unpackChannel(newValue, 3)
-    val oneMinusAlpha = 0xff - incomingA
-    val newR = clamp(unpackChannel(newValue, 0) + (oldR * oneMinusAlpha / 0xff))
-    val newG = clamp(unpackChannel(newValue, 1) + (oldG * oneMinusAlpha / 0xff))
-    val newB = clamp(unpackChannel(newValue, 2) + (oldB * oneMinusAlpha / 0xff))
-    val newA = clamp(unpackChannel(newValue, 3) + (oldA * oneMinusAlpha / 0xff))
-
-    packColor(newR, newG, newB, newA)
-  }
-
   def writeQuad(quadX: Int, quadY: Int, mask: Int,
-                newColors: Seq[Int], newDepths: Seq[Int]) = {
+                newColors: Seq[ColorRef], newDepths: Seq[Int]) = {
     for (pixel <- 0 until 4) {
       if ((mask & (1 << pixel)) != 0) {
         val idx = rasterIndex(quadX, quadY, pixel)
         if (newDepths(pixel) < depths(idx)) {
-          colors(idx) = blend(newColors(pixel), colors(idx))
+          colors(idx) = colors(idx).blend(newColors(pixel))
           depths(idx) = newDepths(pixel)
         }
       }
@@ -83,7 +93,7 @@ class TileBufferReference {
     for (y <- 0 until GpuConfig.tileSizePixels) {
       for (x <- 0 until GpuConfig.tileSizePixels) {
         val idx = y * GpuConfig.tileSizePixels + x
-        val expected = if (select == 0) colors(idx) else depths(idx)
+        val expected = if (select == 0) colors(idx).toPackedArgb32 else depths(idx)
         assert(results(idx) == expected,
           s"Mismatch at ($x, $y): got ${Integer.toHexString(results(idx))}, expected ${Integer.toHexString(expected)}")
       }
@@ -91,18 +101,15 @@ class TileBufferReference {
   }
 }
 
-class TileBufferTests extends AnyFunSuite with ChiselSim {
+class TileBufferTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
   // Push a quad through the DUT pipeline.
-  def writeQuad(dut: TileBuffer, x: Int, y: Int, mask: Int, colors: Seq[Int],
+  def writeQuad(dut: TileBuffer, x: Int, y: Int, mask: Int, colors: Seq[ColorRef],
     depths: Seq[Int]) = {
 
     dut.io.quadLoc.x.poke(x)
     dut.io.quadLoc.y.poke(y)
     for (pixel <- 0 until 4) {
-      for (ch <- 0 until 4) {
-        dut.io.colors(pixel).channels(ch).poke(colors(pixel) >> (ch * 8) & 0xff)
-      }
-
+      dut.io.colors(pixel).poke(r = colors(pixel).r, g = colors(pixel).g, b = colors(pixel).b, a = colors(pixel).a)
       dut.io.depths(pixel).poke(depths(pixel))
     }
 
@@ -154,7 +161,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
     this.flush(dut, RenderBufferId.Depth)
   }
 
-  test("alpha blend") {
+  test("TileBuffer alpha blend") {
    simulate(new TileBuffer()) { dut =>
       dut.io.valid.poke(false)
       dut.io.startFlush.poke(false)
@@ -166,7 +173,8 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
       this.clearBuffers(dut)
 
       writeQuad(dut, 0, 0, 0xf,
-        Seq(0xff0080ff, 0xff0080ff, 0xff0080ff, 0xff0080ff),
+        Seq(ColorRef(0x3ff, 0, 0x1ff, 0x3ff), ColorRef(0x3ff, 0, 0x1ff, 0x3ff),
+        ColorRef(0x3ff, 0, 0x1ff, 0x3ff), ColorRef(0x3ff, 0, 0x1ff, 0x3ff)),
         Seq(2, 2, 2, 2))
 
       // Flush pipeline
@@ -174,21 +182,22 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
 
       // Blend
       writeQuad(dut, 0, 0, 0xf,
-        Seq(0x00000000, 0x80ffffff, 0xffabcde7, 0x80808080),
+        Seq(ColorRef(0, 0, 0, 0), ColorRef(0x1ff, 0x3ff, 0x3ff, 0x3ff),
+        ColorRef(0x2ac, 0x334, 0x39c, 0x3ff), ColorRef(0x1ff, 0x1ff, 0x1ff, 0x1ff)),
         Seq(1, 1, 1, 1))
 
       // Flush pipeline
       dut.clock.step(4)
 
       val color = this.flush(dut, RenderBufferId.Color)
-      assert(color(0) == 0xff0080ff) // Alpha was zero, no change
-      assert(color(1) == 0xffffffff) // Midway
-      assert(color(GpuConfig.tileSizePixels) == 0xffabcde7) // Alpha is 255, take new value
-      assert(color(GpuConfig.tileSizePixels + 1) == 0xff80bfff) // Blend
+      assert(color(0) == 0xffff0080) // Alpha was zero, no change
+      assert(color(1) == 0xff80ffff) // Midway
+      assert(color(GpuConfig.tileSizePixels) == 0xffabcde7) // Alpha is 1.0, take new value
+      assert(color(GpuConfig.tileSizePixels + 1) == 0xffff80c0) // Blend
     }
   }
 
-  test("depth check disable") {
+  test("TileBuffer depth check disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
       dut.io.valid.poke(false)
@@ -199,15 +208,17 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
       dut.clock.step() // Ensure we are out of reset.
 
       writeQuad(dut, 0, 0, 0xf,
-        Seq(0xff0080ff, 0xff0080ff, 0xff0080ff, 0xff0080ff),
+        Seq(ColorRef(0, 0x1ff, 0x3ff, 0x3ff), ColorRef(0x3ff, 0x3ff, 0x3ff, 0x3ff),
+        ColorRef(0x2ac, 0x334, 0x39c, 0x3ff), ColorRef(0, 0x1ff, 0x3ff, 0x3ff)),
         Seq(2, 2, 2, 2))
 
       // Flush pixels
       dut.clock.step(4)
 
-      // Depth is greater. When checking is enabled, this iwl not write
+      // Depth is greater. If checking was enabled, this will not write, but it's
+      // not so they do.
       writeQuad(dut, 0, 0, 0xf,
-        Seq(0x00000000, 0x80ffffff, 0xffabcde7, 0x80808080),
+        Seq(ColorRef(0, 0, 0, 0), ColorRef(0x3ff, 0x3ff, 0x3ff, 0x3ff), ColorRef(0x156, 0x19a, 0x1ce, 0x3ff), ColorRef(0x1ff, 0x1ff, 0x1ff, 0x1ff)),
         Seq(3, 3, 3, 3))
 
       // Flush pipeline
@@ -223,12 +234,12 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
       val color = this.flush(dut, RenderBufferId.Color)
       assert(color(0) == 0xff0080ff)
       assert(color(1) == 0xffffffff)
-      assert(color(GpuConfig.tileSizePixels) == 0xffabcde7)
-      assert(color(GpuConfig.tileSizePixels + 1) == 0xff80bfff)
+      assert(color(GpuConfig.tileSizePixels) == 0xff566774)
+      assert(color(GpuConfig.tileSizePixels + 1) == 0xff80c0ff)
     }
   }
 
-  test("depth write disable") {
+  test("TileBuffer depth write disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
 
@@ -240,7 +251,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
       dut.clock.step() // Ensure we are out of reset.
 
       writeQuad(dut, 0, 0, 0xf,
-        Seq(0xff00aaff, 0xff00bbff, 0xff00ccff, 0xff00ddff),
+        Seq(ColorRef(0x3ff, 0, 0x154, 0x3ff), ColorRef(0x3ff, 0, 0x176, 0x3ff), ColorRef(0x3ff, 0, 0x198, 0x3ff), ColorRef(0x3ff, 0, 0x1ba, 0x3ff)),
         Seq(2, 2, 2, 2))
 
       // Flush pipeline
@@ -255,14 +266,14 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
 
       // Color is written
       val color = this.flush(dut, RenderBufferId.Color)
-      assert(color(0) == 0xff00aaff)
-      assert(color(1) == 0xff00bbff)
-      assert(color(GpuConfig.tileSizePixels) == 0xff00ccff)
-      assert(color(GpuConfig.tileSizePixels + 1) == 0xff00ddff)
+      assert(color(0) == 0xffff0055)
+      assert(color(1) == 0xffff005e)
+      assert(color(GpuConfig.tileSizePixels) == 0xffff0066)
+      assert(color(GpuConfig.tileSizePixels + 1) == 0xffff006f)
     }
   }
 
-  test("alpha blend disable") {
+  test("TileBuffer alpha blend disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
       dut.io.valid.poke(false)
@@ -273,7 +284,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
       dut.clock.step() // Ensure we are out of reset.
 
       writeQuad(dut, 0, 0, 0xf,
-        Seq(0x80ffff80, 0x80ffff80, 0x80ffff80, 0x80ffff80),
+        Seq(ColorRef(0x3ff, 0, 0x154, 0x3ff), ColorRef(0x3ff, 0, 0x176, 0x3ff), ColorRef(0x3ff, 0, 0x198, 0x3ff), ColorRef(0x3ff, 0, 0x1ba, 0x3ff)),
         Seq(2, 2, 2, 2))
 
       // Flush pipeline
@@ -281,14 +292,14 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
 
       // All pixels shoudl be written full intensity
       val color = this.flush(dut, RenderBufferId.Color)
-      assert(color(0) == 0x80ffff80)
-      assert(color(1) == 0x80ffff80)
-      assert(color(GpuConfig.tileSizePixels) == 0x80ffff80)
-      assert(color(GpuConfig.tileSizePixels + 1) == 0x80ffff80)
+      assert(color(0) == 0xffff0055)
+      assert(color(1) == 0xffff005e)
+      assert(color(GpuConfig.tileSizePixels) == 0xffff0066)
+      assert(color(GpuConfig.tileSizePixels + 1) == 0xffff006f)
     }
   }
 
-  test("random tile write") {
+  test("TileBuffer random tile write") {
     simulate(new TileBuffer()) { dut =>
       val reference = new TileBufferReference
 
@@ -322,7 +333,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim {
         }
 
         val mask = rng.nextInt(0xf)
-        val colors = Seq.fill(4) { rng.nextInt() }
+        val colors = Seq.fill(4) { ColorRef(rng.nextInt(0x3ff), rng.nextInt(0x3ff), rng.nextInt(0x3ff), rng.nextInt(0x3ff)) }
         val depths = Seq.fill(4) { rng.nextInt(0xffffff) }
 
         writeQuad(dut, quadX, quadY, mask, colors, depths)
