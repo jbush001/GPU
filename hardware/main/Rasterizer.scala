@@ -19,11 +19,6 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-object Consts {
-  val triangleEdges = 3
-  val pixelsPerQuad = 4
-}
-
 class RasterizerSetupParams extends Bundle {
   val boundingBox = BoundingBox()
   val initialValue = Vec(Consts.triangleEdges, SInt(GpuConfig.edgeFunctionBits.W))

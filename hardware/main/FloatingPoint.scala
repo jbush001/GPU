@@ -47,9 +47,9 @@ class Float32 extends Bundle {
 }
 
 object Float32 {
-  val exponentWidth = 8
-  val fractionWidth = 23 // As encoded (not including hidden bit)
-  def exponentBias = 127.U(exponentWidth.W) // This is an exponent of zero
+  final val exponentWidth = 8
+  final val fractionWidth = 23 // As encoded (not including hidden bit)
+  final def exponentBias = 127.U(exponentWidth.W) // This is an exponent of zero
 
   def apply() = new Float32()
 }

@@ -23,11 +23,11 @@ import org.scalatest.funsuite.AnyFunSuite
 
 class DirectAccessPort extends Bundle {
   val readEn = Input(Bool())
-  val readAddress = Input(UInt(AxiConsts.addressBits.W))
-  val readData = Output(UInt(AxiConsts.dataBits.W))
+  val readAddress = Input(UInt(AxiBus.addressBits.W))
+  val readData = Output(UInt(AxiBus.dataBits.W))
   val writeEn = Input(Bool())
-  val writeAddress = Input(UInt(AxiConsts.addressBits.W))
-  val writeData = Input(UInt(AxiConsts.dataBits.W))
+  val writeAddress = Input(UInt(AxiBus.addressBits.W))
+  val writeData = Input(UInt(AxiBus.dataBits.W))
 }
 
 class SimAxiMemory(memorySize: Int) extends Module {
@@ -35,7 +35,7 @@ class SimAxiMemory(memorySize: Int) extends Module {
 
   val dap = IO(new DirectAccessPort)
 
-  val memory = SyncReadMem(memorySize, UInt(AxiConsts.dataBits.W))
+  val memory = SyncReadMem(memorySize, UInt(AxiBus.dataBits.W))
 
   object State extends ChiselEnum {
     val Idle, Write, WriteAck, ReadSetup, ReadData = Value
@@ -43,13 +43,13 @@ class SimAxiMemory(memorySize: Int) extends Module {
 
   val state = RegInit(State.Idle)
   val writeLatched = RegInit(false.B)
-  val writeAddress = RegInit(0.U(AxiConsts.addressBits.W))
-  val writeLength = RegInit(0.U(AxiConsts.burstLengthBits.W))
+  val writeAddress = RegInit(0.U(AxiBus.addressBits.W))
+  val writeLength = RegInit(0.U(AxiBus.burstLengthBits.W))
   val readLatched = RegInit(false.B)
-  val readAddress = RegInit(0.U(AxiConsts.addressBits.W))
-  val readLength = RegInit(0.U(AxiConsts.burstLengthBits.W))
-  val burstAddress = RegInit(0.U(AxiConsts.addressBits.W))
-  val burstLength = RegInit(0.U(AxiConsts.burstLengthBits.W))
+  val readAddress = RegInit(0.U(AxiBus.addressBits.W))
+  val readLength = RegInit(0.U(AxiBus.burstLengthBits.W))
+  val burstAddress = RegInit(0.U(AxiBus.addressBits.W))
+  val burstLength = RegInit(0.U(AxiBus.burstLengthBits.W))
   val readAddressNext = Mux(io.readData.fire, burstAddress + 1.U, burstAddress)
 
   when (!writeLatched && io.writeRequest.valid) {

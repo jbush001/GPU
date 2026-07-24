@@ -24,13 +24,18 @@ import chisel3.util._
 //
 object GpuConfig {
   // Configurable parameters
-  val depthBits = 24
-  val tileSizePixels = 64;
-  val edgeFunctionBits = 32;
-  val coordinateBits = 16;
+  final val depthBits = 24
+  final val tileSizePixels = 64;
+  final val edgeFunctionBits = 32;
+  final val coordinateBits = 16;
 
   // Derived values
-  val tileCoordBits = log2Up(tileSizePixels)
+  final val tileCoordBits = log2Up(tileSizePixels)
 
   assert((GpuConfig.tileSizePixels & (GpuConfig.tileSizePixels - 1)) == 0) // Must be power of two tile
+}
+
+object Consts {
+  final val triangleEdges = 3
+  final val pixelsPerQuad = 4
 }

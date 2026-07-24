@@ -47,14 +47,12 @@ object RenderBufferId extends ChiselEnum {
   * @todo On flush, support different formats, e.g. abgr, bgra, rgba
   */
 class TileBuffer extends Module {
-  val pixelsPerQuad = 4
-
   val io = IO(new Bundle {
     val valid = Input(Bool())
     val quadLoc = Input(Point2D())
-    val mask = Input(Bits(pixelsPerQuad.W))
-    val colors = Input(Vec(pixelsPerQuad, Color()))
-    val depths = Input(Vec(pixelsPerQuad, UInt(GpuConfig.depthBits.W)))
+    val mask = Input(Bits(Consts.pixelsPerQuad.W))
+    val colors = Input(Vec(Consts.pixelsPerQuad, Color()))
+    val depths = Input(Vec(Consts.pixelsPerQuad, UInt(GpuConfig.depthBits.W)))
 
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
@@ -68,7 +66,7 @@ class TileBuffer extends Module {
     val enableBlend = Input(Bool())
   })
 
-  val memorySize = (GpuConfig.tileSizePixels * GpuConfig.tileSizePixels) / pixelsPerQuad
+  val memorySize = (GpuConfig.tileSizePixels * GpuConfig.tileSizePixels) / Consts.pixelsPerQuad
   val memoryAddrBits = log2Up(memorySize)
   val flushActive = RegInit(false.B)
 
@@ -80,8 +78,8 @@ class TileBuffer extends Module {
     flushCounter + 1.U, flushCounter)
 
   // Memory is divided into four banks, one per pixel in the quad
-  val colorMemory = Seq.fill(pixelsPerQuad)(SyncReadMem(memorySize, Color()))
-  val depthMemory = Seq.fill(pixelsPerQuad)(SyncReadMem(memorySize, UInt(GpuConfig.depthBits.W)))
+  val colorMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, Color()))
+  val depthMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, UInt(GpuConfig.depthBits.W)))
 
   // Each quad stores its pixels across four banks, but during a flush, we
   // need to send them to memory in linear raster order. These do the shuffling
@@ -110,17 +108,17 @@ class TileBuffer extends Module {
   val quadAddressStage2 = RegNext(quadAddressStage1)
 
   // Same for write ports
-  val quadWriteLanes = Wire(Vec(pixelsPerQuad, Bool())) // Set by pixel processing pipelines
+  val quadWriteLanes = Wire(Vec(Consts.pixelsPerQuad, Bool())) // Set by pixel processing pipelines
   val writeAddress = Wire(UInt(memoryAddrBits.W))
-  val colorWriteVal = Wire(Vec(pixelsPerQuad, new Color))
-  val depthWriteVal = Wire(Vec(pixelsPerQuad, UInt(GpuConfig.depthBits.W)))
+  val colorWriteVal = Wire(Vec(Consts.pixelsPerQuad, new Color))
+  val depthWriteVal = Wire(Vec(Consts.pixelsPerQuad, UInt(GpuConfig.depthBits.W)))
 
   // Clear writes are delayed one cycle after reads.
   val clearAddress = RegNext(flushAddress)
   writeAddress := Mux(flushActive, clearAddress, quadAddressStage2)
 
   // Compute write
-  for (pixel <- 0 until pixelsPerQuad) {
+  for (pixel <- 0 until Consts.pixelsPerQuad) {
     val isClearLane = (flushBank === pixel.U)
 
     val colorClearEnable = isClearLane && (io.flushBufferSel === RenderBufferId.Color) && io.flushData.fire
@@ -160,7 +158,7 @@ class TileBuffer extends Module {
   }
 
   // Pixel processing pipeline
-  for (pixel <- 0 until pixelsPerQuad) {
+  for (pixel <- 0 until Consts.pixelsPerQuad) {
     // Stage 1: This waits for the read of the old color and depth values above,
     // and passes through the other values.
     object stage1 {

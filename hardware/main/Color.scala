@@ -83,9 +83,9 @@ class Color extends Bundle {
 }
 
 object Color {
-  val numChannels = 4;
-  val channelBits = 10;
-  val maxChannelValue = ((1 << channelBits) - 1)
+  final val numChannels = 4;
+  final val channelBits = 10;
+  final val maxChannelValue = ((1 << channelBits) - 1)
 
   def apply() = new Color
 

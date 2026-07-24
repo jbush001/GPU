@@ -40,9 +40,9 @@ import chisel3.util._
   */
  class MemReadPort extends Bundle {
   val valid = Output(Bool())
-  val address = Output(UInt(AxiConsts.addressBits.W))
-  val length = Output(UInt(AxiConsts.burstLengthBits.W))
-  val data = Flipped(Decoupled(UInt(AxiConsts.dataBits.W)))
+  val address = Output(UInt(AxiBus.addressBits.W))
+  val length = Output(UInt(AxiBus.burstLengthBits.W))
+  val data = Flipped(Decoupled(UInt(AxiBus.dataBits.W)))
 }
 
 /** A simple burst-oriented memory write port. Same protocol as
@@ -51,9 +51,9 @@ import chisel3.util._
   */
 class MemWritePort extends Bundle {
   val valid = Output(Bool())
-  val address = Output(UInt(AxiConsts.addressBits.W))
-  val length = Output(UInt(AxiConsts.burstLengthBits.W))
-  val data = Decoupled(UInt(AxiConsts.dataBits.W))
+  val address = Output(UInt(AxiBus.addressBits.W))
+  val length = Output(UInt(AxiBus.burstLengthBits.W))
+  val data = Decoupled(UInt(AxiBus.dataBits.W))
 }
 
 /** Multiplexes [[numReadPorts]] read clients and [[numWritePorts]] write
