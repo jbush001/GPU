@@ -52,7 +52,7 @@ class AxiBus extends Bundle {
 }
 
 object AxiBus {
-    final val addressBits = 32
-    final val dataBits = 32
+    final val addressBits = 36
+    final val dataBits = 64
     final val burstLengthBits = 8
 }
