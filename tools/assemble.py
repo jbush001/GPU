@@ -191,7 +191,7 @@ class Assembler:
             if lookahead == 'loadf':
                 raw_int = struct.unpack('<I', struct.pack('<f', float(value)))[0]
             else:
-                raw_int = int(value)
+                raw_int = int(value, 0)
 
             self.emit_k(lineno, 0x43, rd, (raw_int >> 16) & 0xffff)  # loadhi
             self.emit_k(lineno, 0x44, rd, raw_int & 0xffff)  # loadlo
@@ -281,7 +281,7 @@ class Assembler:
         self.emit_raw(lineno, opcode)
 
     def emit_k(self, lineno, opcode, rd, value):
-        self.emit_raw(lineno, opcode | (rd << 7) | (value << 14))
+        self.emit_raw(lineno, opcode | (rd << 7) | (value << 16))
 
     def emit_raw(self, lineno, value):
         self.line_map.setdefault(lineno, []).append(len(self.code))
