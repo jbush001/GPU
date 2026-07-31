@@ -139,7 +139,7 @@ class Assembler:
                         else:
                            list_file.write(f'{"":4}   {addr * 4:04x}   {self.code[addr]:08x}\n')
                 else:
-                    list_file.write(f'{lineno:>4}   {"":13}   {source_line}\n')
+                    list_file.write(f'{lineno:>4}   {"":15}   {source_line}\n')
 
     def write_hex_file(self, source_filename):
         hex_file_name = Path(source_filename).with_suffix(".hex")
