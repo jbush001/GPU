@@ -30,3 +30,9 @@ This will write the rendered framebuffer into "output.png"
 **Generating API documentation**
 
     ./run doc
+
+**Running Assembler**
+
+    python3 tools/assemble.py sw/test.s
+
+Generates a .hex and .list file

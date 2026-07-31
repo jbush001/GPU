@@ -1,4 +1,6 @@
 *.png
+*.lst
+*.hex
 .bsp/
 .scala-build/
 build/
