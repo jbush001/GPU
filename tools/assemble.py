@@ -14,61 +14,63 @@
 #   limitations under the License.
 #
 
-from fileinput import filename, lineno
 import struct
 import sys
 from pathlib import Path
 
 FMT_RRR = 0
 FMT_RR = 1
-FMT_COMPARE  = 2
+FMT_COMPARE = 2
 FMT_COND_BRANCH = 3
 FMT_UNCOND_BRANCH = 4
 FMT_CONST = 5
 FMT_INHERENT = 6
 
-# Each entry is: opcode, format, is_float, swap_operands
+# Each entry is: opcode, format, swap_operands
 INSTRS = {
-    'and': (0, FMT_RRR, False, False),
-    'or': (1, FMT_RRR, False, False),
-    'xor': (2, FMT_RRR, False, False),
-    'addi': (3, FMT_RRR, False, False),
-    'subi': (4, FMT_RRR, False, False),
-    'muli': (5, FMT_RRR, False, False),
-    'lsl': (6, FMT_RRR, False, False),
-    'asr': (7, FMT_RRR, False, False),
-    'lsr': (8, FMT_RRR, False, False),
-    'addf': (9, FMT_RRR, True, False),
-    'subf': (10, FMT_RRR, True, False),
-    'mulf': (11, FMT_RRR, True, False),
-    'recip': (12, FMT_RR, True, False),
-    'ftoi': (13, FMT_RR, True, False),
-    'itof': (14, FMT_RR, False, False),
-    'setgtf': (15, FMT_COMPARE, True, False),
-    'setltf': (16, FMT_COMPARE, True, False),
-    'setgei': (17, FMT_COMPARE, False, False),
-    'setlei': (17, FMT_COMPARE, False, True),
-    'setlti': (18, FMT_COMPARE, False, False),
-    'setgti': (18, FMT_COMPARE, False, True),
-    'setgeu': (19, FMT_COMPARE, False, False),
-    'setleu': (19, FMT_COMPARE, False, True),
-    'setltu': (20, FMT_COMPARE, False, False),
-    'setgtu': (20, FMT_COMPARE, False, True),
-    'seteq': (21, FMT_COMPARE, False, False),
-    'setne': (22, FMT_COMPARE, False, False),
-    'bnz': (23, FMT_COND_BRANCH, False, False),
-    'bz': (24, FMT_COND_BRANCH, False, False),
-    'j': (25, FMT_UNCOND_BRANCH, False, False),
-    'halt': (127, FMT_INHERENT, False, False)
+    'and': (0, FMT_RRR, False),
+    'or': (1, FMT_RRR, False),
+    'xor': (2, FMT_RRR, False),
+    'addi': (3, FMT_RRR, False),
+    'subi': (4, FMT_RRR, False),
+    'muli': (5, FMT_RRR, False),
+    'lsl': (6, FMT_RRR, False),
+    'asr': (7, FMT_RRR, False),
+    'lsr': (8, FMT_RRR, False),
+    'addf': (9, FMT_RRR, True),
+    'subf': (10, FMT_RRR, True),
+    'mulf': (11, FMT_RRR, True),
+    'recip': (12, FMT_RR, False),
+    'ftoi': (13, FMT_RR, False),
+    'itof': (14, FMT_RR, False),
+    'setgtf': (15, FMT_COMPARE, True),
+    'setltf': (16, FMT_COMPARE, True),
+    'setgei': (17, FMT_COMPARE, False),
+    'setlei': (17, FMT_COMPARE, False),
+    'setlti': (18, FMT_COMPARE, False),
+    'setgti': (18, FMT_COMPARE, True),
+    'setgeu': (19, FMT_COMPARE, False),
+    'setleu': (19, FMT_COMPARE, True),
+    'setltu': (20, FMT_COMPARE, False),
+    'setgtu': (20, FMT_COMPARE, True),
+    'seteq': (21, FMT_COMPARE, False),
+    'setne': (22, FMT_COMPARE, False),
+    'bnz': (23, FMT_COND_BRANCH, False),
+    'bz': (24, FMT_COND_BRANCH, False),
+    'j': (25, FMT_UNCOND_BRANCH, False),
+    'halt': (127, FMT_INHERENT, False)
 }
 
 BRANCH_OFFSET_WIDTH = 19
 
+
 def is_vector_reg(val):
-    val >= 64
+    return val >= 64
+
 
 def is_scalar_reg(val):
-    val < 64
+    return val < 64
+
 
 # returns 0-63 for scalar registers
 # 64-127 for vector registers
@@ -89,6 +91,7 @@ def parse_reg_operand(lineno, token):
         return index + 64
     else:
         raise AssembleError(lineno, f'Invalid register {token}')
+
 
 class AssembleError(Exception):
     def __init__(self, lineno, message):
@@ -118,10 +121,13 @@ class Assembler:
 
             # Note, this assumes the instruction at the source already has its
             # branch offset zeroed out
-            # XXX does not do range checking, although it's unlikely you'd ever hit that.
+            # XXX does not do range checking, although it's unlikely you'd
+            # ever hit that.
             to_addr = self.labels[symbol]
-            offset = ((to_addr - (from_addr + 4)) // 4) & ((1 << BRANCH_OFFSET_WIDTH) - 1)
-            self.code[from_addr // 4] |= ((offset & 0x3f) << 7) | ((offset >> 6) << 19)
+            offset = (((to_addr - (from_addr + 4)) // 4) &
+                      ((1 << BRANCH_OFFSET_WIDTH) - 1))
+            self.code[from_addr // 4] |= (((offset & 0x3f) << 7)
+                                          | ((offset >> 6) << 19))
 
         self.write_list_file(source_filename)
         self.write_hex_file(source_filename)
@@ -135,9 +141,9 @@ class Assembler:
                 if instructions is not None:
                     for i, addr in enumerate(instructions):
                         if i == 0:
-                           list_file.write(f'{lineno:>4}   {addr * 4:04x}   {self.code[addr]:08x}   {source_line}\n')
+                            list_file.write(f'{lineno:>4}   {addr * 4:04x}   {self.code[addr]:08x}   {source_line}\n')
                         else:
-                           list_file.write(f'{"":4}   {addr * 4:04x}   {self.code[addr]:08x}\n')
+                            list_file.write(f'{"":4}   {addr * 4:04x}   {self.code[addr]:08x}\n')
                 else:
                     list_file.write(f'{lineno:>4}   {"":15}   {source_line}\n')
 
@@ -155,8 +161,9 @@ class Assembler:
 
         index = 0
         tokens = line.replace(',', ' , ').split()
+
         def next_token():
-            nonlocal index, tokens
+            nonlocal index
             if index == len(tokens):
                 return None
 
@@ -165,8 +172,6 @@ class Assembler:
             return retval
 
         def match(expected):
-            nonlocal lineno
-
             got = next_token()
             if got != expected:
                 raise AssembleError(lineno, f'Invalid token, got {got} expected {expected}')
@@ -188,8 +193,8 @@ class Assembler:
             else:
                 raw_int = int(value)
 
-            self.emit_k(lineno, 0x43, rd, (raw_int >> 16) & 0xffff) # loadhi
-            self.emit_k(lineno, 0x44, rd, raw_int & 0xffff) # loadlo
+            self.emit_k(lineno, 0x43, rd, (raw_int >> 16) & 0xffff)  # loadhi
+            self.emit_k(lineno, 0x44, rd, raw_int & 0xffff)  # loadlo
         elif lookahead == 'move':
             rd = parse_reg_operand(lineno, next_token())
             match(',')
@@ -197,10 +202,10 @@ class Assembler:
             self.emit_rv(lineno, 0, rd, rs, rs)
         elif lookahead == 'clear':
             rd = parse_reg_operand(lineno, next_token())
-            self.emit_rv(lineno, 2, rd, rd, rd) # xor rd, rd, rd
+            self.emit_rv(lineno, 2, rd, rd, rd)  # xor rd, rd, rd
         else:
             if lookahead in INSTRS:
-                opcode, format, is_float, swap_operands = INSTRS[lookahead]
+                opcode, format, swap_operands = INSTRS[lookahead]
             else:
                 raise AssembleError(lineno, 'Invalid opcode ' + lookahead)
 
@@ -257,7 +262,7 @@ class Assembler:
         return len(self.code) * 4
 
     def add_branch_fixup(self, symbol, lineno):
-        self.fixups.append((    self.get_current_addr(), symbol, lineno))
+        self.fixups.append((self.get_current_addr(), symbol, lineno))
 
     def emit_label(self, name, lineno):
         if name in self.labels:
@@ -282,9 +287,10 @@ class Assembler:
         self.line_map.setdefault(lineno, []).append(len(self.code))
         self.code.append(value)
 
+
 asm = Assembler()
+
 try:
     asm.assemble(sys.argv[1])
 except AssembleError as exc:
     print(str(exc))
-
