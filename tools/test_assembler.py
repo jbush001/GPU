@@ -35,22 +35,35 @@ def make_b(opcode, reg, offset):
 class TestAssemblerConstants(unittest.TestCase):
     def test_const_int(self):
         asm = Assembler()
+        # test various bases
         asm.assemble('''
             loadi r2, 0x12345678
+            loadi v3, 0b10101011110011011110111100010010
+            loadi v4, 3735928559
+            loadi r5, -1234567890
         ''')
         self.assertEqual(asm.code, [
             make_k(0x43, 2, 0x1234),
-            make_k(0x44, 2, 0x5678)
-        ])
+            make_k(0x44, 2, 0x5678),
+            make_k(0x43, 64 + 3, 0xabcd),
+            make_k(0x44, 64 + 3, 0xef12),
+            make_k(0x43, 64 + 4, 0xdead),
+            make_k(0x44, 64 + 4, 0xbeef),
+            make_k(0x43, 5, 0xb669),
+            make_k(0x44, 5, 0xfd2e),
+    ])
 
     def test_const_float(self):
         asm = Assembler()
         asm.assemble('''
             loadf r2, 1.234
+            loadf v3, -0.123
         ''')
         self.assertEqual(asm.code, [
             make_k(0x43, 2, 0x3f9d),
-            make_k(0x44, 2, 0xf3b6)
+            make_k(0x44, 2, 0xf3b6),
+            make_k(0x43, 64 + 3, 0xbdfb),
+            make_k(0x44, 64 + 3, 0xe76d)
         ])
 
     def test_arithmetic(self):
@@ -71,11 +84,11 @@ class TestAssemblerConstants(unittest.TestCase):
         ''')
         self.assertEqual(asm.code, [
             make_r(0x00, 1, 2, 3),
-            make_r(0x01, 64 | 4, 64 | 5, 64 | 6),
+            make_r(0x01, 64 + 4, 64 + 5, 64 | 6),
             make_r(0x02, 7, 8, 9),
-            make_r(0x03, 64 | 10, 64 | 11, 12),
-            make_r(0x04, 64 | 13, 14, 64 | 15),
-            make_r(0x05, 64 | 16, 17, 18),
+            make_r(0x03, 64 + 10, 64 + 11, 12),
+            make_r(0x04, 64 + 13, 14, 64 | 15),
+            make_r(0x05, 64 + 16, 17, 18),
             make_r(0x06, 19, 20, 21),
             make_r(0x07, 22, 23, 24),
             make_r(0x08, 25, 26, 27),

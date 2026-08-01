@@ -189,6 +189,8 @@ class Assembler:
             else:
                 raw_int = int(value, 0)
 
+            # XXX does not check range
+
             self.emit_k(lineno, 0x43, rd, (raw_int >> 16) & 0xffff)  # loadhi
             self.emit_k(lineno, 0x44, rd, raw_int & 0xffff)  # loadlo
         elif lookahead == 'move':
@@ -284,13 +286,14 @@ class Assembler:
         self.code.append(value)
 
 
-asm = Assembler()
+if __name__ == "__main__":
+    asm = Assembler()
 
-try:
-    source = open(sys.argv[1], 'r').read()
-    asm.assemble(source)
-    path = Path(sys.argv[1])
-    asm.write_list_file(source, path.with_suffix('.lst'))
-    asm.write_hex_file(path.with_suffix('.hex'))
-except AssembleError as exc:
-    print(str(exc))
+    try:
+        source = open(sys.argv[1], 'r').read()
+        asm.assemble(source)
+        path = Path(sys.argv[1])
+        asm.write_list_file(source, path.with_suffix('.lst'))
+        asm.write_hex_file(path.with_suffix('.hex'))
+    except AssembleError as exc:
+        print(str(exc))
