@@ -35,4 +35,6 @@ jobs:
         uses: veryl-lang/setup-verilator@v1
 
       - name: Run Tests
-        run: scala-cli test hardware
+        run: |
+          scala-cli test hardware
+          python3 -m unittest tools/test_assembler.py

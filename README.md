@@ -36,3 +36,7 @@ This will write the rendered framebuffer into "output.png"
     python3 tools/assemble.py sw/test.s
 
 Generates a .hex and .list file
+
+**Test Assembler**
+
+    python3 -m unittest test_assembler.py

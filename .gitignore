@@ -1,6 +1,7 @@
 *.png
 *.lst
 *.hex
+__pycache__/
 .bsp/
 .scala-build/
 build/

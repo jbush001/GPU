@@ -37,16 +37,16 @@ INSTRS = {
     'lsl': (6, FMT_RRR, False),
     'asr': (7, FMT_RRR, False),
     'lsr': (8, FMT_RRR, False),
-    'addf': (9, FMT_RRR, True),
-    'subf': (10, FMT_RRR, True),
-    'mulf': (11, FMT_RRR, True),
+    'addf': (9, FMT_RRR, False),
+    'subf': (10, FMT_RRR, False),
+    'mulf': (11, FMT_RRR, False),
     'recip': (12, FMT_RR, False),
     'ftoi': (13, FMT_RR, False),
     'itof': (14, FMT_RR, False),
-    'setgtf': (15, FMT_COMPARE, True),
-    'setltf': (16, FMT_COMPARE, True),
+    'setgtf': (15, FMT_COMPARE, False),
+    'setltf': (16, FMT_COMPARE, False),
     'setgei': (17, FMT_COMPARE, False),
-    'setlei': (17, FMT_COMPARE, False),
+    'setlei': (17, FMT_COMPARE, True),
     'setlti': (18, FMT_COMPARE, False),
     'setgti': (18, FMT_COMPARE, True),
     'setgeu': (19, FMT_COMPARE, False),
@@ -55,9 +55,9 @@ INSTRS = {
     'setgtu': (20, FMT_COMPARE, True),
     'seteq': (21, FMT_COMPARE, False),
     'setne': (22, FMT_COMPARE, False),
-    'bnz': (23, FMT_COND_BRANCH, False),
-    'bz': (24, FMT_COND_BRANCH, False),
-    'j': (25, FMT_UNCOND_BRANCH, False),
+    'bnz': (64, FMT_COND_BRANCH, False),
+    'bz': (65, FMT_COND_BRANCH, False),
+    'j': (66, FMT_UNCOND_BRANCH, False),
     'halt': (127, FMT_INHERENT, False)
 }
 
@@ -80,13 +80,13 @@ def parse_reg_operand(lineno, token):
     elif token.startswith('r'):
         index = int(token[1:])
         if index > 63:
-            raise AssembleError(lineno, 'Invalid register index' + index)
+            raise AssembleError(lineno, f'Invalid register index {index}')
 
         return index
     elif token.startswith('v'):
         index = int(token[1:])
         if index > 63:
-            raise AssembleError(lineno, 'Invalid register index' + index)
+            raise AssembleError(lineno, f'Invalid register index {index}')
 
         return index + 64
     else:
@@ -110,14 +110,13 @@ class Assembler:
         self.fixups = []
         self.line_map = {}
 
-    def assemble(self, source_filename):
-        with open(source_filename, 'r') as f:
-            for lineno, line in enumerate(f, 1):
-                self.assemble_line(lineno, line)
+    def assemble(self, source):
+        for lineno, line in enumerate(source.split('\n'), 1):
+            self.assemble_line(lineno, line)
 
         for from_addr, symbol, lineno in self.fixups:
             if symbol not in self.labels:
-                raise AssembleError(lineno, 'Unknown label ' + symbol)
+                raise AssembleError(lineno, f'Unknown label {symbol}')
 
             # Note, this assumes the instruction at the source already has its
             # branch offset zeroed out
@@ -126,16 +125,12 @@ class Assembler:
             to_addr = self.labels[symbol]
             offset = (((to_addr - (from_addr + 4)) // 4) &
                       ((1 << BRANCH_OFFSET_WIDTH) - 1))
-            self.code[from_addr // 4] |= (((offset & 0x3f) << 7)
-                                          | ((offset >> 6) << 19))
+            self.code[from_addr // 4] |= (((offset & 0x7f) << 7)
+                                          | ((offset >> 7) << 20))
 
-        self.write_list_file(source_filename)
-        self.write_hex_file(source_filename)
-
-    def write_list_file(self, source_filename):
-        list_file_name = Path(source_filename).with_suffix(".lst")
-        with open(source_filename, 'r') as source_file, open(list_file_name, 'w') as list_file:
-            for lineno, source_line in enumerate(source_file, 1):
+    def write_list_file(self, source, output_filename):
+        with open(output_filename, 'w') as list_file:
+            for lineno, source_line in enumerate(source.split('\n'), 1):
                 source_line = source_line.rstrip()
                 instructions = self.line_map.get(lineno)
                 if instructions is not None:
@@ -147,9 +142,8 @@ class Assembler:
                 else:
                     list_file.write(f'{lineno:>4}   {"":15}   {source_line}\n')
 
-    def write_hex_file(self, source_filename):
-        hex_file_name = Path(source_filename).with_suffix(".hex")
-        with open(hex_file_name, 'w') as hex_file:
+    def write_hex_file(self, output_filename):
+        with open(output_filename, 'w') as hex_file:
             for instruction in self.code:
                 hex_file.write(f'{instruction:08x}\n')
 
@@ -184,7 +178,9 @@ class Assembler:
         if lookahead is None:
             return
 
-        if lookahead == 'loadf' or lookahead == 'loadi':
+        if lookahead == 'nop':
+            self.emit_raw(lineno, 0)
+        elif lookahead == 'loadf' or lookahead == 'loadi':
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             value = next_token()
@@ -207,7 +203,7 @@ class Assembler:
             if lookahead in INSTRS:
                 opcode, format, swap_operands = INSTRS[lookahead]
             else:
-                raise AssembleError(lineno, 'Invalid opcode ' + lookahead)
+                raise AssembleError(lineno, f'Invalid opcode {lookahead}')
 
             if format == FMT_RRR:
                 rd = parse_reg_operand(lineno, next_token())
@@ -266,16 +262,16 @@ class Assembler:
 
     def emit_label(self, name, lineno):
         if name in self.labels:
-            raise AssembleError(lineno, 'Redefined label ' + name)
+            raise AssembleError(lineno, f'Redefined label {name}')
 
-        self.labels[name] = len(self.code)
+        self.labels[name] = len(self.code) * 4
 
     def emit_rv(self, lineno, opcode, rd, rs1, rs2):
-        self.emit_raw(lineno, opcode | (rd << 7) | (rs1 << 13) | (rs2 << 20))
+        self.emit_raw(lineno, opcode | (rd << 7) | (rs1 << 14) | (rs2 << 21))
 
     def emit_b(self, lineno, opcode, rs1):
         # Destination is always set using a fixup
-        self.emit_raw(lineno, opcode | (rs1 << 13))
+        self.emit_raw(lineno, opcode | (rs1 << 14))
 
     def emit_x(self, lineno, opcode):
         self.emit_raw(lineno, opcode)
@@ -291,6 +287,10 @@ class Assembler:
 asm = Assembler()
 
 try:
-    asm.assemble(sys.argv[1])
+    source = open(sys.argv[1], 'r').read()
+    asm.assemble(source)
+    path = Path(sys.argv[1])
+    asm.write_list_file(source, path.with_suffix('.lst'))
+    asm.write_hex_file(path.with_suffix('.hex'))
 except AssembleError as exc:
     print(str(exc))

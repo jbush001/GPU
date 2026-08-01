@@ -43,7 +43,7 @@ parameter memory.
 Instructions use fixed width, 32-bit instructions, encoded as follows.
 
 ```
-              31                                                            0
+              31      27         21 20         14 13          7 6           0
              +-------+-------------+-------------+-------------+-------------+
 R: Arith     |       |   rs2 (7)   |    rs1 (7)  |    rd (7)   |  opcode (7) |
              +-------+-------------+-+-----------+-------------+-------------+
