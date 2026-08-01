@@ -191,8 +191,8 @@ class Assembler:
 
             # XXX does not check range
 
-            self.emit_k(lineno, 0x43, rd, (raw_int >> 16) & 0xffff)  # loadhi
-            self.emit_k(lineno, 0x44, rd, raw_int & 0xffff)  # loadlo
+            self.emit_k(lineno, 0x44, rd, (raw_int >> 16) & 0xffff)  # loadhi
+            self.emit_k(lineno, 0x43, rd, raw_int & 0xffff)  # loadlo
         elif lookahead == 'move':
             rd = parse_reg_operand(lineno, next_token())
             match(',')

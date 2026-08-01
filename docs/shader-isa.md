@@ -2,10 +2,8 @@
 # Functional Description
 
 This is a description of the shader processing engine (SPE), a SIMD processor
-responsible for programmable rendering operations. This design uses a unified
+that performs programmable rendering operations. This design uses a unified
 processor that handles multiple functions (e.g. vertex and pixel shading).
-
-The number of SIMD lanes is configurable, but we are defaulting to 8.
 
 ## Terms/definitions
 
@@ -56,9 +54,6 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 ```
 
 `opcode`
-
-The 'V' bit below indicates a vector instruction (format V), otherwise it is
-scalar (format R).
 
 
 | Code    | Mnemonic                 | Description                 | Format |

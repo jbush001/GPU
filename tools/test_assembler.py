@@ -43,14 +43,14 @@ class TestAssemblerConstants(unittest.TestCase):
             loadi r5, -1234567890
         ''')
         self.assertEqual(asm.code, [
-            make_k(0x43, 2, 0x1234),
-            make_k(0x44, 2, 0x5678),
-            make_k(0x43, 64 + 3, 0xabcd),
-            make_k(0x44, 64 + 3, 0xef12),
-            make_k(0x43, 64 + 4, 0xdead),
-            make_k(0x44, 64 + 4, 0xbeef),
-            make_k(0x43, 5, 0xb669),
-            make_k(0x44, 5, 0xfd2e),
+            make_k(0x44, 2, 0x1234),
+            make_k(0x43, 2, 0x5678),
+            make_k(0x44, 64 + 3, 0xabcd),
+            make_k(0x43, 64 + 3, 0xef12),
+            make_k(0x44, 64 + 4, 0xdead),
+            make_k(0x43, 64 + 4, 0xbeef),
+            make_k(0x44, 5, 0xb669),
+            make_k(0x43, 5, 0xfd2e),
     ])
 
     def test_const_float(self):
@@ -60,10 +60,10 @@ class TestAssemblerConstants(unittest.TestCase):
             loadf v3, -0.123
         ''')
         self.assertEqual(asm.code, [
-            make_k(0x43, 2, 0x3f9d),
-            make_k(0x44, 2, 0xf3b6),
-            make_k(0x43, 64 + 3, 0xbdfb),
-            make_k(0x44, 64 + 3, 0xe76d)
+            make_k(0x44, 2, 0x3f9d),
+            make_k(0x43, 2, 0xf3b6),
+            make_k(0x44, 64 + 3, 0xbdfb),
+            make_k(0x43, 64 + 3, 0xe76d)
         ])
 
     def test_arithmetic(self):
