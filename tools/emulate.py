@@ -94,6 +94,9 @@ class Emulator:
         self.registers[EXEC_MASK_REG] = 0xff
         self.halted = False
 
+        # Set this flag to see all register writes.
+        self.trace = False
+
     def load_hex_file(self, filename):
         with open(filename, "r") as f:
             for line in f:
@@ -101,6 +104,20 @@ class Emulator:
                 if not line or line.startswith("#"):
                     continue
                 self.instructions.append(int(line, 16))
+
+    def set_register(self, rd, value):
+        if is_scalar_reg(rd):
+            self.registers[rd] = value
+            if self.trace:
+                print(f'r{rd} <= {value:08x}')
+        else:
+            if self.trace:
+                print(f'v{rd - NUM_SCALAR_REGS} <= {" ".join(f"{x:08x}" for x in value)} mask={self.registers[EXEC_MASK_REG]:08b}')
+
+            exec_mask = self.registers[EXEC_MASK_REG]
+            for i in range(VECTOR_WIDTH):
+                if (exec_mask >> i) & 1:
+                    self.registers[rd][i] = value[i]
 
     def run(self):
         while not self.halted:
@@ -127,9 +144,10 @@ class Emulator:
                 if not is_scalar_reg(rs1) or not is_scalar_reg(rs2):
                     raise Exception(f'Illegal source register')
 
-                self.registers[rd] = operation(self.registers[rs1],
-                                               self.registers[rs2]) & 0xffffffff
+                self.set_register(rd, operation(self.registers[rs1],
+                    self.registers[rs2]) & 0xffffffff)
             else:
+                # Vector destination
                 if is_scalar_reg(rs1):
                     rs1_value = [self.registers[rs1]] * VECTOR_WIDTH
                 else:
@@ -140,10 +158,8 @@ class Emulator:
                 else:
                     rs2_value = self.registers[rs2]
 
-                exec_mask = self.registers[EXEC_MASK_REG]
-                for i in range(VECTOR_WIDTH):
-                    if (exec_mask >> i) & 1:
-                        self.registers[rd][i] = operation(rs1_value[i], rs2_value[i]) & 0xffffffff
+                result = [operation(a, b) & 0xffffffff for a, b in zip(rs1_value, rs2_value)]
+                self.set_register(rd, result)
         elif format == FMT_RR:
             rd = (instr >> 7) & 0x7f
             rs = (instr >> 14) & 0x7f
@@ -157,10 +173,8 @@ class Emulator:
                 else:
                     rs1_value = self.registers[rs]
 
-                exec_mask = self.registers[EXEC_MASK_REG]
-                for i in range(VECTOR_WIDTH):
-                    if (exec_mask >> i) & 1:
-                        self.registers[rd][i] = operation(rs1_value[i]) & 0xffffffff
+            result = [operation(a) & 0xffffffff for a in rs1_value]
+            self.set_register(rd, result)
         elif format == FMT_CMP:
             rd = (instr >> 7) & 0x7f
             rs1 = (instr >> 14) & 0x7f
@@ -182,7 +196,7 @@ class Emulator:
                 if operation(rs1_value[i], rs2_value[i]):
                     result |= (1 << i)
 
-            self.registers[rd] = result
+            self.set_register(rd, result)
         elif format == FMT_BRANCH:
             rs = (instr >> 14) & 0x3f
             take_branch = operation(self.registers[rs])
@@ -195,12 +209,10 @@ class Emulator:
             rd = (instr >> 7) & 0x7f
             imm_val = (instr >> 16) & 0xffff
             if is_scalar_reg(rd):
-                self.registers[rd] = operation(self.registers[rd], imm_val)
+                self.set_register(rd, operation(self.registers[rd], imm_val))
             else:
-                exec_mask = self.registers[EXEC_MASK_REG]
-                for i in range(VECTOR_WIDTH):
-                    if (exec_mask >> i) & 1:
-                        self.registers[rd][i] = operation(self.registers[rd][i], imm_val)
+                result = [operation(self.registers[rd][i], imm_val) for i in range(VECTOR_WIDTH)]
+                self.set_register(rd, result)
         else:
             # Halt
             self.halted = True
