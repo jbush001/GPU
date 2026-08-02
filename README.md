@@ -39,4 +39,4 @@ Generates a .hex and .list file
 
 **Test Assembler**
 
-    python3 -m unittest test_assembler.py
+    python3 -m unittest discover tools

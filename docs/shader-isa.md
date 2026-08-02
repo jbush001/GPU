@@ -56,7 +56,7 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 `opcode`
 
 
-| Code    | Mnemonic                 | Description                 | Format |
+| Opcode  | Mnemonic                 | Description                 | Format |
 |---------|--------------------------|-----------------------------|--------|
 | 0000000 | and rd, rs0, rs1         | Bitwise and                 |   R    |
 | 0000001 | or rd, rs0, rs1          | Bitwise or                  |   R    |

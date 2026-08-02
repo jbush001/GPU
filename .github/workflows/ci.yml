@@ -37,4 +37,4 @@ jobs:
       - name: Run Tests
         run: |
           scala-cli test hardware
-          python3 -m unittest tools/test_assembler.py
+          python3 -m unittest discover tools
