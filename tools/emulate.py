@@ -22,6 +22,15 @@ NUM_SCALAR_REGS = 64
 NUM_VECTOR_REGS = 64
 EXEC_MASK_REG = 32
 
+LPM_READ_ADDR = 33
+LPM_READ_DATA = 109
+LPM_WRITE_ADDR = 34
+LPM_WRITE_DATA = 110
+UNIFORM_ADDR = 35
+UNIFORM_DATA = 36
+LANE_ID = 111
+CONST_ZERO = 53
+
 # The default register type is stored as u32, these functions cast to other types
 
 def reinterp_u2i(value: int) -> int:
@@ -95,6 +104,11 @@ class Emulator:
         self.instructions = []
         self.registers[EXEC_MASK_REG] = 0xff
         self.halted = False
+        self.uniforms = [0] * 1024
+        self.uniform_addr = 0
+        self.local_parameter_memory = [0] * 1024
+        self.lpm_read_addr = 0
+        self.lpm_write_addr = 0
 
         # Set this flag to see all register writes.
         self.trace = False
@@ -109,17 +123,63 @@ class Emulator:
 
     def set_register(self, rd, value):
         if is_scalar_reg(rd):
-            self.registers[rd] = value
             if self.trace:
                 print(f'r{rd} <= {value:08x}')
+
+            if rd == LPM_READ_ADDR:
+                self.lpm_read_addr = value
+            elif rd == LPM_WRITE_ADDR:
+                self.lpm_write_addr = value
+            elif rd == UNIFORM_ADDR:
+                self.uniform_addr = value
+            else:
+                self.registers[rd] = value
         else:
             if self.trace:
                 print(f'v{rd - NUM_SCALAR_REGS} <= {" ".join(f"{x:08x}" for x in value)} mask={self.registers[EXEC_MASK_REG]:08b}')
 
-            exec_mask = self.registers[EXEC_MASK_REG]
+            if rd == LPM_WRITE_DATA:
+                for i in range(VECTOR_WIDTH):
+                    if (self.registers[EXEC_MASK_REG] >> i) & 1:
+                        self.local_parameter_memory[self.lpm_write_addr] = value[i]
+
+                    self.lpm_write_addr += 1
+            else:
+                exec_mask = self.registers[EXEC_MASK_REG]
+                for i in range(VECTOR_WIDTH):
+                    if (exec_mask >> i) & 1:
+                        self.registers[rd][i] = value[i]
+
+    def get_register(self, reg_num):
+        if reg_num == LPM_READ_DATA:
+            result = []
             for i in range(VECTOR_WIDTH):
-                if (exec_mask >> i) & 1:
-                    self.registers[rd][i] = value[i]
+                result.append(self.local_parameter_memory[self.lpm_read_addr + i])
+
+            self.lpm_read_addr = self.lpm_read_addr + VECTOR_WIDTH
+            return result
+
+        if reg_num == UNIFORM_DATA:
+            result = self.uniforms[self.uniform_addr]
+            self.uniform_addr += 1
+            return result
+
+        if reg_num == CONST_ZERO:
+            return 0
+
+        if reg_num == LANE_ID:
+            return [i for i in range(VECTOR_WIDTH)]
+
+        if reg_num == UNIFORM_ADDR:
+            return self.uniform_addr
+
+        if reg_num == LPM_READ_ADDR:
+            return self.lpm_read_addr
+
+        if reg_num == LPM_WRITE_ADDR:
+            return self.lpm_write_addr
+
+        return self.registers[reg_num]
 
     def run(self):
         while not self.halted:
@@ -146,19 +206,19 @@ class Emulator:
                 if not is_scalar_reg(rs1) or not is_scalar_reg(rs2):
                     raise Exception(f'Illegal source register')
 
-                self.set_register(rd, operation(self.registers[rs1],
-                    self.registers[rs2]) & 0xffffffff)
+                self.set_register(rd, operation(self.get_register(rs1),
+                    self.get_register(rs2)) & 0xffffffff)
             else:
                 # Vector destination
                 if is_scalar_reg(rs1):
-                    rs1_value = [self.registers[rs1]] * VECTOR_WIDTH
+                    rs1_value = [self.get_register(rs1)] * VECTOR_WIDTH
                 else:
-                    rs1_value = self.registers[rs1]
+                    rs1_value = self.get_register(rs1)
 
                 if is_scalar_reg(rs2):
-                    rs2_value = [self.registers[rs2]] * VECTOR_WIDTH
+                    rs2_value = [self.get_register(rs2)] * VECTOR_WIDTH
                 else:
-                    rs2_value = self.registers[rs2]
+                    rs2_value = self.get_register(rs2)
 
                 result = [operation(a, b) & 0xffffffff for a, b in zip(rs1_value, rs2_value)]
                 self.set_register(rd, result)
@@ -168,12 +228,12 @@ class Emulator:
 
             if is_scalar_reg(rd):
                 assert(is_scalar_reg(rs))
-                self.registers[rd] = operation(self.registers[rs])
+                self.set_register(rd, operation(self.get_register(rs)) & 0xffffffff)
             else:
                 if is_scalar_reg(rs):
-                    rs1_value = [self.registers[rs]] * VECTOR_WIDTH
+                    rs1_value = [self.get_register(rs)] * VECTOR_WIDTH
                 else:
-                    rs1_value = self.registers[rs]
+                    rs1_value = self.get_register(rs)
 
                 result = [operation(a) & 0xffffffff for a in rs1_value]
                 self.set_register(rd, result)
@@ -184,14 +244,14 @@ class Emulator:
 
             assert(is_scalar_reg(rd))
             if is_scalar_reg(rs1):
-                rs1_value = [self.registers[rs1]] * VECTOR_WIDTH
+                rs1_value = [self.get_register(rs1)] * VECTOR_WIDTH
             else:
-                rs1_value = self.registers[rs1]
+                rs1_value = self.get_register(rs1)
 
             if is_scalar_reg(rs2):
-                rs2_value = [self.registers[rs2]] * VECTOR_WIDTH
+                rs2_value = [self.get_register(rs2)] * VECTOR_WIDTH
             else:
-                rs2_value = self.registers[rs2]
+                rs2_value = self.get_register(rs2)
 
             result = 0
             for i in range(VECTOR_WIDTH):
@@ -201,7 +261,7 @@ class Emulator:
             self.set_register(rd, result)
         elif format == FMT_BRANCH:
             rs = (instr >> 14) & 0x3f
-            take_branch = operation(self.registers[rs])
+            take_branch = operation(self.get_register(rs))
             if take_branch:
                 raw_offset = ((instr >> 7) & 0x3f) | ((instr >> 20) << 7)
                 offset = (raw_offset ^ (1 << 19)) - (1 << 19)  # Sign extend
@@ -211,9 +271,9 @@ class Emulator:
             rd = (instr >> 7) & 0x7f
             imm_val = (instr >> 16) & 0xffff
             if is_scalar_reg(rd):
-                self.set_register(rd, operation(self.registers[rd], imm_val))
+                self.set_register(rd, operation(self.get_register(rd), imm_val))
             else:
-                result = [operation(self.registers[rd][i], imm_val) for i in range(VECTOR_WIDTH)]
+                result = [operation(self.get_register(rd)[i], imm_val) for i in range(VECTOR_WIDTH)]
                 self.set_register(rd, result)
         else:
             # Halt

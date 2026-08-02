@@ -136,9 +136,9 @@ undefined. Attemping to write a read-only register will have no effect.
 |-------|---------------------------------------------------|--------|
 |  0-31 | Scalar general purpose registers                  |  r/w   |
 |   32  | Exec mask                                         |  r/w   |
-|   33  | LPM read address                                  |   w    |
-|   34  | LPM write address                                 |   w    |
-|   35  | Uniform read address                              |   w    |
+|   33  | LPM read address                                  |  r/w   |
+|   34  | LPM write address                                 |  r/w   |
+|   35  | Uniform read address                              |  r/w   |
 |   36  | Uniform read value                                |   r    |
 |   53  | Constant 0                                        |   r    |
 |   54  | Constant 1                                        |   r    |

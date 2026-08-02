@@ -31,6 +31,7 @@ def make_b(opcode, reg, offset):
     offset &= 0x7ffff
     return opcode | ((offset & 0x7f) << 7) | (reg << 14) | ((offset >> 7) << 20)
 
+HALT = 0
 
 class TestEmulator(unittest.TestCase):
     def run_test(self, code, init_regs, final_regs):
@@ -45,7 +46,7 @@ class TestEmulator(unittest.TestCase):
                 cpu.registers[reg] = value & 0xffffffff
 
         cpu.instructions += code
-        cpu.instructions += [0] # Halt
+        cpu.instructions += [HALT]
 
         cpu.run()
 
@@ -315,6 +316,81 @@ class TestEmulator(unittest.TestCase):
             ],
             init_regs={64 + 3: [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888]},
             final_regs={64 + 3: [0xabcd1111, 0xabcd2222, 0xabcd3333, 0xabcd4444, 0xabcd5555, 0xabcd6666, 0xabcd7777, 0xabcd8888]})
+
+    def test_uniform_read(self):
+        cpu = emulate.Emulator()
+        cpu.uniforms[:] = [11, 22, 33, 44, 55, 66, 77, 88]
+
+        cpu.instructions += [
+            make_k(28, 35, 1), # loadlo UNIFORM_ADDR, 1
+            make_r(2, 2, 36, 53), # move r2, UNIFORM_DATA
+            make_r(2, 3, 36, 53), # move r3, UNIFORM_DATA
+            make_r(2, 4, 36, 53), # move r4, UNIFORM_DATA
+            make_k(28, 35, 6), # Load uniform index
+            make_r(2, 5, 36, 53), # move r5, UNIFORM_DATA
+            HALT
+        ]
+
+        cpu.run()
+
+        self.assertEqual(cpu.get_register(2), 22)
+        self.assertEqual(cpu.get_register(3), 33)
+        self.assertEqual(cpu.get_register(4), 44)
+        self.assertEqual(cpu.get_register(5), 77)
+
+    def test_lpm_read(self):
+        cpu = emulate.Emulator()
+        cpu.local_parameter_memory[0:256] = [x * 13 for x in range(256)]
+
+        cpu.instructions += [
+            make_k(28, 33, 0), # loadlo LPM_READ_ADDR, 1
+            make_r(2, 66, 109, 53), # move v2, LPM_READ_DATA
+            make_r(2, 67, 109, 53), # move v3, LPM_READ_DATA
+            make_k(28, 33, 30), # ladlo LPM_READ_ADDR, 30
+            make_r(2, 68, 109, 53), # move v4, LPM_READ_DATA
+            HALT
+        ]
+
+        cpu.run()
+
+        self.assertEqual(cpu.get_register(66), [0, 13, 26, 39, 52, 65, 78, 91])
+        self.assertEqual(cpu.get_register(67), [13*8, 13*9, 13*10, 13*11, 13*12, 13*13, 13*14, 13*15])
+        self.assertEqual(cpu.get_register(68), [13*30, 13*31, 13*32, 13*33, 13*34, 13*35, 13*36, 13*37])
+
+    def test_lpm_write(self):
+        cpu = emulate.Emulator()
+
+        cpu.instructions += [
+            make_k(28, 34, 0), # loadlo LPM_WRITE_ADDR, 0
+            make_r(2, 110, 66, 53), # move LPM_WRITE_DATA, v2
+            make_r(2, 110, 67, 53), # move LPM_WRITE_DATA, v3
+            make_k(28, 34, 32), # loadlo LPM_WRITE_ADDR, 32 (discontiguous)
+            make_r(2, 110, 68, 53), # move LPM_WRITE_DATA, v4
+            HALT
+        ]
+
+        cpu.registers[66] = [1,2,3,4,5,6,7,8]
+        cpu.registers[67] = [9,10,11,12,13,14,15,16]
+        cpu.registers[68] = [17,18,19,20,21,22,23,24]
+
+        cpu.run()
+
+        print(cpu.local_parameter_memory[0:8])
+        self.assertEqual(cpu.local_parameter_memory[0:8], [1,2,3,4,5,6,7,8])
+        self.assertEqual(cpu.local_parameter_memory[8:16], [9,10,11,12,13,14,15,16])
+        self.assertEqual(cpu.local_parameter_memory[32:40], [17,18,19,20,21,22,23,24])
+
+    def test_get_laneid(self):
+        cpu = emulate.Emulator()
+
+        cpu.instructions += [
+            make_r(2, 66, 111, 53), # move v2, LANE_ID
+            HALT
+        ]
+
+        cpu.run()
+
+        self.assertEqual(cpu.get_register(66), [0,1,2,3,4,5,6,7])
 
 if __name__ == "__main__":
     unittest.main()
