@@ -190,8 +190,9 @@ ones are idle. For example:
 ```
 
 In this case, the processor will generally run both forks of the branch, first
-setting the exec flag based on the comparison a>b, then inverting it for the
-else clause to ensure each work item. Here is how that code might assemble:
+setting the `exec mask` (Register 32) based on the comparison a>b, then
+inverting it for the else clause to ensure each work item. Here is how that
+code might assemble:
 
 ```
     ; v0 = a, v1 = b

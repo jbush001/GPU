@@ -37,6 +37,6 @@ This will write the rendered framebuffer into "output.png"
 
 Generates a .hex and .list file
 
-**Test Assembler**
+**Test Tools**
 
     python3 -m unittest discover tools

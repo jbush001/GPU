@@ -52,37 +52,39 @@ FMT_K = 4
 FMT_X = 5
 
 # (format, operation)
+# The signature of the passed function is different depending on the format.
+# RR is (a) -> b, RRR is (a, b) -> c, CMP is (a, b) -> bool, BRANCH is (a) -> bool, K is (a, imm) -> b
 INSTR_TABLE = {
-    0: (FMT_X, None), # halt
-    1: (FMT_RRR, lambda a, b: a & b), # and
-    2: (FMT_RRR, lambda a, b: a | b), # or
-    3: (FMT_RRR, lambda a, b: a ^ b), # xor
-    4: (FMT_RRR, lambda a, b: a + b), # addi
-    5: (FMT_RRR, lambda a, b: a - b), # subi
-    6: (FMT_RRR, lambda a, b: a * b), # muli
-    7: (FMT_RRR, lambda a, b: (a * b) >> 32), # mulih
-    8: (FMT_RRR, lambda a, b: a << b), # lsl
-    9: (FMT_RRR, lambda a, b: reinterp_u2i(a) >> b), # asr
-    10: (FMT_RRR, lambda a, b: a >> b), # lsr
-    11: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) + reinterp_u2f(b))), # addf
-    12: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) - reinterp_u2f(b))), # subf
-    13: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) * reinterp_u2f(b))), # mulf
-    14: (FMT_RR, lambda a: recip_estimate(reinterp_u2f(a))), # recip
-    15: (FMT_RR, lambda a: int(reinterp_u2f(a)) & 0xffffffff), # ftoi
-    16: (FMT_RR, lambda a: reinterp_f2u(float(reinterp_u2i(a)))), # itof
-    17: (FMT_CMP, lambda a, b: reinterp_u2f(a) > reinterp_u2f(b)), # setgtf
-    18: (FMT_CMP, lambda a, b: reinterp_u2f(a) < reinterp_u2f(b)), # setltf
-    19: (FMT_CMP, lambda a, b: reinterp_u2i(a) >= reinterp_u2i(b)), # setgei
-    20: (FMT_CMP, lambda a, b: reinterp_u2i(a) < reinterp_u2i(b)), # setlti
-    21: (FMT_CMP, lambda a, b: a >= b), # setgeu
-    22: (FMT_CMP, lambda a, b: a < b), # setltu
-    23: (FMT_CMP, lambda a, b: a == b), # seteq
-    24: (FMT_CMP, lambda a, b: a != b), # setne
+    0:  (FMT_X,      None), # halt
+    1:  (FMT_RRR,    lambda a, b: a & b), # and
+    2:  (FMT_RRR,    lambda a, b: a | b), # or
+    3:  (FMT_RRR,    lambda a, b: a ^ b), # xor
+    4:  (FMT_RRR,    lambda a, b: a + b), # addi
+    5:  (FMT_RRR,    lambda a, b: a - b), # subi
+    6:  (FMT_RRR,    lambda a, b: a * b), # muli
+    7:  (FMT_RRR,    lambda a, b: (a * b) >> 32), # mulih
+    8:  (FMT_RRR,    lambda a, b: a << b), # lsl
+    9:  (FMT_RRR,    lambda a, b: reinterp_u2i(a) >> b), # asr
+    10: (FMT_RRR,    lambda a, b: a >> b), # lsr
+    11: (FMT_RRR,    lambda a, b: reinterp_f2u(reinterp_u2f(a) + reinterp_u2f(b))), # addf
+    12: (FMT_RRR,    lambda a, b: reinterp_f2u(reinterp_u2f(a) - reinterp_u2f(b))), # subf
+    13: (FMT_RRR,    lambda a, b: reinterp_f2u(reinterp_u2f(a) * reinterp_u2f(b))), # mulf
+    14: (FMT_RR,     lambda a: recip_estimate(reinterp_u2f(a))), # recip
+    15: (FMT_RR,     lambda a: int(reinterp_u2f(a)) & 0xffffffff), # ftoi
+    16: (FMT_RR,     lambda a: reinterp_f2u(float(reinterp_u2i(a)))), # itof
+    17: (FMT_CMP,    lambda a, b: reinterp_u2f(a) > reinterp_u2f(b)), # setgtf
+    18: (FMT_CMP,    lambda a, b: reinterp_u2f(a) < reinterp_u2f(b)), # setltf
+    19: (FMT_CMP,    lambda a, b: reinterp_u2i(a) >= reinterp_u2i(b)), # setgei
+    20: (FMT_CMP,    lambda a, b: reinterp_u2i(a) < reinterp_u2i(b)), # setlti
+    21: (FMT_CMP,    lambda a, b: a >= b), # setgeu
+    22: (FMT_CMP,    lambda a, b: a < b), # setltu
+    23: (FMT_CMP,    lambda a, b: a == b), # seteq
+    24: (FMT_CMP,    lambda a, b: a != b), # setne
     25: (FMT_BRANCH, lambda a: a != 0), # bnz
     26: (FMT_BRANCH, lambda a: a == 0), # bz
     27: (FMT_BRANCH, lambda _: True), # j
-    28: (FMT_K, lambda a, b: (a & 0xffff0000) | b), # loadlo
-    29: (FMT_K, lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
+    28: (FMT_K,      lambda a, b: (a & 0xffff0000) | b), # loadlo
+    29: (FMT_K,      lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
 }
 
 class Emulator:
@@ -173,8 +175,8 @@ class Emulator:
                 else:
                     rs1_value = self.registers[rs]
 
-            result = [operation(a) & 0xffffffff for a in rs1_value]
-            self.set_register(rd, result)
+                result = [operation(a) & 0xffffffff for a in rs1_value]
+                self.set_register(rd, result)
         elif format == FMT_CMP:
             rd = (instr >> 7) & 0x7f
             rs1 = (instr >> 14) & 0x7f
