@@ -168,9 +168,20 @@ class TestEmulator(unittest.TestCase):
                       init_regs={3: 0x3fc00000, 4: 0x40200000}, # 1.5 * 2.5
                       final_regs={2: 0x40700000})  # 3.75
 
-    # XXX need to test all register combinations of RR format.
+    # Test all formats for RR
+    def test_recip_vv(self):
+        self.run_test([make_r(14, 64 + 2, 64 + 3, 0)],
+                      # 1.0, 0.5, 0.25, 0.125...
+                      init_regs={64 + 3: [0x3f800000, 0x3f000000, 0x3e800000, 0x3e000000, 0x3d800000, 0x3d000000, 0x3c800000, 0x3c000000]},
+                      # 1.0, 2.0, 4.0, 8.0...
+                      final_regs={64 + 2: [0x3f800000, 0x40000000, 0x40800000, 0x41000000, 0x41800000, 0x42000000, 0x42800000, 0x43000000]})
 
-    def test_recip(self):
+    def test_recip_vs(self):
+        self.run_test([make_r(14, 64 + 2, 3, 0)],
+                      init_regs={3: 0x3dfbe76d},  # 0.123
+                      final_regs={64 + 2: [0x41021480, 0x41021480, 0x41021480, 0x41021480, 0x41021480, 0x41021480, 0x41021480, 0x41021480]})  # 8.125
+
+    def test_recip_ss(self):
         self.run_test([make_r(14, 2, 3, 0)],
                       init_regs={3: 0x3dfbe76d},  # 0.123
                       final_regs={2: 0x41021480})  # 8.125
@@ -185,14 +196,14 @@ class TestEmulator(unittest.TestCase):
                       init_regs={3: 17},
                       final_regs={2: 0x41880000})
 
-    def test_gtf(self):
+    def test_setgtf(self):
         self.run_test([make_r(17, 2, 64 + 3, 4)],
                       # -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0
                       init_regs={64 + 3: [0xc0400000, 0xc0000000, 0xbf800000, 0, 0x3f800000, 0x40000000, 0x40400000, 0x40800000],
                                  4: 0x3f800000}, # 1.0
                       final_regs={2: 0b11100000})
 
-    def test_ltf(self):
+    def test_setltf(self):
         self.run_test([make_r(18, 2, 64 + 3, 4)],
                       # -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0
                       init_regs={64 + 3: [0xc0400000, 0xc0000000, 0xbf800000, 0, 0x3f800000, 0x40000000, 0x40400000, 0x40800000],
@@ -200,38 +211,38 @@ class TestEmulator(unittest.TestCase):
                       final_regs={2: 0b00001111})
 
 
-    def test_gei(self):
+    def test_setgei(self):
         self.run_test([make_r(19, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b11110000})
 
-    def test_lti(self):
+    def test_setlti(self):
         self.run_test([make_r(20, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b00001111})
 
     # When these negatives are interpreted as unsigned, they will be large values
-    def test_geu(self):
+    def test_setgeu(self):
         self.run_test([make_r(21, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b11110111})
 
-    def test_ltu(self):
+    def test_setltu(self):
         self.run_test([make_r(22, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b00001000})
 
-    def test_eq(self):
+    def test_seteq(self):
         self.run_test([make_r(23, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b00010000})
 
-    def test_ne(self):
+    def test_setne(self):
         self.run_test([make_r(24, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
@@ -304,7 +315,6 @@ class TestEmulator(unittest.TestCase):
             ],
             init_regs={64 + 3: [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888]},
             final_regs={64 + 3: [0xabcd1111, 0xabcd2222, 0xabcd3333, 0xabcd4444, 0xabcd5555, 0xabcd6666, 0xabcd7777, 0xabcd8888]})
-
 
 if __name__ == "__main__":
     unittest.main()
