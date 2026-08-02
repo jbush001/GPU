@@ -392,5 +392,45 @@ class TestEmulator(unittest.TestCase):
 
         self.assertEqual(cpu.get_register(66), [0,1,2,3,4,5,6,7])
 
+    def test_fault_illegal_scalar_source1(self):
+        cpu = emulate.Emulator()
+
+        cpu.instructions += [
+            make_r(1, 2, 64 + 3, 4), # and r2, v3, r4
+            HALT
+        ]
+
+        with self.assertRaises(emulate.RuntimeFault) as context:
+            cpu.run()
+
+        assert 'Illegal source register v3 for scalar destination r2' in str(context.exception)
+
+    def test_fault_illegal_scalar_source2(self):
+        cpu = emulate.Emulator()
+
+        cpu.instructions += [
+            make_r(1, 2, 3, 64 + 4), # and r2, r3, v4
+            HALT
+        ]
+
+        with self.assertRaises(emulate.RuntimeFault) as context:
+            cpu.run()
+
+        assert 'Illegal source register v4 for scalar destination r2' in str(context.exception)
+
+    def test_invalid_opcode(self):
+        cpu = emulate.Emulator()
+
+        cpu.instructions += [
+            0xffffffff, # Invalid opcode
+            HALT
+        ]
+
+        with self.assertRaises(emulate.RuntimeFault) as context:
+            cpu.run()
+
+        assert 'Illegal instruction' in str(context.exception)
+
+
 if __name__ == "__main__":
     unittest.main()

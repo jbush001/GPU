@@ -42,6 +42,7 @@ def reinterp_u2f(value: float) -> float:
     return struct.unpack('f', struct.pack('I', value))[0]
 
 def reinterp_f2u(value: float) -> int:
+    """Interpret a float as a 32-bit unsigned integer."""
     return struct.unpack('I', struct.pack('f', value))[0] & 0xffffffff
 
 def recip_estimate(value: float) -> int:
@@ -60,9 +61,19 @@ FMT_BRANCH = 3
 FMT_K = 4
 FMT_X = 5
 
-# (format, operation)
+# Each table entry is (format, operation)
 # The signature of the passed function is different depending on the format.
-# RR is (a) -> b, RRR is (a, b) -> c, CMP is (a, b) -> bool, BRANCH is (a) -> bool, K is (a, imm) -> b
+# * For RRR instructions, the function takes two scalar arguments (rs1, rs2)
+#   and returns the result of the computation.
+# * For RR instructions, the function takes one argument (rs) and returns the
+#   result.
+# * For branch istructions, the function takes one argument (rs) and returns a
+#   boolean indicating whether to take the branch.
+# * For comparison instructions, the function takes two scalar arguments (rs1, rs2)
+#   and returns a boolean indicating whether the comparison is true.
+# * For K instructions, the function takes two arguments: the prior value of the
+#   destination register and the immediate value, and returns the new value of the
+#   destination register.
 INSTR_TABLE = {
     0:  (FMT_X,      None), # halt
     1:  (FMT_RRR,    lambda a, b: a & b), # and
@@ -95,6 +106,16 @@ INSTR_TABLE = {
     28: (FMT_K,      lambda a, b: (a & 0xffff0000) | b), # loadlo
     29: (FMT_K,      lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
 }
+
+class RuntimeFault(Exception):
+    def __init__(self, pc, message):
+        super().__init__(f'Runtime fault at {pc:#x}: {message}')
+
+def print_reg_name(reg_num):
+    if is_scalar_reg(reg_num):
+        return f'r{reg_num}'
+    else:
+        return f'v{reg_num - NUM_SCALAR_REGS}'
 
 class Emulator:
     def __init__(self):
@@ -187,14 +208,14 @@ class Emulator:
 
     def execute_instr(self):
         if self.pc >= len(self.instructions):
-            raise Exception("PC out of range")
+            raise RuntimeFault(self.pc, "PC out of range")
 
         instr = self.instructions[self.pc]
         self.pc += 1
 
         opcode = instr & 0x7f
         if opcode not in INSTR_TABLE:
-            raise Exception(f"Bad instruction: {opcode:#x}")
+            raise RuntimeFault(self.pc, f"Illegal instruction {opcode:#x}")
 
         format, operation = INSTR_TABLE[opcode]
         if format == FMT_RRR:
@@ -203,8 +224,13 @@ class Emulator:
             rs2 = (instr >> 21) & 0x7f
 
             if is_scalar_reg(rd):
-                if not is_scalar_reg(rs1) or not is_scalar_reg(rs2):
-                    raise Exception(f'Illegal source register')
+                if not is_scalar_reg(rs1):
+                    raise RuntimeFault(self.pc,
+                        f'Illegal source register {print_reg_name(rs1)} for scalar destination {print_reg_name(rd)}')
+
+                if not is_scalar_reg(rs2):
+                    raise RuntimeFault(self.pc,
+                        f'Illegal source register {print_reg_name(rs2)} for scalar destination {print_reg_name(rd)}')
 
                 self.set_register(rd, operation(self.get_register(rs1),
                     self.get_register(rs2)) & 0xffffffff)
@@ -227,7 +253,10 @@ class Emulator:
             rs = (instr >> 14) & 0x7f
 
             if is_scalar_reg(rd):
-                assert(is_scalar_reg(rs))
+                if not is_scalar_reg(rs):
+                    raise RuntimeFault(self.pc,
+                        f'Illegal source register {print_reg_name(rs)} for scalar destination {print_reg_name(rd)}')
+
                 self.set_register(rd, operation(self.get_register(rs)) & 0xffffffff)
             else:
                 if is_scalar_reg(rs):
@@ -242,7 +271,10 @@ class Emulator:
             rs1 = (instr >> 14) & 0x7f
             rs2 = (instr >> 21) & 0x7f
 
-            assert(is_scalar_reg(rd))
+            if not is_scalar_reg(rd):
+                raise RuntimeFault(self.pc,
+                    f'Illegal destination register {print_reg_name(rd)} for comparison instruction')
+
             if is_scalar_reg(rs1):
                 rs1_value = [self.get_register(rs1)] * VECTOR_WIDTH
             else:

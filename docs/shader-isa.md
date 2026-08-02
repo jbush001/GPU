@@ -106,7 +106,7 @@ encoded as other instruction types.
 
 | Pseudo op              | Encoding                      |
 |------------------------|-------------------------------|
-| nop                    | and r0, r0, r0 (0x00000000)   |
+| nop                    | and r0, r0, r0 (0x00000001)   |
 | setgti rd, rs0, rs1    | setlti rd, rs1, rs0           |
 | setlei rd, rs0, rs1    | setgei rd, rs1, rs0           |
 | move rd, rs            | and rd, rs, rs                |

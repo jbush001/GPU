@@ -66,8 +66,32 @@ class TestAssemblerConstants(unittest.TestCase):
             make_k(28, 64 + 3, 0xe76d)
         ])
 
-    def test_arithmetic(self):
+    def test_move(self):
         asm = Assembler()
+        asm.assemble('''
+            move r1, r2
+            move v3, v4
+        ''')
+        self.assertEqual(asm.code, [
+            make_r(4, 1, 2, 53),
+            make_r(4, 64 + 3, 64 + 4, 53)
+        ])
+
+    def test_clear(self):
+        asm = Assembler()
+        asm.assemble('''
+            clear r1
+            clear v2
+        ''')
+        self.assertEqual(asm.code, [
+            make_r(2, 1, 1, 1),
+            make_r(2, 64 + 2, 64 + 2, 64 + 2)
+        ])
+
+    def test_rrr(self):
+        asm = Assembler()
+
+        # We test all register type permuatations.
         asm.assemble('''
             and r1, r2, r3
             or v4, v5, v6
@@ -98,6 +122,79 @@ class TestAssemblerConstants(unittest.TestCase):
             make_r(12, 31, 32, 33),
             make_r(13, 34, 35, 36),
         ])
+
+    def test_rr(self):
+        asm = Assembler()
+        asm.assemble('''
+            recip r2, r3
+            ftoi r4, r5
+            itof r6, r7
+        ''')
+        self.assertEqual(asm.code, [
+            make_r(14, 2, 3, 0),
+            make_r(15, 4, 5, 0),
+            make_r(16, 6, 7, 0),
+        ])
+
+    def test_branch(self):
+        asm = Assembler()
+        asm.assemble('''
+            label3: bnz r1, label1
+            bz r2, label2
+            j label3 ; Backward branch
+            nop
+            label2: nop
+            label1: nop
+        ''')
+        self.assertEqual(asm.code, [
+            make_b(25, 1, 4),
+            make_b(26, 2, 2),
+            make_b(27, 0, -3),
+            1,
+            1,
+            1
+        ])
+
+    def test_compare(self):
+        asm = Assembler()
+        asm.assemble('''
+            setgtf r1, v2, v3
+            setltf r4, v5, r6
+            setgei r7, r8, v9
+            setlei r10, r11, r12
+            setlti r13, v14, v15
+            setgti r16, r17, r18
+            setgeu r20, v21, v22
+            setleu r23, r24, v25
+            setltu r26, r27, r28
+            setgtu r29, r30, r31
+            seteq r32, v33, v34,
+            setne r35, r36, r37
+        ''')
+
+        self.assertEqual(asm.code, [
+            make_r(17, 1, 64 + 2, 64 + 3),
+            make_r(18, 4, 64 + 5, 6),
+            make_r(19, 7, 8, 64 + 9),
+            make_r(19, 10, 12, 11),
+            make_r(20, 13, 64 + 14, 64 + 15),
+            make_r(20, 16, 18, 17),
+            make_r(21, 20, 64 + 21, 64 + 22),
+            make_r(21, 23, 64 + 25, 24),
+            make_r(22, 26, 27, 28),
+            make_r(22, 29, 31, 30),
+            make_r(23, 32, 64 + 33, 64 + 34),
+            make_r(24, 35, 36, 37)
+        ])
+
+    def test_compare_bad_dest(self):
+        asm = Assembler()
+        with self.assertRaises(AssembleError) as context:
+            asm.assemble('''
+                setgtf v1, v2, v3
+            ''')
+
+        assert 'Line 2: Dest register for compare must be scalar' in str(context.exception)
 
     def test_error_scalar_dest(self):
         asm = Assembler()
@@ -163,77 +260,6 @@ class TestAssemblerConstants(unittest.TestCase):
             ''')
 
         assert 'Line 2: Invalid token, got r2 expected ,' in str(context.exception)
-
-    def test_rr(self):
-        asm = Assembler()
-        asm.assemble('''
-            recip r2, r3
-            ftoi r4, r5
-            itof r6, r7
-        ''')
-        self.assertEqual(asm.code, [
-            make_r(14, 2, 3, 0),
-            make_r(15, 4, 5, 0),
-            make_r(16, 6, 7, 0),
-        ])
-
-    def test_b(self):
-        asm = Assembler()
-        asm.assemble('''
-            label3: bnz r1, label1
-            bz r2, label2
-            j label3 ; Backward branch
-            nop
-            label2: nop
-            label1: nop
-        ''')
-        self.assertEqual(asm.code, [
-            make_b(25, 1, 4),
-            make_b(26, 2, 2),
-            make_b(27, 0, -3),
-            0, 0, 0
-        ])
-
-    def test_compare(self):
-        asm = Assembler()
-        asm.assemble('''
-            setgtf r1, v2, v3
-            setltf r4, v5, r6
-            setgei r7, r8, v9
-            setlei r10, r11, r12
-            setlti r13, v14, v15
-            setgti r16, r17, r18
-            setgeu r20, v21, v22
-            setleu r23, r24, v25
-            setltu r26, r27, r28
-            setgtu r29, r30, r31
-            seteq r32, v33, v34,
-            setne r35, r36, r37
-        ''')
-
-        self.assertEqual(asm.code, [
-            make_r(17, 1, 64 + 2, 64 + 3),
-            make_r(18, 4, 64 + 5, 6),
-            make_r(19, 7, 8, 64 + 9),
-            make_r(19, 10, 12, 11),
-            make_r(20, 13, 64 + 14, 64 + 15),
-            make_r(20, 16, 18, 17),
-            make_r(21, 20, 64 + 21, 64 + 22),
-            make_r(21, 23, 64 + 25, 24),
-            make_r(22, 26, 27, 28),
-            make_r(22, 29, 31, 30),
-            make_r(23, 32, 64 + 33, 64 + 34),
-            make_r(24, 35, 36, 37)
-        ])
-
-    def test_compare_bad_dest(self):
-        asm = Assembler()
-        with self.assertRaises(AssembleError) as context:
-            asm.assemble('''
-                setgtf v1, v2, v3
-            ''')
-
-        assert 'Line 2: Dest register for compare must be scalar' in str(context.exception)
 
 if __name__ == "__main__":
     unittest.main()

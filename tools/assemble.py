@@ -130,6 +130,7 @@ class Assembler:
                                           | ((offset >> 7) << 20))
 
     def write_list_file(self, source, output_filename):
+        """Create an annotated listing file with source code and generated machine code."""
         with open(output_filename, 'w') as list_file:
             for lineno, source_line in enumerate(source.split('\n'), 1):
                 source_line = source_line.rstrip()
@@ -144,6 +145,7 @@ class Assembler:
                     list_file.write(f'{lineno:>4}   {"":15}   {source_line}\n')
 
     def write_hex_file(self, output_filename):
+        """Write the assembled code to a hex file, one instruction per line."""
         with open(output_filename, 'w') as hex_file:
             for instruction in self.code:
                 hex_file.write(f'{instruction:08x}\n')
@@ -155,7 +157,7 @@ class Assembler:
             return
 
         index = 0
-        tokens = line.replace(',', ' , ').split()
+        tokens = line.replace(',', ' , ').split() # ensure commas are separate tokens
 
         def next_token():
             nonlocal index
@@ -176,12 +178,14 @@ class Assembler:
             self.emit_label(lookahead[:-1], lineno)
             lookahead = next_token()
 
-        if lookahead is None:
+        if lookahead is None: # End of line
             return
 
         if lookahead == 'nop':
-            self.emit_raw(lineno, 0)
+            self.emit_raw(lineno, 1)  # addi r0, r0, 0
         elif lookahead == 'loadf' or lookahead == 'loadi':
+            # Load constant. This is a pseudo-instruction that expands to two
+            # instructions: loadhi and loadlo.
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             value = next_token()
@@ -190,18 +194,18 @@ class Assembler:
             else:
                 raw_int = int(value, 0)
 
-            # XXX does not check range
-
             self.emit_k(lineno, 29, rd, (raw_int >> 16) & 0xffff)  # loadhi
             self.emit_k(lineno, 28, rd, raw_int & 0xffff)  # loadlo
         elif lookahead == 'move':
+            # Pseudo-instruction that expands to addi rd, rs, 0
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             rs = parse_reg_operand(lineno, next_token())
-            self.emit_rv(lineno, 0, rd, rs, rs)
+            self.emit_rv(lineno, 4, rd, rs, 53)
         elif lookahead == 'clear':
+            # Pseudo-instruction that expands to xor rd, rd, rd
             rd = parse_reg_operand(lineno, next_token())
-            self.emit_rv(lineno, 2, rd, rd, rd)  # xor rd, rd, rd
+            self.emit_rv(lineno, 2, rd, rd, rd)
         else:
             if lookahead in INSTRS:
                 opcode, format, swap_operands = INSTRS[lookahead]
@@ -261,9 +265,11 @@ class Assembler:
         return len(self.code) * 4
 
     def add_branch_fixup(self, symbol, lineno):
+        """Create a fixup at the current address for a branch to a label that may not yet be defined."""
         self.fixups.append((self.get_current_addr(), symbol, lineno))
 
     def emit_label(self, name, lineno):
+        """Assign a label to the current address."""
         if name in self.labels:
             raise AssembleError(lineno, f'Redefined label {name}')
 
@@ -273,7 +279,7 @@ class Assembler:
         self.emit_raw(lineno, opcode | (rd << 7) | (rs1 << 14) | (rs2 << 21))
 
     def emit_b(self, lineno, opcode, rs1):
-        # Destination is always set using a fixup
+        # Target offset is always set using a fixup
         self.emit_raw(lineno, opcode | (rs1 << 14))
 
     def emit_x(self, lineno, opcode):
