@@ -58,35 +58,36 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 
 | Opcode  | Mnemonic                 | Description                 | Format |
 |---------|--------------------------|-----------------------------|--------|
-| 0000000 | and rd, rs0, rs1         | Bitwise and                 |   R    |
-| 0000001 | or rd, rs0, rs1          | Bitwise or                  |   R    |
-| 0000010 | xor rd, rs0, rs1         | Bitwise xor                 |   R    |
-| 0000011 | addi rd, rs0, rs1        | Integer add                 |   R    |
-| 0000100 | subi rd, rs0, rs1        | Integer subtract            |   R    |
-| 0000101 | muli rd, rs0, rs1        | Integer multiply            |   R    |
-| 0000110 | lsl rd, rs0, rs1         | Logical shift left          |   R    |
-| 0000111 | asr rd, rs0, rs1         | Arithmetic shift right      |   R    |
-| 0001000 | lsr rd, rs0, rs1         | Logical shift right         |   R    |
-| 0001001 | addf rd, rs0, rs1        | Floating point addition     |   R    |
-| 0001010 | subf rd, rs0, rs1        | FP subtraction              |   R    |
-| 0001011 | mulf rd, rs0, rs1        | FP multiplication           |   R    |
-| 0001100 | recip rd, rs             | FP reciprocal estimate      |   R    |
-| 0001101 | ftoi rd, rs              | Float to integer            |   R    |
-| 0001110 | itof rd, rs              | Integer to float            |   R    |
-| 0001111 | setgtf rd, rs0, rs1      | FP Compare greater          |   R    |
-| 0010000 | setltf rd, rs0, rs1      | FP Compare less than        |   R    |
-| 0010001 | setgei rd, rs0, rs1      | Greater or equal, signed int|   R    |
-| 0010010 | setlti rd, rs0, rs1      | Less than, signed int       |   R    |
-| 0010011 | setgeu rd, rs0, rs1      | Greater or equal, unsigned  |   R    |
-| 0010100 | setltu rd, rs0, rs1      | Less than, unsigned         |   R    |
-| 0010101 | seteq rd, rs0, rs1       | Equal                       |   R    |
-| 0010110 | setne rd, rs0, rs1       | Not equal                   |   R    |
-| 1000000 | bnz rs, target           | Branch if not zero          |   B    |
-| 1000001 | bz rs, target            | Branch if zero              |   B    |
-| 1000010 | j target                 | Unconditional jump          |   B    |
-| 1000011 | loadlo rd, index         | Load constant low           |   K    |
-| 1000100 | loadhi rd, index         | Load constant high          |   K    |
-| 1111111 | halt                     | Finish execution of kernel  |   X    |
+|    0    | halt                     | Finish execution of kernel  |   X    |
+|    1    | and rd, rs0, rs1         | Bitwise and                 |   R    |
+|    2    | or rd, rs0, rs1          | Bitwise or                  |   R    |
+|    3    | xor rd, rs0, rs1         | Bitwise xor                 |   R    |
+|    4    | addi rd, rs0, rs1        | Integer add                 |   R    |
+|    5    | subi rd, rs0, rs1        | Integer subtract            |   R    |
+|    6    | muli rd, rs0, rs1        | Integer multiply            |   R    |
+|    7    | mulih rd, rs0, rs1       | Integer multiply (high word)|   R    |
+|    8    | lsl rd, rs0, rs1         | Logical shift left          |   R    |
+|    9    | asr rd, rs0, rs1         | Arithmetic shift right      |   R    |
+|   10    | lsr rd, rs0, rs1         | Logical shift right         |   R    |
+|   11    | addf rd, rs0, rs1        | Floating point addition     |   R    |
+|   12    | subf rd, rs0, rs1        | FP subtraction              |   R    |
+|   13    | mulf rd, rs0, rs1        | FP multiplication           |   R    |
+|   14    | recip rd, rs             | FP reciprocal estimate      |   R    |
+|   15    | ftoi rd, rs              | Float to integer            |   R    |
+|   16    | itof rd, rs              | Integer to float            |   R    |
+|   17    | setgtf rd, rs0, rs1      | FP Compare greater          |   R    |
+|   18    | setltf rd, rs0, rs1      | FP Compare less than        |   R    |
+|   19    | setgei rd, rs0, rs1      | Greater or equal, signed int|   R    |
+|   20    | setlti rd, rs0, rs1      | Less than, signed int       |   R    |
+|   21    | setgeu rd, rs0, rs1      | Greater or equal, unsigned  |   R    |
+|   22    | setltu rd, rs0, rs1      | Less than, unsigned         |   R    |
+|   23    | seteq rd, rs0, rs1       | Equal                       |   R    |
+|   24    | setne rd, rs0, rs1       | Not equal                   |   R    |
+|   25    | bnz rs, target           | Branch if not zero          |   B    |
+|   26    | bz rs, target            | Branch if zero              |   B    |
+|   27    | j target                 | Unconditional jump          |   B    |
+|   28    | loadlo rd, index         | Load constant low           |   K    |
+|   29    | loadhi rd, index         | Load constant high          |   K    |
 
 * `branch offset` relative signed offset to jump based on stack operation.
   When the branch is taken, this is multiplied by four and added to the
@@ -152,7 +153,6 @@ undefined. Attemping to write a read-only register will have no effect.
 |   63  | Constant -2.0f                                    |   r    |
 | 64-95 | Vector general purpose registers                  |  r/w   |
 | 96-103| Job parameters (from requestor)                   |   r    |
-|  104  | High word of multiplication result                |   r    |
 |  105  | Store pixel, red (10 bit)                         |   w    |
 |  106  | Store pixel, green                                |   w    |
 |  107  | Store pixel, blue                                 |   w    |

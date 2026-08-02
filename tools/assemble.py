@@ -28,37 +28,38 @@ FMT_INHERENT = 6
 
 # Each entry is: opcode, format, swap_operands
 INSTRS = {
-    'and': (0, FMT_RRR, False),
-    'or': (1, FMT_RRR, False),
-    'xor': (2, FMT_RRR, False),
-    'addi': (3, FMT_RRR, False),
-    'subi': (4, FMT_RRR, False),
-    'muli': (5, FMT_RRR, False),
-    'lsl': (6, FMT_RRR, False),
-    'asr': (7, FMT_RRR, False),
-    'lsr': (8, FMT_RRR, False),
-    'addf': (9, FMT_RRR, False),
-    'subf': (10, FMT_RRR, False),
-    'mulf': (11, FMT_RRR, False),
-    'recip': (12, FMT_RR, False),
-    'ftoi': (13, FMT_RR, False),
-    'itof': (14, FMT_RR, False),
-    'setgtf': (15, FMT_COMPARE, False),
-    'setltf': (16, FMT_COMPARE, False),
-    'setgei': (17, FMT_COMPARE, False),
-    'setlei': (17, FMT_COMPARE, True),
-    'setlti': (18, FMT_COMPARE, False),
-    'setgti': (18, FMT_COMPARE, True),
-    'setgeu': (19, FMT_COMPARE, False),
-    'setleu': (19, FMT_COMPARE, True),
-    'setltu': (20, FMT_COMPARE, False),
-    'setgtu': (20, FMT_COMPARE, True),
-    'seteq': (21, FMT_COMPARE, False),
-    'setne': (22, FMT_COMPARE, False),
-    'bnz': (64, FMT_COND_BRANCH, False),
-    'bz': (65, FMT_COND_BRANCH, False),
-    'j': (66, FMT_UNCOND_BRANCH, False),
-    'halt': (127, FMT_INHERENT, False)
+    'halt': (0, FMT_INHERENT, False),
+    'and': (1, FMT_RRR, False),
+    'or': (2, FMT_RRR, False),
+    'xor': (3, FMT_RRR, False),
+    'addi': (4, FMT_RRR, False),
+    'subi': (5, FMT_RRR, False),
+    'muli': (6, FMT_RRR, False),
+    'mulih': (7, FMT_RRR, False),
+    'lsl': (8, FMT_RRR, False),
+    'asr': (9, FMT_RRR, False),
+    'lsr': (10, FMT_RRR, False),
+    'addf': (11, FMT_RRR, False),
+    'subf': (12, FMT_RRR, False),
+    'mulf': (13, FMT_RRR, False),
+    'recip': (14, FMT_RR, False),
+    'ftoi': (15, FMT_RR, False),
+    'itof': (16, FMT_RR, False),
+    'setgtf': (17, FMT_COMPARE, False),
+    'setltf': (18, FMT_COMPARE, False),
+    'setgei': (19, FMT_COMPARE, False),
+    'setlei': (19, FMT_COMPARE, True),
+    'setlti': (20, FMT_COMPARE, False),
+    'setgti': (20, FMT_COMPARE, True),
+    'setgeu': (21, FMT_COMPARE, False),
+    'setleu': (21, FMT_COMPARE, True),
+    'setltu': (22, FMT_COMPARE, False),
+    'setgtu': (22, FMT_COMPARE, True),
+    'seteq': (23, FMT_COMPARE, False),
+    'setne': (24, FMT_COMPARE, False),
+    'bnz': (25, FMT_COND_BRANCH, False),
+    'bz': (26, FMT_COND_BRANCH, False),
+    'j': (27, FMT_UNCOND_BRANCH, False),
 }
 
 BRANCH_OFFSET_WIDTH = 19
@@ -191,8 +192,8 @@ class Assembler:
 
             # XXX does not check range
 
-            self.emit_k(lineno, 0x44, rd, (raw_int >> 16) & 0xffff)  # loadhi
-            self.emit_k(lineno, 0x43, rd, raw_int & 0xffff)  # loadlo
+            self.emit_k(lineno, 29, rd, (raw_int >> 16) & 0xffff)  # loadhi
+            self.emit_k(lineno, 28, rd, raw_int & 0xffff)  # loadlo
         elif lookahead == 'move':
             rd = parse_reg_operand(lineno, next_token())
             match(',')

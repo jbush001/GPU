@@ -45,7 +45,7 @@ class TestEmulator(unittest.TestCase):
                 cpu.registers[reg] = value & 0xffffffff
 
         cpu.instructions += code
-        cpu.instructions += [0x7f] # Halt
+        cpu.instructions += [0] # Halt
 
         cpu.run()
 
@@ -55,12 +55,12 @@ class TestEmulator(unittest.TestCase):
 
     # Test all instruction formats
     def test_and_sss(self):
-        self.run_test([make_r(0, 3, 1, 2)],
+        self.run_test([make_r(1, 3, 1, 2)],
                       init_regs={1: 0b10010101011001010100110010101001, 2: 0b10010101011001010100110010101001},
                       final_regs={3: 0b10010101011001010100110010101001})
 
     def test_and_vsv(self):
-        self.run_test([make_r(0, 64 + 3, 1, 64 + 2)],
+        self.run_test([make_r(1, 64 + 3, 1, 64 + 2)],
                       init_regs={1: 0b10010101011001010100110010101001,
                        (64 + 2): [0xf, 0xf0, 0xf00, 0xf000, 0xf0000, 0xf00000, 0xf000000, 0xf0000000]},
                       final_regs={(64 + 3): [
@@ -75,7 +75,7 @@ class TestEmulator(unittest.TestCase):
                        ]})
 
     def test_and_vvs(self):
-        self.run_test([make_r(0, 64 + 3, 64 + 2, 1)],
+        self.run_test([make_r(1, 64 + 3, 64 + 2, 1)],
                       init_regs={1: 0b10010101011001010100110010101001,
                        (64 + 2): [0xf, 0xf0, 0xf00, 0xf000, 0xf0000, 0xf00000, 0xf000000, 0xf0000000]},
                       final_regs={(64 + 3): [
@@ -90,13 +90,13 @@ class TestEmulator(unittest.TestCase):
                        ]})
 
     def test_and_vvv(self):
-        self.run_test([make_r(0, 64 + 2, 64 + 3, 64 + 4)],
+        self.run_test([make_r(1, 64 + 2, 64 + 3, 64 + 4)],
                       init_regs={(64 + 3): [0xaaaaaaaa, 0xbbbbbbbb, 0xcccccccc, 0xdddddddd, 0xeeeeeeee, 0xffffffff, 0x55555555, 0xcccccccc],
                        (64 + 4): [0xf, 0xf0, 0xf00, 0xf000, 0xf0000, 0xf00000, 0xf000000, 0xf0000000]},
                       final_regs={(64 + 2): [0xa, 0xb0, 0xc00, 0xd000, 0xe0000, 0xf00000, 0x5000000, 0xc0000000]})
 
     def test_exec_mask_rrr(self):
-        self.run_test([make_r(1, 64 + 3, 64 + 1, 64 + 1)],  # or v3, v1, v1
+        self.run_test([make_r(2, 64 + 3, 64 + 1, 64 + 1)],  # or v3, v1, v1
                       init_regs={32: 0x55,
                         (64 + 1): [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888],
                         (64 + 3): [0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff],
@@ -105,89 +105,95 @@ class TestEmulator(unittest.TestCase):
 
     # Test individual instructions (only scalar form)
     def test_or(self):
-        self.run_test([make_r(1, 2, 3, 4)],
+        self.run_test([make_r(2, 2, 3, 4)],
                       init_regs={3: 0b10100101110000110110100111110000, 4: 0b10101010101010101010101010101010},
                       final_regs={2: 0b10101111111010111110101111111010})
 
     def test_xor(self):
-        self.run_test([make_r(2, 2, 3, 4)],
+        self.run_test([make_r(3, 2, 3, 4)],
                       init_regs={3: 0b10101010101010101010101010101010, 4: 0b11001100110011001100110011001100},
                       final_regs={2: 0b01100110011001100110011001100110})
 
     def test_addi(self):
-        self.run_test([make_r(3, 2, 3, 4)],
+        self.run_test([make_r(4, 2, 3, 4)],
                       init_regs={3: 0x12345678, 4: 0xf00d1234},
                       final_regs={2: 0x024168ac})
 
     # Note: this has a negative result. Ensure it is properly clamped to a 32-bit register
     def test_subi(self):
-        self.run_test([make_r(4, 2, 3, 4)],
+        self.run_test([make_r(5, 2, 3, 4)],
                       init_regs={3: 0x12345678, 4: 0xf00d1234},
                       final_regs={2: 0x22274444})
 
     def test_muli(self):
-        self.run_test([make_r(5, 2, 3, 4)],
+        self.run_test([make_r(6, 2, 3, 4)],
                       init_regs={3: 1234, 4: 567},
                       final_regs={2: 699678})
 
+    def test_mulih(self):
+        self.run_test([make_r(7, 2, 3, 4)],
+                      init_regs={3: 0x12345678, 4: 0x10000000},
+                      final_regs={2: 0x1234567})
+
+
     def test_lsl(self):
-        self.run_test([make_r(6, 2, 3, 4)],
+        self.run_test([make_r(8, 2, 3, 4)],
                       init_regs={3: 1234, 4: 3},
                       final_regs={2: 9872})
 
     # Ensure 1s are shifted in.
     def test_asr(self):
-        self.run_test([make_r(7, 2, 3, 4)],
+        self.run_test([make_r(9, 2, 3, 4)],
                       init_regs={3: 0x80123456, 4: 4},
                       final_regs={2: 0xf8012345})
 
     def test_lsr(self):
-        self.run_test([make_r(8, 2, 3, 4)],
+        self.run_test([make_r(10, 2, 3, 4)],
                       init_regs={3: 0x80123456, 4: 4},
                       final_regs={2: 0x8012345})
 
 
     def test_addf(self):
-        self.run_test([make_r(9, 2, 3, 4)],
+        self.run_test([make_r(11, 2, 3, 4)],
                       init_regs={3: 0x402df8a1, 4: 0x40490e56}, # 2.7183 + 3.1415
                       final_regs={2: 0x40bb837c})  # 5.8598
 
     def test_subf(self):
-        self.run_test([make_r(10, 2, 3, 4)],
+        self.run_test([make_r(12, 2, 3, 4)],
                       init_regs={3: 0x402df8a1, 4: 0x40490e56}, # 2.7183 - 3.1415
                       final_regs={2: 0xbed8ada8})  # -0.4232
 
     def test_mulf(self):
-        self.run_test([make_r(11, 2, 3, 4)],
+        self.run_test([make_r(13, 2, 3, 4)],
                       init_regs={3: 0x3fc00000, 4: 0x40200000}, # 1.5 * 2.5
                       final_regs={2: 0x40700000})  # 3.75
 
     # XXX need to test all register combinations of RR format.
 
     def test_recip(self):
-        self.run_test([make_r(12, 2, 3, 0)],
+        self.run_test([make_r(14, 2, 3, 0)],
                       init_regs={3: 0x3dfbe76d},  # 0.123
                       final_regs={2: 0x41021480})  # 8.125
 
     def test_f2i(self):
-        self.run_test([make_r(13, 2, 3, 0)],
+        self.run_test([make_r(15, 2, 3, 0)],
                       init_regs={3: 0x4144cccd},  # 12.3
                       final_regs={2: 12})
 
     def test_i2f(self):
-        self.run_test([make_r(14, 2, 3, 0)],
+        self.run_test([make_r(16, 2, 3, 0)],
                       init_regs={3: 17},
                       final_regs={2: 0x41880000})
 
     def test_gtf(self):
-        self.run_test([make_r(15, 2, 64 + 3, 4)],
+        self.run_test([make_r(17, 2, 64 + 3, 4)],
                       # -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0
                       init_regs={64 + 3: [0xc0400000, 0xc0000000, 0xbf800000, 0, 0x3f800000, 0x40000000, 0x40400000, 0x40800000],
                                  4: 0x3f800000}, # 1.0
                       final_regs={2: 0b11100000})
 
     def test_ltf(self):
-        self.run_test([make_r(16, 2, 64 + 3, 4)],
+        self.run_test([make_r(18, 2, 64 + 3, 4)],
                       # -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0
                       init_regs={64 + 3: [0xc0400000, 0xc0000000, 0xbf800000, 0, 0x3f800000, 0x40000000, 0x40400000, 0x40800000],
                                  4: 0x3f800000}, # 1.0
@@ -195,45 +201,45 @@ class TestEmulator(unittest.TestCase):
 
 
     def test_gei(self):
-        self.run_test([make_r(17, 2, 64 + 3, 4)],
+        self.run_test([make_r(19, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b11110000})
 
     def test_lti(self):
-        self.run_test([make_r(18, 2, 64 + 3, 4)],
+        self.run_test([make_r(20, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b00001111})
 
     # When these negatives are interpreted as unsigned, they will be large values
     def test_geu(self):
-        self.run_test([make_r(19, 2, 64 + 3, 4)],
+        self.run_test([make_r(21, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b11110111})
 
     def test_ltu(self):
-        self.run_test([make_r(20, 2, 64 + 3, 4)],
+        self.run_test([make_r(22, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b00001000})
 
     def test_eq(self):
-        self.run_test([make_r(21, 2, 64 + 3, 4)],
+        self.run_test([make_r(23, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b00010000})
 
     def test_ne(self):
-        self.run_test([make_r(22, 2, 64 + 3, 4)],
+        self.run_test([make_r(24, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],
                                  4: 1},
                       final_regs={2: 0b11101111})
 
     def test_bnz_taken(self):
         self.run_test([
-                make_b(64, 2, 1), # This will jump over XOR, leaving reg intact
+                make_b(25, 2, 1), # This will jump over XOR, leaving reg intact
                 make_r(2, 3, 3, 3) # XOR r3, r3, r3
             ],
             init_regs={2: 1, 3: 0xffffffff},
@@ -241,44 +247,60 @@ class TestEmulator(unittest.TestCase):
 
     def test_bnz_not_taken(self):
         self.run_test([
-                make_b(64, 2, 1),
-                make_r(2, 3, 3, 3) # XOR r3, r3, r3
+                make_b(25, 2, 1),
+                make_r(3, 3, 3, 3) # XOR r3, r3, r3
             ],
             init_regs={2: 0, 3: 0xffffffff},
             final_regs={3: 0})
 
+    def test_bz_taken(self):
+        self.run_test([
+                make_b(26, 2, 1), # This will jump over XOR, leaving reg intact
+                make_r(3, 3, 3, 3) # XOR r3, r3, r3
+            ],
+            init_regs={2: 0, 3: 0xffffffff},
+            final_regs={3: 0xffffffff})
+
+    def test_bz_not_taken(self):
+        self.run_test([
+                make_b(26, 2, 1),
+                make_r(3, 3, 3, 3) # XOR r3, r3, r3
+            ],
+            init_regs={2: 1, 3: 0xffffffff},
+            final_regs={3: 0})
+
     def test_j(self):
         self.run_test([
-                make_b(65, 0, 1),
-                make_r(2, 3, 3, 3) # XOR r3, r3, r3
+                make_b(27, 0, 1),
+                make_r(3, 3, 3, 3) # XOR r3, r3, r3
             ],
             init_regs={3: 0xffffffff},
             final_regs={3: 0xffffffff})
 
     def test_loadlo_s(self):
         self.run_test([
-                make_k(67, 3, 0xabcd),
+                make_k(28, 3, 0xabcd),
             ],
             init_regs={3: 0xffffffff},
             final_regs={3: 0xffffabcd})
 
     def test_loadlo_v(self):
         self.run_test([
-                make_k(67, 64 + 3, 0xabcd),
+                make_k(28, 64 + 3, 0xabcd),
             ],
             init_regs={64 + 3: [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888]},
             final_regs={64 + 3: [0x1111abcd, 0x2222abcd, 0x3333abcd, 0x4444abcd, 0x5555abcd, 0x6666abcd, 0x7777abcd, 0x8888abcd]})
 
     def test_loadhi_s(self):
         self.run_test([
-                make_k(68, 3, 0xabcd),
+                make_k(29, 3, 0xabcd),
             ],
             init_regs={3: 0xffffffff},
             final_regs={3: 0xabcdffff})
 
     def test_loadhi_v(self):
         self.run_test([
-                make_k(68, 64 + 3, 0xabcd),
+                make_k(29, 64 + 3, 0xabcd),
             ],
             init_regs={64 + 3: [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888]},
             final_regs={64 + 3: [0xabcd1111, 0xabcd2222, 0xabcd3333, 0xabcd4444, 0xabcd5555, 0xabcd6666, 0xabcd7777, 0xabcd8888]})

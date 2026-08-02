@@ -43,14 +43,14 @@ class TestAssemblerConstants(unittest.TestCase):
             loadi r5, -1234567890
         ''')
         self.assertEqual(asm.code, [
-            make_k(0x44, 2, 0x1234),
-            make_k(0x43, 2, 0x5678),
-            make_k(0x44, 64 + 3, 0xabcd),
-            make_k(0x43, 64 + 3, 0xef12),
-            make_k(0x44, 64 + 4, 0xdead),
-            make_k(0x43, 64 + 4, 0xbeef),
-            make_k(0x44, 5, 0xb669),
-            make_k(0x43, 5, 0xfd2e),
+            make_k(29, 2, 0x1234),
+            make_k(28, 2, 0x5678),
+            make_k(29, 64 + 3, 0xabcd),
+            make_k(28, 64 + 3, 0xef12),
+            make_k(29, 64 + 4, 0xdead),
+            make_k(28, 64 + 4, 0xbeef),
+            make_k(29, 5, 0xb669),
+            make_k(28, 5, 0xfd2e),
     ])
 
     def test_const_float(self):
@@ -60,10 +60,10 @@ class TestAssemblerConstants(unittest.TestCase):
             loadf v3, -0.123
         ''')
         self.assertEqual(asm.code, [
-            make_k(0x44, 2, 0x3f9d),
-            make_k(0x43, 2, 0xf3b6),
-            make_k(0x44, 64 + 3, 0xbdfb),
-            make_k(0x43, 64 + 3, 0xe76d)
+            make_k(29, 2, 0x3f9d),
+            make_k(28, 2, 0xf3b6),
+            make_k(29, 64 + 3, 0xbdfb),
+            make_k(28, 64 + 3, 0xe76d)
         ])
 
     def test_arithmetic(self):
@@ -75,6 +75,7 @@ class TestAssemblerConstants(unittest.TestCase):
             addi v10, v11, r12
             subi v13, r14, v15
             muli v16, r17, r18
+            mulih v16, r17, r18
             lsl r19, r20, r21
             asr r22, r23, r24
             lsr r25, r26, r27
@@ -83,18 +84,19 @@ class TestAssemblerConstants(unittest.TestCase):
             mulf r34, r35, r36
         ''')
         self.assertEqual(asm.code, [
-            make_r(0x00, 1, 2, 3),
-            make_r(0x01, 64 + 4, 64 + 5, 64 | 6),
-            make_r(0x02, 7, 8, 9),
-            make_r(0x03, 64 + 10, 64 + 11, 12),
-            make_r(0x04, 64 + 13, 14, 64 | 15),
-            make_r(0x05, 64 + 16, 17, 18),
-            make_r(0x06, 19, 20, 21),
-            make_r(0x07, 22, 23, 24),
-            make_r(0x08, 25, 26, 27),
-            make_r(0x09, 28, 29, 30),
-            make_r(0x0a, 31, 32, 33),
-            make_r(0x0b, 34, 35, 36),
+            make_r(1, 1, 2, 3),
+            make_r(2, 64 + 4, 64 + 5, 64 | 6),
+            make_r(3, 7, 8, 9),
+            make_r(4, 64 + 10, 64 + 11, 12),
+            make_r(5, 64 + 13, 14, 64 | 15),
+            make_r(6, 64 + 16, 17, 18),
+            make_r(7, 64 + 16, 17, 18),
+            make_r(8, 19, 20, 21),
+            make_r(9, 22, 23, 24),
+            make_r(10, 25, 26, 27),
+            make_r(11, 28, 29, 30),
+            make_r(12, 31, 32, 33),
+            make_r(13, 34, 35, 36),
         ])
 
     def test_error_scalar_dest(self):
@@ -170,9 +172,9 @@ class TestAssemblerConstants(unittest.TestCase):
             itof r6, r7
         ''')
         self.assertEqual(asm.code, [
-            make_r(0x0c, 2, 3, 0),
-            make_r(0x0d, 4, 5, 0),
-            make_r(0x0e, 6, 7, 0),
+            make_r(14, 2, 3, 0),
+            make_r(15, 4, 5, 0),
+            make_r(16, 6, 7, 0),
         ])
 
     def test_b(self):
@@ -186,9 +188,9 @@ class TestAssemblerConstants(unittest.TestCase):
             label1: nop
         ''')
         self.assertEqual(asm.code, [
-            make_b(0b1000000, 1, 4),
-            make_b(0b1000001, 2, 2),
-            make_b(0b1000010, 0, -3),
+            make_b(25, 1, 4),
+            make_b(26, 2, 2),
+            make_b(27, 0, -3),
             0, 0, 0
         ])
 
@@ -210,18 +212,18 @@ class TestAssemblerConstants(unittest.TestCase):
         ''')
 
         self.assertEqual(asm.code, [
-            make_r(15, 1, 64 + 2, 64 + 3),
-            make_r(16, 4, 64 + 5, 6),
-            make_r(17, 7, 8, 64 + 9),
-            make_r(17, 10, 12, 11),
-            make_r(18, 13, 64 + 14, 64 + 15),
-            make_r(18, 16, 18, 17),
-            make_r(19, 20, 64 + 21, 64 + 22),
-            make_r(19, 23, 64 + 25, 24),
-            make_r(20, 26, 27, 28),
-            make_r(20, 29, 31, 30),
-            make_r(21, 32, 64 + 33, 64 + 34),
-            make_r(22, 35, 36, 37)
+            make_r(17, 1, 64 + 2, 64 + 3),
+            make_r(18, 4, 64 + 5, 6),
+            make_r(19, 7, 8, 64 + 9),
+            make_r(19, 10, 12, 11),
+            make_r(20, 13, 64 + 14, 64 + 15),
+            make_r(20, 16, 18, 17),
+            make_r(21, 20, 64 + 21, 64 + 22),
+            make_r(21, 23, 64 + 25, 24),
+            make_r(22, 26, 27, 28),
+            make_r(22, 29, 31, 30),
+            make_r(23, 32, 64 + 33, 64 + 34),
+            make_r(24, 35, 36, 37)
         ])
 
     def test_compare_bad_dest(self):

@@ -53,35 +53,36 @@ FMT_X = 5
 
 # (format, operation)
 INSTR_TABLE = {
-    0b0000000: (FMT_RRR, lambda a, b: a & b), # and
-    0b0000001: (FMT_RRR, lambda a, b: a | b), # or
-    0b0000010: (FMT_RRR, lambda a, b: a ^ b), # xor
-    0b0000011: (FMT_RRR, lambda a, b: a + b), # addi
-    0b0000100: (FMT_RRR, lambda a, b: a - b), # subi
-    0b0000101: (FMT_RRR, lambda a, b: a * b), # muli
-    0b0000110: (FMT_RRR, lambda a, b: a << b), # lsl
-    0b0000111: (FMT_RRR, lambda a, b: reinterp_u2i(a) >> b), # asr
-    0b0001000: (FMT_RRR, lambda a, b: a >> b), # lsr
-    0b0001001: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) + reinterp_u2f(b))), # addf
-    0b0001010: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) - reinterp_u2f(b))), # subf
-    0b0001011: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) * reinterp_u2f(b))), # mulf
-    0b0001100: (FMT_RR, lambda a: recip_estimate(reinterp_u2f(a))), # recip
-    0b0001101: (FMT_RR, lambda a: int(reinterp_u2f(a)) & 0xffffffff), # ftoi
-    0b0001110: (FMT_RR, lambda a: reinterp_f2u(float(reinterp_u2i(a)))), # itof
-    0b0001111: (FMT_CMP, lambda a, b: reinterp_u2f(a) > reinterp_u2f(b)), # setgtf
-    0b0010000: (FMT_CMP, lambda a, b: reinterp_u2f(a) < reinterp_u2f(b)), # setltf
-    0b0010001: (FMT_CMP, lambda a, b: reinterp_u2i(a) >= reinterp_u2i(b)), # setgei
-    0b0010010: (FMT_CMP, lambda a, b: reinterp_u2i(a) < reinterp_u2i(b)), # setlti
-    0b0010011: (FMT_CMP, lambda a, b: a >= b), # setgeu
-    0b0010100: (FMT_CMP, lambda a, b: a < b), # setltu
-    0b0010101: (FMT_CMP, lambda a, b: a == b), # seteq
-    0b0010110: (FMT_CMP, lambda a, b: a != b), # setne
-    0b1000000: (FMT_BRANCH, lambda a: a != 0), # bnz
-    0b1000001: (FMT_BRANCH, lambda a: a == 0), # bz
-    0b1000010: (FMT_BRANCH, lambda _: True), # j
-    0b1000011: (FMT_K, lambda a, b: (a & 0xffff0000) | b), # loadlo
-    0b1000100: (FMT_K, lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
-    0b1111111: (FMT_X, None), # halt
+    0: (FMT_X, None), # halt
+    1: (FMT_RRR, lambda a, b: a & b), # and
+    2: (FMT_RRR, lambda a, b: a | b), # or
+    3: (FMT_RRR, lambda a, b: a ^ b), # xor
+    4: (FMT_RRR, lambda a, b: a + b), # addi
+    5: (FMT_RRR, lambda a, b: a - b), # subi
+    6: (FMT_RRR, lambda a, b: a * b), # muli
+    7: (FMT_RRR, lambda a, b: (a * b) >> 32), # mulih
+    8: (FMT_RRR, lambda a, b: a << b), # lsl
+    9: (FMT_RRR, lambda a, b: reinterp_u2i(a) >> b), # asr
+    10: (FMT_RRR, lambda a, b: a >> b), # lsr
+    11: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) + reinterp_u2f(b))), # addf
+    12: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) - reinterp_u2f(b))), # subf
+    13: (FMT_RRR, lambda a, b: reinterp_f2u(reinterp_u2f(a) * reinterp_u2f(b))), # mulf
+    14: (FMT_RR, lambda a: recip_estimate(reinterp_u2f(a))), # recip
+    15: (FMT_RR, lambda a: int(reinterp_u2f(a)) & 0xffffffff), # ftoi
+    16: (FMT_RR, lambda a: reinterp_f2u(float(reinterp_u2i(a)))), # itof
+    17: (FMT_CMP, lambda a, b: reinterp_u2f(a) > reinterp_u2f(b)), # setgtf
+    18: (FMT_CMP, lambda a, b: reinterp_u2f(a) < reinterp_u2f(b)), # setltf
+    19: (FMT_CMP, lambda a, b: reinterp_u2i(a) >= reinterp_u2i(b)), # setgei
+    20: (FMT_CMP, lambda a, b: reinterp_u2i(a) < reinterp_u2i(b)), # setlti
+    21: (FMT_CMP, lambda a, b: a >= b), # setgeu
+    22: (FMT_CMP, lambda a, b: a < b), # setltu
+    23: (FMT_CMP, lambda a, b: a == b), # seteq
+    24: (FMT_CMP, lambda a, b: a != b), # setne
+    25: (FMT_BRANCH, lambda a: a != 0), # bnz
+    26: (FMT_BRANCH, lambda a: a == 0), # bz
+    27: (FMT_BRANCH, lambda _: True), # j
+    28: (FMT_K, lambda a, b: (a & 0xffff0000) | b), # loadlo
+    29: (FMT_K, lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
 }
 
 class Emulator:
@@ -185,7 +186,6 @@ class Emulator:
         elif format == FMT_BRANCH:
             rs = (instr >> 14) & 0x3f
             take_branch = operation(self.registers[rs])
-            print(f"take branch = {take_branch}")
             if take_branch:
                 raw_offset = ((instr >> 7) & 0x3f) | ((instr >> 20) << 7)
                 offset = (raw_offset ^ (1 << 19)) - (1 << 19)  # Sign extend
