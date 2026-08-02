@@ -25,10 +25,21 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17' # Java 17 works optimally with Scala 2.13.x toolchains
+          java-version: '17'
 
       - name: Setup Scala CLI
         uses: VirtusLab/scala-cli-setup@v1
+
+      # Cache Scala CLI & Coursier dependencies to eliminate repeated bloop downloads
+      - name: Cache Scala CLI & Coursier
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/coursier
+            ~/.cache/scala-cli
+          key: ${{ runner.os }}-scala-cli-${{ hashFiles('**/*.scala', '**/*.sc') }}
+          restore-keys: |
+            ${{ runner.os }}-scala-cli-
 
       # Using the prebuilt setup-verilator action avoids a slow 15-minute local engine compile step
       - name: Install Verilator Backend
