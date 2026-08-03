@@ -78,16 +78,13 @@ class TestAsmEmuIntegration(unittest.TestCase):
         self.run_program(
             # Compute 16 GCDs at once using Euclid's algorithm
             source = '''
-                ; r0 tracks which elements are still active
                 loop:
-                    setne r0, v0, v1                ; while a != b
+                    setne r0, v0, v1                 ; while a != b
                     bz r0, done
-                    setgti r1, v0, v1                ; if a > b
-                    and exec, r1, r0
-                    subi v0, v0, v1                  ; a = a - b
-                    xor r1, r1, CONST_MINUS_ONE     ;else
-                    and exec, r1, r0
-                    subi v1, v1, v0                  ; b = b - a
+                    setgti exec, v0, v1              ; if a > b
+                    subi v0, v0, v1                  ;   a = a - b
+                    setgti exec, v1, v0              ; else
+                    subi v1, v1, v0                  ;   b = b - a
                     j loop
                 done:
             ''',
