@@ -375,7 +375,6 @@ class TestEmulator(unittest.TestCase):
 
         cpu.run()
 
-        print(cpu.local_parameter_memory[0:8])
         self.assertEqual(cpu.local_parameter_memory[0:8], [1,2,3,4,5,6,7,8])
         self.assertEqual(cpu.local_parameter_memory[8:16], [9,10,11,12,13,14,15,16])
         self.assertEqual(cpu.local_parameter_memory[32:40], [17,18,19,20,21,22,23,24])

@@ -107,6 +107,20 @@ INSTR_TABLE = {
     29: (FMT_K,      lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
 }
 
+CONST_REGS = {
+    53: 0,
+    54: 1,
+    55: -1,
+    56: 2,
+    57: 4,
+    58: reinterp_f2u(0.5),
+    59: reinterp_f2u(-0.5),
+    60: reinterp_f2u(1.0),
+    61: reinterp_f2u(-1.0),
+    62: reinterp_f2u(2.0),
+    63: reinterp_f2u(-2.0),
+}
+
 class RuntimeFault(Exception):
     def __init__(self, pc, message):
         super().__init__(f'Runtime fault at {pc:#x}: {message}')
@@ -145,7 +159,7 @@ class Emulator:
     def set_register(self, rd, value):
         if is_scalar_reg(rd):
             if self.trace:
-                print(f'r{rd} <= {value:08x}')
+                print(f'{(self.pc - 1) * 4:04x}: r{rd} <= {value:08x}')
 
             if rd == LPM_READ_ADDR:
                 self.lpm_read_addr = value
@@ -156,22 +170,26 @@ class Emulator:
             else:
                 self.registers[rd] = value
         else:
+            exec_mask = self.registers[EXEC_MASK_REG]
             if self.trace:
-                print(f'v{rd - NUM_SCALAR_REGS} <= {" ".join(f"{x:08x}" for x in value)} mask={self.registers[EXEC_MASK_REG]:08b}')
+                newval = " ".join(f"{x:08x}" if (exec_mask >> i) & 1 else "--------" for i, x in enumerate(value))
+                print(f'{(self.pc - 1) * 4:04x}: v{rd - NUM_SCALAR_REGS} <= {newval}')
 
             if rd == LPM_WRITE_DATA:
                 for i in range(VECTOR_WIDTH):
-                    if (self.registers[EXEC_MASK_REG] >> i) & 1:
+                    if (exec_mask >> i) & 1:
                         self.local_parameter_memory[self.lpm_write_addr] = value[i]
 
                     self.lpm_write_addr += 1
             else:
-                exec_mask = self.registers[EXEC_MASK_REG]
                 for i in range(VECTOR_WIDTH):
                     if (exec_mask >> i) & 1:
                         self.registers[rd][i] = value[i]
 
     def get_register(self, reg_num):
+        if reg_num in CONST_REGS:
+            return CONST_REGS[reg_num]
+
         if reg_num == LPM_READ_DATA:
             result = []
             for i in range(VECTOR_WIDTH):
@@ -184,9 +202,6 @@ class Emulator:
             result = self.uniforms[self.uniform_addr]
             self.uniform_addr += 1
             return result
-
-        if reg_num == CONST_ZERO:
-            return 0
 
         if reg_num == LANE_ID:
             return [i for i in range(VECTOR_WIDTH)]
@@ -295,8 +310,8 @@ class Emulator:
             rs = (instr >> 14) & 0x3f
             take_branch = operation(self.get_register(rs))
             if take_branch:
-                raw_offset = ((instr >> 7) & 0x3f) | ((instr >> 20) << 7)
-                offset = (raw_offset ^ (1 << 19)) - (1 << 19)  # Sign extend
+                raw_offset = ((instr >> 7) & 0x7f) | ((instr >> 20) << 7)
+                offset = (raw_offset ^ (1 << 18)) - (1 << 18)  # Sign extend
                 self.pc += offset
         elif format == FMT_K:
             # Load constant

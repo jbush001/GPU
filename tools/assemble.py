@@ -62,6 +62,28 @@ INSTRS = {
     'j':      (27, FMT_UNCOND_BRANCH, False),
 }
 
+BUILTIN_REGISTERS = {
+    'exec': 32,
+    'LPM_READ_ADDR': 33,
+    'LPM_WRITE_ADDR': 34,
+    'UNIFORM_ADDR': 35,
+    'UNIFORM_READ_DATA': 36,
+    'CONST_0': 53,
+    'CONST_1': 54,
+    'CONST_MINUS_ONE': 55,
+    'CONST_2': 56,
+    'CONST_4': 57,
+    'CONST_0_5': 58,
+    'CONST_MINUS_0_5': 59,
+    'CONST_1_0': 60,
+    'CONST_MINUS_1_0': 61,
+    'CONST_2_0': 62,
+    'CONST_MINUS_2_0': 63,
+    'LPM_READ_VALUE': 109,
+    'LPM_WRITE_VALUE': 110,
+    'LANE_ID': 111
+}
+
 BRANCH_OFFSET_WIDTH = 19
 
 
@@ -76,8 +98,8 @@ def is_scalar_reg(val):
 # returns 0-63 for scalar registers
 # 64-127 for vector registers
 def parse_reg_operand(lineno, token):
-    if token == 'exec':
-        return 32
+    if token in BUILTIN_REGISTERS:
+        return BUILTIN_REGISTERS[token]
     elif token.startswith('r'):
         index = int(token[1:])
         if index > 63:

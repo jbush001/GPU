@@ -74,5 +74,31 @@ class TestAsmEmuIntegration(unittest.TestCase):
             }
         )
 
+    def test_euclid_gcd(self):
+        self.run_program(
+            # Compute 16 GCDs at once using Euclid's algorithm
+            source = '''
+                ; r0 tracks which elements are still active
+                loop:
+                    setne r0, v0, v1                ; while a != b
+                    bz r0, done
+                    setgti r1, v0, v1                ; if a > b
+                    and exec, r1, r0
+                    subi v0, v0, v1                  ; a = a - b
+                    xor r1, r1, CONST_MINUS_ONE     ;else
+                    and exec, r1, r0
+                    subi v1, v1, v0                  ; b = b - a
+                    j loop
+                done:
+            ''',
+            init_regs = {
+                64: [48, 12, 36, 30, 100, 81, 121, 169], # a
+                65: [18, 24, 24, 75, 50, 27, 55, 13], # b
+            },
+            final_regs = {
+                64: [6, 12, 12, 15, 50, 27, 11, 13]
+            }
+        )
+
 
 
