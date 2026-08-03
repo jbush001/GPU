@@ -30,6 +30,8 @@ class EdgeCoefficients {
 }
 
 class RasterizerTests extends AnyFunSuite with ChiselSim {
+  implicit val cfg: GpuConfig = GpuConfig()
+
   def computeEdgeCoefficient(x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int,
   startX: Int, startY: Int): EdgeCoefficients = {
     val coeffs = new EdgeCoefficients()

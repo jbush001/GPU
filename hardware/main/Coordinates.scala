@@ -22,9 +22,9 @@ import chisel3._
   * The origin (0, 0) is the upper left corner. Coordinate values increase
   * to the right (x-axis) and down (y-axis)
   */
-class Point2D extends Bundle {
-  val x = SInt(GpuConfig.coordinateBits.W)
-  val y = SInt(GpuConfig.coordinateBits.W)
+class Point2D(implicit cfg: GpuConfig) extends Bundle {
+  val x = SInt(cfg.coordinateBits.W)
+  val y = SInt(cfg.coordinateBits.W)
 
   /** Component-wise subtraction, returning a vector this - that */
   def -(that: Point2D): Point2D = {
@@ -36,18 +36,18 @@ class Point2D extends Bundle {
 }
 
 object Point2D {
-  def apply() = new Point2D()
+  def apply()(implicit cfg: GpuConfig) = new Point2D()
 }
 
-/** Represents a rectangular region on the screen, using the same coordinate 
-  * convention as [[Point2D]]. 
+/** Represents a rectangular region on the screen, using the same coordinate
+  * convention as [[Point2D]].
   * All boundary coordinates are inclusive.
   */
-class BoundingBox extends Bundle {
-  val top = SInt(GpuConfig.coordinateBits.W)
-  val left = SInt(GpuConfig.coordinateBits.W)
-  val right = SInt(GpuConfig.coordinateBits.W)
-  val bottom = SInt(GpuConfig.coordinateBits.W)
+class BoundingBox(implicit cfg: GpuConfig) extends Bundle {
+  val top = SInt(cfg.coordinateBits.W)
+  val left = SInt(cfg.coordinateBits.W)
+  val right = SInt(cfg.coordinateBits.W)
+  val bottom = SInt(cfg.coordinateBits.W)
 
   def topLeft: Point2D = {
     val point = Wire(new Point2D)
@@ -58,5 +58,5 @@ class BoundingBox extends Bundle {
 }
 
 object BoundingBox {
-  def apply() = new BoundingBox()
+  def apply()(implicit cfg: GpuConfig) = new BoundingBox()
 }

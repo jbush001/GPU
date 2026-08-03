@@ -20,6 +20,8 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
 class TriangleSetupTests extends AnyFunSuite with ChiselSim {
+  implicit val cfg: GpuConfig = GpuConfig()
+
   def computeExpectedValues(bbLeft: Int, bbTop: Int,
                             x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int) = {
     val xStep0 = y1 - y0

@@ -26,7 +26,7 @@ import gpu._
 
 // This is a bit of a hack, as the components won't connect exactly like this
 // in a real configuration, but demonstrates things working end-to-end.
-class SimTop extends Module {
+class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val inputTriangle = Flipped(Decoupled(new BoundingBox))
     val startFlush = Input(Bool())
@@ -53,7 +53,7 @@ class SimTop extends Module {
     fillColors(pixel).channels(3) := 0x3ff.U
   }
 
-  val fillDepth = 0.U(GpuConfig.depthBits.W)
+  val fillDepth = 0.U(cfg.depthBits.W)
 
   rasterizer.io.output.ready := true.B // No wait
   tileBuffer.io.valid := rasterizer.io.output.valid
@@ -65,7 +65,7 @@ class SimTop extends Module {
   tileBuffer.io.clearColor.channels(1) := 0.U
   tileBuffer.io.clearColor.channels(2) := 0.U
   tileBuffer.io.clearColor.channels(3) := 0.U
-  tileBuffer.io.clearDepth := 0xffffff.U(GpuConfig.depthBits.W)
+  tileBuffer.io.clearDepth := 0xffffff.U(cfg.depthBits.W)
   tileBuffer.io.startFlush := io.startFlush
   tileBuffer.io.flushBufferSel := io.flushBufferSel
   tileBuffer.io.enableDepthCheck := false.B
@@ -76,6 +76,8 @@ class SimTop extends Module {
 }
 
 object Simulation extends App {
+  implicit val cfg: GpuConfig = GpuConfig()
+
   simulate(new SimTop()) { dut =>
     dut.reset.poke(true.B)
     dut.io.startFlush.poke(false)
@@ -97,10 +99,10 @@ object Simulation extends App {
       val tileColumn = tile % 2
 
       // Set up a triangle
-      dut.io.inputTriangle.bits.left.poke(tileColumn * GpuConfig.tileSizePixels)
-      dut.io.inputTriangle.bits.top.poke(tileRow * GpuConfig.tileSizePixels)
-      dut.io.inputTriangle.bits.right.poke((tileColumn + 1) * GpuConfig.tileSizePixels - 2)
-      dut.io.inputTriangle.bits.bottom.poke((tileRow + 1) * GpuConfig.tileSizePixels - 2)
+      dut.io.inputTriangle.bits.left.poke(tileColumn * cfg.tileSizePixels)
+      dut.io.inputTriangle.bits.top.poke(tileRow * cfg.tileSizePixels)
+      dut.io.inputTriangle.bits.right.poke((tileColumn + 1) * cfg.tileSizePixels - 2)
+      dut.io.inputTriangle.bits.bottom.poke((tileRow + 1) * cfg.tileSizePixels - 2)
 
       dut.io.inputTriangle.valid.poke(true)
       dut.clock.step()
@@ -119,8 +121,8 @@ object Simulation extends App {
       }
 
       // Read out the final data
-      val offset = (fbSize * GpuConfig.tileSizePixels * tileRow) +
-        (GpuConfig.tileSizePixels * tileColumn)
+      val offset = (fbSize * cfg.tileSizePixels * tileRow) +
+        (cfg.tileSizePixels * tileColumn)
       flushBuffer(dut, Some(fbData), offset, fbSize)
     }
 
@@ -139,8 +141,8 @@ object Simulation extends App {
 
     var fbIndex = start
 
-    for (_ <- 0 until GpuConfig.tileSizePixels) {
-      for (_ <- 0 until GpuConfig.tileSizePixels) {
+    for (_ <- 0 until cfg.tileSizePixels) {
+      for (_ <- 0 until cfg.tileSizePixels) {
         dut.clock.step()
         dut.io.startFlush.poke(false)
         while (dut.io.flushData.valid.peek().litValue.toLong == 0 ||
@@ -159,14 +161,14 @@ object Simulation extends App {
         fbIndex += 1
       }
 
-      fbIndex += stride - GpuConfig.tileSizePixels
+      fbIndex += stride - cfg.tileSizePixels
     }
 
     // Need to read the depth buffer in order to clear it.
     dut.io.startFlush.poke(true)
     dut.io.flushBufferSel.poke(RenderBufferId.Depth)
 
-    for (_ <- 0 until GpuConfig.tileSizePixels * GpuConfig.tileSizePixels) {
+    for (_ <- 0 until cfg.totalTilePixels) {
       dut.clock.step()
       dut.io.startFlush.poke(false)
       while (dut.io.flushData.valid.peek().litValue.toLong == 0 ||

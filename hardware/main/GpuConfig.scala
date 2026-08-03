@@ -16,23 +16,21 @@
 
 package gpu
 
-import chisel3._
 import chisel3.util._
 
 //
 // Global constants
 //
-object GpuConfig {
+case class GpuConfig(
   // Configurable parameters
-  final val depthBits = 24
-  final val tileSizePixels = 64;
-  final val edgeFunctionBits = 32;
-  final val coordinateBits = 16;
-
-  // Derived values
-  final val tileCoordBits = log2Up(tileSizePixels)
-
-  assert((GpuConfig.tileSizePixels & (GpuConfig.tileSizePixels - 1)) == 0) // Must be power of two tile
+  depthBits: Int = 24,
+  tileSizePixels: Int = 64,
+  edgeFunctionBits: Int = 32,
+  coordinateBits: Int = 16
+) {
+  require((tileSizePixels & (tileSizePixels - 1)) == 0, "tileSizePixels must be a power of two")
+  val tileCoordBits = log2Up(tileSizePixels)
+  val totalTilePixels = tileSizePixels * tileSizePixels
 }
 
 object Consts {

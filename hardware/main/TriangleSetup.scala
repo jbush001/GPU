@@ -165,7 +165,7 @@ class VertexParameterInterface extends Bundle {
   *   overlap. For a top of left edge (y1 > y2 || (y1 == y2 && x2 > x1)),
   *   increment the edge values by one.
   */
-class TriangleSetup extends Module {
+class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val input = Flipped(Decoupled(BoundingBox()))
     val output = Decoupled(new RasterizerSetupParams)
