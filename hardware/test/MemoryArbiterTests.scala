@@ -24,6 +24,8 @@ import scala.util.Random
 
 
 class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
+  implicit val cfg: GpuConfig = GpuConfig()
+
   // Single read burst
   test("MemoryArbiter read burst") {
     simulate(new MemoryArbiter(1, 1)) { dut =>

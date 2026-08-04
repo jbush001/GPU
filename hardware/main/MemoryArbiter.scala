@@ -38,22 +38,22 @@ import chisel3.util._
   *   - `data.valid` and `data.ready` MUST NOT be combinationally dependent
   *     on each other.
   */
- class MemReadPort extends Bundle {
+class MemReadPort(implicit cfg: GpuConfig) extends Bundle {
   val valid = Output(Bool())
-  val address = Output(UInt(AxiBus.addressBits.W))
-  val length = Output(UInt(AxiBus.burstLengthBits.W))
-  val data = Flipped(Decoupled(UInt(AxiBus.dataBits.W)))
+  val address = Output(UInt(cfg.busAddressBits.W))
+  val length = Output(UInt(cfg.busBurstLengthBits.W))
+  val data = Flipped(Decoupled(UInt(cfg.busDataBits.W)))
 }
 
 /** A simple burst-oriented memory write port. Same protocol as
   * [[MemReadPort]], except anywhere where the data is referenced
   * the roles of the client and arbiter are reversed.
   */
-class MemWritePort extends Bundle {
+class MemWritePort(implicit cfg: GpuConfig) extends Bundle {
   val valid = Output(Bool())
-  val address = Output(UInt(AxiBus.addressBits.W))
-  val length = Output(UInt(AxiBus.burstLengthBits.W))
-  val data = Decoupled(UInt(AxiBus.dataBits.W))
+  val address = Output(UInt(cfg.busAddressBits.W))
+  val length = Output(UInt(cfg.busBurstLengthBits.W))
+  val data = Decoupled(UInt(cfg.busDataBits.W))
 }
 
 /** Multiplexes [[numReadPorts]] read clients and [[numWritePorts]] write
@@ -63,11 +63,11 @@ class MemWritePort extends Bundle {
 class MemoryArbiter(
   val numReadPorts: Int = 2,
   val numWritePorts: Int = 2
-) extends Module {
+)(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val readPorts  = Vec(numReadPorts, Flipped(new MemReadPort))
     val writePorts = Vec(numWritePorts, Flipped(new MemWritePort))
-    val axiBus     = new AxiBus
+    val axiBus     = new AxiBus()(cfg)
   })
 
   //

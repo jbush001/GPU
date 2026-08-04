@@ -26,7 +26,12 @@ case class GpuConfig(
   depthBits: Int = 24,
   tileSizePixels: Int = 64,
   edgeFunctionBits: Int = 32,
-  coordinateBits: Int = 16
+  coordinateBits: Int = 16,
+  busAddressBits: Int = 36,
+  busDataBits: Int = 64,
+  busBurstLengthBits: Int = 8,
+  shaderHarts: Int = 8, // Number of hardware threads per shader core
+  shaderVectorLanes: Int = 8
 ) {
   require((tileSizePixels & (tileSizePixels - 1)) == 0, "tileSizePixels must be a power of two")
   val tileCoordBits = log2Up(tileSizePixels)

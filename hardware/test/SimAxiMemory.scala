@@ -21,21 +21,21 @@ import chisel3.util._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class DirectAccessPort extends Bundle {
+class DirectAccessPort(implicit cfg: GpuConfig) extends Bundle {
   val readEn = Input(Bool())
-  val readAddress = Input(UInt(AxiBus.addressBits.W))
-  val readData = Output(UInt(AxiBus.dataBits.W))
+  val readAddress = Input(UInt(cfg.busAddressBits.W))
+  val readData = Output(UInt(cfg.busDataBits.W))
   val writeEn = Input(Bool())
-  val writeAddress = Input(UInt(AxiBus.addressBits.W))
-  val writeData = Input(UInt(AxiBus.dataBits.W))
+  val writeAddress = Input(UInt(cfg.busAddressBits.W))
+  val writeData = Input(UInt(cfg.busDataBits.W))
 }
 
-class SimAxiMemory(memorySize: Int) extends Module {
+class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
   val io = IO(Flipped(new AxiBus))
 
   val dap = IO(new DirectAccessPort)
 
-  val memory = SyncReadMem(memorySize, UInt(AxiBus.dataBits.W))
+  val memory = SyncReadMem(memorySize, UInt(cfg.busDataBits.W))
 
   object State extends ChiselEnum {
     val Idle, Write, WriteAck, ReadSetup, ReadData = Value
@@ -43,13 +43,13 @@ class SimAxiMemory(memorySize: Int) extends Module {
 
   val state = RegInit(State.Idle)
   val writeLatched = RegInit(false.B)
-  val writeAddress = RegInit(0.U(AxiBus.addressBits.W))
-  val writeLength = RegInit(0.U(AxiBus.burstLengthBits.W))
+  val writeAddress = RegInit(0.U(cfg.busAddressBits.W))
+  val writeLength = RegInit(0.U(cfg.busBurstLengthBits.W))
   val readLatched = RegInit(false.B)
-  val readAddress = RegInit(0.U(AxiBus.addressBits.W))
-  val readLength = RegInit(0.U(AxiBus.burstLengthBits.W))
-  val burstAddress = RegInit(0.U(AxiBus.addressBits.W))
-  val burstLength = RegInit(0.U(AxiBus.burstLengthBits.W))
+  val readAddress = RegInit(0.U(cfg.busAddressBits.W))
+  val readLength = RegInit(0.U(cfg.busBurstLengthBits.W))
+  val burstAddress = RegInit(0.U(cfg.busAddressBits.W))
+  val burstLength = RegInit(0.U(cfg.busBurstLengthBits.W))
   val readAddressNext = Mux(io.readData.fire, burstAddress + 1.U, burstAddress)
 
   when (!writeLatched && io.writeRequest.valid) {
@@ -167,6 +167,8 @@ object SimMemAccess {
 }
 
 class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
+  implicit val cfg: GpuConfig = GpuConfig()
+
   def readBurst(dut: SimAxiMemory, rng: scala.util.Random, address: Int, length: Int): Seq[Long] = {
     dut.io.readRequest.bits.address.poke(address.U)
     dut.io.readRequest.bits.length.poke((length - 1).U)

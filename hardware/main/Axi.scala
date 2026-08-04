@@ -23,16 +23,16 @@ import chisel3.util._
   * @see ARM IHI 0022, Issue L
   * [[https://developer.arm.com/documentation/ihi0022/latest]]
   */
-class AxiBus extends Bundle {
+class AxiBus(implicit cfg: GpuConfig) extends Bundle {
   // Write request channel (B1.1.1)
   val writeRequest = Decoupled(new Bundle {
-    val address = UInt(AxiBus.addressBits.W) // AWADDR Address to write to
-    val length = UInt(AxiBus.burstLengthBits.W) // AWLEN Number of data transfers in burst
+    val address = UInt(cfg.busAddressBits.W) // AWADDR Address to write to
+    val length = UInt(cfg.busBurstLengthBits.W) // AWLEN Number of data transfers in burst
   })
 
   // Write data channel (B1.1.2)
   val writeData = Decoupled(new Bundle {
-    val data = UInt(AxiBus.dataBits.W) // WDATA Data to write
+    val data = UInt(cfg.busDataBits.W) // WDATA Data to write
     val last = Bool() // WLAST True if this is the last transfer in burst
   })
 
@@ -41,18 +41,12 @@ class AxiBus extends Bundle {
 
   // Read request channel (B1.2.1)
   val readRequest = Decoupled(new Bundle {
-    val address = UInt(AxiBus.addressBits.W) // ARADDR Address to read from
-    val length = UInt(AxiBus.burstLengthBits.W) // ARLEN Number of data transfers in burst
+    val address = UInt(cfg.busAddressBits.W) // ARADDR Address to read from
+    val length = UInt(cfg.busBurstLengthBits.W) // ARLEN Number of data transfers in burst
   })
 
   // Read data channel (B1.2.2)
   val readData = Flipped(Decoupled(new Bundle {
-    val data = UInt(AxiBus.dataBits.W) // RDATA Data read
+    val data = UInt(cfg.busDataBits.W) // RDATA Data read
   }))
-}
-
-object AxiBus {
-    final val addressBits = 36
-    final val dataBits = 64
-    final val burstLengthBits = 8
 }
