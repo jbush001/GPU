@@ -223,11 +223,11 @@ class Assembler:
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             rs = parse_reg_operand(lineno, next_token())
-            self.emit_rv(lineno, 4, rd, rs, 53)
+            self.emit_r(lineno, 4, rd, rs, 53)
         elif lookahead == 'clear':
             # Pseudo-instruction that expands to xor rd, rd, rd
             rd = parse_reg_operand(lineno, next_token())
-            self.emit_rv(lineno, 2, rd, rd, rd)
+            self.emit_r(lineno, 2, rd, rd, rd)
         else:
             if lookahead in INSTRS:
                 opcode, format, swap_operands = INSTRS[lookahead]
@@ -243,7 +243,7 @@ class Assembler:
                 if is_scalar_reg(rd) and (is_vector_reg(rs1) or is_vector_reg(rs2)):
                     raise AssembleError(lineno, 'Cannot use scalar dest with vector source')
 
-                self.emit_rv(lineno, opcode, rd, rs1, rs2)
+                self.emit_r(lineno, opcode, rd, rs1, rs2)
             elif format == FMT_RR:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
@@ -251,7 +251,7 @@ class Assembler:
                 if is_scalar_reg(rd) and is_vector_reg(rs):
                     raise AssembleError(lineno, 'Cannot use scalar dest with vector source')
 
-                self.emit_rv(lineno, opcode, rd, rs, 0)
+                self.emit_r(lineno, opcode, rd, rs, 0)
             elif format == FMT_COMPARE:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
@@ -262,9 +262,9 @@ class Assembler:
                     raise AssembleError(lineno, 'Dest register for compare must be scalar')
 
                 if swap_operands:
-                    self.emit_rv(lineno, opcode, rd, rs2, rs1)
+                    self.emit_r(lineno, opcode, rd, rs2, rs1)
                 else:
-                    self.emit_rv(lineno, opcode, rd, rs1, rs2)
+                    self.emit_r(lineno, opcode, rd, rs1, rs2)
             elif format == FMT_COND_BRANCH:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
@@ -297,7 +297,7 @@ class Assembler:
 
         self.labels[name] = len(self.code) * 4
 
-    def emit_rv(self, lineno, opcode, rd, rs1, rs2):
+    def emit_r(self, lineno, opcode, rd, rs1, rs2):
         self.emit_raw(lineno, opcode | (rd << 7) | (rs1 << 14) | (rs2 << 21))
 
     def emit_b(self, lineno, opcode, rs1):
