@@ -30,6 +30,10 @@ class DirectAccessPort(implicit cfg: GpuConfig) extends Bundle {
   val writeData = Input(UInt(cfg.busDataBits.W))
 }
 
+/**
+  * Simulates an AXI memory interface for testing.
+  * memorySize is in busDataWidth words (expected to be 64-bits)
+  */
 class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
   val io = IO(Flipped(new AxiBus))
 
@@ -54,13 +58,13 @@ class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
 
   when (!writeLatched && io.writeRequest.valid) {
     writeLatched := true.B
-    writeAddress := io.writeRequest.bits.address >> 2.U
+    writeAddress := io.writeRequest.bits.address >> 3.U
     writeLength := io.writeRequest.bits.length
   }
 
   when (!readLatched && io.readRequest.valid) {
     readLatched := true.B
-    readAddress := io.readRequest.bits.address >> 2.U
+    readAddress := io.readRequest.bits.address >> 3.U
     readLength := io.readRequest.bits.length
   }
 
@@ -128,24 +132,28 @@ class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
 
   // Simulation
   when (dap.readEn) {
-    dap.readData := memory.read(dap.readAddress >> 2.U)
+    dap.readData := memory.read(dap.readAddress >> 3.U)
   } .otherwise {
     dap.readData := 0.U
   }
 
   when (dap.writeEn) {
-    memory.write(dap.writeAddress >> 2.U, dap.writeData)
+    memory.write(dap.writeAddress >> 3.U, dap.writeData)
   }
 }
 
 object SimMemAccess {
   import chisel3.simulator.PeekPokeAPI._
 
+  val bytesPerWord = 8
+
   def write(clock: Clock, dap: DirectAccessPort, address: Long, data: Seq[Long]): Unit = {
     dap.writeEn.poke(true.B)
     for (i <- data.indices) {
-      dap.writeAddress.poke((address + i * 4).U)
-      dap.writeData.poke((data(i) & 0xffffffffL).U)
+      dap.writeAddress.poke((address + i * bytesPerWord).U)
+
+      // Fucking James Gosling...
+      dap.writeData.poke(BigInt(java.lang.Long.toUnsignedString(data(i))).U)
       clock.step()
     }
 
@@ -156,9 +164,9 @@ object SimMemAccess {
     val result = scala.collection.mutable.ArrayBuffer[Long]()
     dap.readEn.poke(true.B)
     for (i <- 0 until length) {
-      dap.readAddress.poke((address + i * 4).U)
+      dap.readAddress.poke((address + i * bytesPerWord).U)
       clock.step()
-      result += dap.readData.peek().litValue.toLong & 0xffffffffL
+      result += dap.readData.peek().litValue.toLong
     }
 
     dap.readEn.poke(false.B)
@@ -184,7 +192,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
       dut.io.readData.ready.poke(ready.B)
 
       if (ready && dut.io.readData.valid.peek().litToBoolean) {
-        result += dut.io.readData.bits.data.peek().litValue.toLong & 0xffffffffL
+        result += dut.io.readData.bits.data.peek().litValue.toLong
       }
 
       dut.clock.step()
@@ -244,9 +252,9 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
 
       for (_ <- 0 until 1000) {
         val burstLength = rng.nextInt(maxBurst - 1) + 1
-        val address = rng.nextInt(memorySize - maxBurst) * 4
+        val address = rng.nextInt(memorySize - maxBurst) * 8
         val readData = this.readBurst(dut, rng, address, burstLength)
-        assert(readData == testData.slice(address / 4, address / 4 + burstLength))
+        assert(readData == testData.slice(address / 8, address / 8 + burstLength))
       }
     }
   }
@@ -266,7 +274,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
       var offset = 0
       while (offset < memorySize) {
         val burstLength = math.min(memorySize - offset, rng.nextInt(maxBurst - 1) + 1)
-        this.writeBurst(dut, rng, offset * 4, testData.slice(offset, offset + burstLength))
+        this.writeBurst(dut, rng, offset * 8, testData.slice(offset, offset + burstLength))
         offset += burstLength
       }
 

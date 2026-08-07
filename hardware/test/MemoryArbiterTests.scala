@@ -142,7 +142,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
       val maxBurstLength = 8
 
       // Initialize memory with a known pattern.
-      val reference = Array.fill(memorySize)(Random.nextLong() & 0xffffffffL)
+      val reference = Array.fill(memorySize)(Random.nextLong())
 
       SimMemAccess.write(dut.clock, dut.io.dap, 0, reference.toSeq)
 
@@ -184,6 +184,8 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
         activeRanges -= range
       }
 
+      var finishSimulation = false
+
       def makeReader(portNum: Int): () => Unit = {
         val port = dut.io.readPorts(portNum)
         var currentRange = (0, 0)
@@ -199,7 +201,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
             if (ready && port.data.valid.peek().litToBoolean) {
               val expectedData = reference(currentAddr)
-              val actualData = port.data.bits.peek().litValue.toLong & 0xffffffffL
+              val actualData = port.data.bits.peek().litValue.toLong
               assert(actualData == expectedData, f"Reader $portNum mismatched at addr $currentAddr")
               currentAddr += 1
               wordsRemaining -= 1
@@ -209,7 +211,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
                 unlockRange(currentRange)
               }
             }
-          } else if (rng.nextInt(10) < 3) { // 30% chance to start new burst
+          } else if (!finishSimulation && rng.nextInt(10) < 3) { // 30% chance to start new burst
             // Start new burst
             currentRange = getRandomRange()
             val len = currentRange._2 - currentRange._1 + 1
@@ -218,13 +220,11 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
             burstActive = true
 
             port.valid.poke(true.B)
-            port.address.poke((currentAddr * 4).U)
+            port.address.poke((currentAddr * 8).U)
             port.length.poke((len - 1).U)
           }
         }
       }
-
-      var finishSimulation = false
 
       def makeWriter(portNum: Int): () => Unit = {
         val port = dut.io.writePorts(portNum)
@@ -241,7 +241,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
             port.data.valid.poke(valid.B)
 
             // We updated the data in the reference below when we started the burst.
-            port.data.bits.poke(reference(currentAddr).U)
+            port.data.bits.poke(BigInt(java.lang.Long.toUnsignedString(reference(currentAddr))).U)
 
             if (valid && port.data.ready.peek().litToBoolean) {
               currentAddr += 1
@@ -261,12 +261,12 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
             // Write new data here. This range is locked, so the reader won't get the wrong
             // data until the burst finishes.
-            for (_ <- currentRange._1 to currentRange._2) {
-              //reference(i) = rng.nextLong() & 0xffffffffL
+            for (i <- currentRange._1 to currentRange._2) {
+              reference(i) = rng.nextLong()
             }
 
             port.valid.poke(true.B)
-            port.address.poke((currentAddr * 4).U)
+            port.address.poke((currentAddr * 8).U)
             port.length.poke((len - 1).U)
           }
         }
@@ -283,8 +283,12 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
       // Flush all pending writes so memory is consistent
       finishSimulation = true
-      for (_ <- 0 until 200) {
+      for (_ <- 0 until 1000) {
         writers.foreach(w => w())
+
+        // Need to drive the readers too, otherwise the arbiter will never accept the writes
+        // because it is waiting for a read to finish.
+        readers.foreach(r => r())
         dut.clock.step()
       }
 
