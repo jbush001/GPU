@@ -42,7 +42,11 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     val wakeThreadBitmap = Output(UInt(cfg.shaderHarts.W))
   })
 
-  def cacheLineAlign(address: UInt): UInt = Cat(address(31, 6), 0.U(6.W))
+  val cacheLineOffsetBits = log2Up(cfg.cacheLineSizeBytes)
+  def cacheLineAlign(address: UInt): UInt = Cat(
+    address(31, cacheLineOffsetBits),
+    0.U(cacheLineOffsetBits.W)
+  )
 
   // There is one pending miss entry per hardware thread, but if a thread misses
   // on a cache line that is already being fetched, it will be added to the waiting
@@ -53,15 +57,18 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     val address = UInt(cfg.busAddressBits.W)
   }
 
-  val pendingMisses = RegInit(VecInit(Seq.fill(cfg.shaderHarts)(0.U.asTypeOf(new PendingMiss))))
-  val camMatchOh = VecInit(pendingMisses.map(r => r.valid && r.address === cacheLineAlign(io.missAddress)))
+  val pendingMisses = RegInit(VecInit(Seq.fill(cfg.shaderHarts)(
+    0.U.asTypeOf(new PendingMiss))))
+  val camMatchOh = VecInit(pendingMisses.map(r => r.valid
+    && r.address === cacheLineAlign(io.missAddress)))
   val camMatchIndex = PriorityEncoder(camMatchOh)
 
   // Determine if we should combine this with a pending load
   when (io.cacheMiss) {
     when (camMatchOh.asUInt.orR) {
       // Combine with existing request
-      pendingMisses(camMatchIndex).waitingThreadBitmap := pendingMisses(camMatchIndex).waitingThreadBitmap | (1.U << io.missThread)
+      pendingMisses(camMatchIndex).waitingThreadBitmap :=
+        pendingMisses(camMatchIndex).waitingThreadBitmap | (1.U << io.missThread)
     } .otherwise {
       // Set up new request
       pendingMisses(io.missThread).valid := true.B
