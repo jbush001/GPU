@@ -77,14 +77,14 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     nextRequest.io.in(i).bits := pendingMisses(i).address
   }
 
-  val burstActive = RegInit(false.B)
-  val burstAddress = RegInit(0.U(cfg.busAddressBits.W))
-  val burstChosen = RegInit(0.U(log2Up(cfg.shaderHarts).W))
-
-  // Accumulate burst data into a cache line buffer. When the burst is complete, write it back to the cache
   val cacheLineBeats = cfg.cacheLineSizeBytes * 8 / cfg.busDataBits
+
+  val burstActive = RegInit(false.B)
+  val burstThread = RegInit(0.U(log2Up(cfg.shaderHarts).W))
+  val burstAddress = RegInit(0.U(cfg.busAddressBits.W))
   val burstCounter = RegInit(0.U(log2Up(cacheLineBeats).W))
 
+  io.updateCacheAddress := burstAddress
   io.updateCacheData := io.readPort.data.bits
   io.readPort.address := nextRequest.io.out.bits
   io.readPort.length := cacheLineBeats.U
@@ -98,29 +98,26 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     when (burstCounter === (cacheLineBeats - 1).U) {
       // Burst complete
       burstActive := false.B
-      io.wakeThreadBitmap := pendingMisses(burstChosen).waitingThreadBitmap
-      pendingMisses(burstChosen).valid := false.B
+      io.wakeThreadBitmap := pendingMisses(burstThread).waitingThreadBitmap
+      pendingMisses(burstThread).valid := false.B
       io.updateCacheDone := true.B
     }.otherwise {
       burstCounter := burstCounter + 1.U
-      burstAddress := burstAddress + 8.U
+      burstAddress := burstAddress + (cfg.busDataBits / 8).U
     }
   }
 
   nextRequest.io.out.ready := false.B
+  io.readPort.valid := false.B
   when (!burstActive && nextRequest.io.out.valid) {
     // Start a new burst, issue address to memory arbiter
     nextRequest.io.out.ready := true.B
     burstActive := true.B
     burstCounter := 0.U
-    burstChosen := nextRequest.io.chosen
+    burstThread := nextRequest.io.chosen
     burstAddress := nextRequest.io.out.bits
     io.readPort.valid := true.B
-  }.otherwise {
-    io.readPort.valid := false.B
   }
-
-  io.updateCacheAddress := burstAddress
 
   // Invariant 1: If burstActive is true, then the nextRequest must be valid.
   assert(!burstActive || nextRequest.io.out.valid,

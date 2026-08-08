@@ -249,7 +249,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       for (thread <- 0 until cfg.shaderHarts) {
         assert(!missState(thread).active,
           s"Thread $thread still has outstanding miss after flush " +
-          s"(address ${missState(thread).address}%x, issued cycle ${missState(thread).issueCycle})")
+          s"(address ${missState(thread).address}, issued cycle ${missState(thread).issueCycle})")
       }
     }
   }
