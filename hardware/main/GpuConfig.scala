@@ -31,9 +31,14 @@ case class GpuConfig(
   busDataBits: Int = 64,
   busBurstLengthBits: Int = 8,
   shaderHarts: Int = 8, // Number of hardware threads per shader core
-  shaderVectorLanes: Int = 8
+  shaderVectorLanes: Int = 8,
+  cacheLineSizeBytes: Int = 64
 ) {
   require((tileSizePixels & (tileSizePixels - 1)) == 0, "tileSizePixels must be a power of two")
+  require((shaderHarts & (shaderHarts - 1)) == 0, "shaderHarts must be a power of two")
+  require((shaderVectorLanes & (shaderVectorLanes - 1)) == 0, "shaderVectorLanes must be a power of two")
+  require(busDataBits % 8 == 0, "busDataBits must be a multiple of 8")
+
   val tileCoordBits = log2Up(tileSizePixels)
   val totalTilePixels = tileSizePixels * tileSizePixels
 }
