@@ -14,9 +14,10 @@
 //   limitations under the License.
 //
 
-package gpu
+package gpu.shader
 
 import chisel3._
+import gpu._
 
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -24,9 +25,6 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   })
 
   // Stub
-  io.icacheReadPort.valid := false.B
-  io.icacheReadPort.address := 0.U
-  io.icacheReadPort.length := 0.U
-  io.icacheReadPort.data.ready := false.B
+  io.icacheReadPort <> DontCare
 }
 

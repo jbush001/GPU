@@ -14,11 +14,12 @@
 //   limitations under the License.
 //
 
-package gpu
+package gpu.shader
 
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 import chisel3._
+import gpu._
 
 object OpCode {
   val HALT = 0

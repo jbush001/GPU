@@ -14,10 +14,11 @@
 //   limitations under the License.
 //
 
-package gpu
+package gpu.shader
 
 import chisel3._
 import chisel3.util._
+import gpu._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 import scala.util.Random

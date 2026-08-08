@@ -14,10 +14,11 @@
 //   limitations under the License.
 //
 
-package gpu
+package gpu.shader
 
 import chisel3._
 import chisel3.util._
+import gpu._
 
 /** Handles reading cache lines from external memory and queuing pending misses.
   */
