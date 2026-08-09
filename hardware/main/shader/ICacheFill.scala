@@ -73,16 +73,16 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
 
   val pendingMisses = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(
     0.U.asTypeOf(new PendingMiss))))
-  val camMatchOh = VecInit(pendingMisses.map(r => r.valid
+  val pendingMissMatchOh = VecInit(pendingMisses.map(r => r.valid
     && r.address.cacheLineAligned === io.fillRequest.bits.address.cacheLineAligned))
-  val camMatchIndex = PriorityEncoder(camMatchOh)
+  val pendingMissMatchIndex = PriorityEncoder(pendingMissMatchOh)
 
   // Determine if we should combine this with a pending load
   when (io.fillRequest.valid) {
-    when (camMatchOh.asUInt.orR) {
+    when (pendingMissMatchOh.asUInt.orR) {
       // Combine with existing request
-      pendingMisses(camMatchIndex).waitingThreadBitmap :=
-        pendingMisses(camMatchIndex).waitingThreadBitmap | UIntToOH(io.fillRequest.bits.thread)
+      pendingMisses(pendingMissMatchIndex).waitingThreadBitmap :=
+        pendingMisses(pendingMissMatchIndex).waitingThreadBitmap | UIntToOH(io.fillRequest.bits.thread)
     } .otherwise {
       // Set up new request
       pendingMisses(io.fillRequest.bits.thread).valid := true.B
@@ -92,10 +92,10 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
   }
 
   // The arbiter selects the next pending miss.
-  val nextRequest = Module(new RRArbiter(new ICacheAddress, cfg.shaderThreads))
+  val nextFillArbiter = Module(new RRArbiter(new ICacheAddress, cfg.shaderThreads))
   for (i <- 0 until cfg.shaderThreads) {
-    nextRequest.io.in(i).valid := pendingMisses(i).valid
-    nextRequest.io.in(i).bits := pendingMisses(i).address
+    nextFillArbiter.io.in(i).valid := pendingMisses(i).valid
+    nextFillArbiter.io.in(i).bits := pendingMisses(i).address
   }
 
   val cacheLineBeats = cfg.cacheLineSizeBytes * 8 / cfg.busDataBits
@@ -108,7 +108,7 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
   io.updateCache.bits.address := burstAddress
   io.updateCache.bits.data := io.readPort.data.bits
   io.updateCache.bits.last := burstCounter === (cacheLineBeats - 1).U
-  io.readPort.address := nextRequest.io.out.bits.raw
+  io.readPort.address := nextFillArbiter.io.out.bits.raw
   io.readPort.length := cacheLineBeats.U
   io.readPort.data.ready := true.B
 
@@ -127,21 +127,21 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  nextRequest.io.out.ready := false.B
+  nextFillArbiter.io.out.ready := false.B
   io.readPort.valid := false.B
-  when (!burstActive && nextRequest.io.out.valid) {
+  when (!burstActive && nextFillArbiter.io.out.valid) {
     // Start a new burst, issue address to memory arbiter
-    nextRequest.io.out.ready := true.B
+    nextFillArbiter.io.out.ready := true.B
     burstActive := true.B
     burstCounter := 0.U
-    burstThread := nextRequest.io.chosen
-    burstAddress := nextRequest.io.out.bits
+    burstThread := nextFillArbiter.io.chosen
+    burstAddress := nextFillArbiter.io.out.bits
     io.readPort.valid := true.B
   }
 
-  // Invariant 1: If burstActive is true, then the nextRequest must be valid.
-  assert(!burstActive || nextRequest.io.out.valid,
-    "burstActive is true but nextRequest is not valid")
+  // Invariant 1: If burstActive is true, then the nextFillArbiter must be valid.
+  assert(!burstActive || nextFillArbiter.io.out.valid,
+    "burstActive is true but nextFillArbiter is not valid")
 
   // Invariant 2: if a cache line update is complete, wakeThreadBitmap must be non-zero.
   assert(!(io.updateCache.valid && io.updateCache.bits.last) || io.wakeThreadBitmap.orR,
