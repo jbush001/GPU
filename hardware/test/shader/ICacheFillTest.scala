@@ -30,7 +30,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     simulate(new ICacheFill()) { dut =>
       val baseAddress = 0x1000
       dut.io.cacheMiss.poke(true.B)
-      dut.io.missAddress.poke(baseAddress.U)
+      dut.io.missAddress.raw.poke(baseAddress.U)
       dut.io.missThread.poke(2.U)
       dut.clock.step()
       dut.io.cacheMiss.poke(false.B)
@@ -48,7 +48,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
         dut.io.updateCacheEn.peek().litToBoolean match {
           case true =>
-            dut.io.updateCacheAddress.expect((baseAddress + offset * 8).U,
+            dut.io.updateCacheAddress.raw.expect((baseAddress + offset * 8).U,
               "Cache address should match the miss address")
             // Check data
             val expectedData = (offset + 1).U
@@ -85,7 +85,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     simulate(new ICacheFill()) { dut =>
       val baseAddress = 0x1000
       dut.io.cacheMiss.poke(true.B)
-      dut.io.missAddress.poke(baseAddress.U)
+      dut.io.missAddress.raw.poke(baseAddress.U)
       dut.io.missThread.poke(2.U)
       dut.clock.step()
       dut.io.readPort.valid.expect(true.B, "Should request burst from memory")
@@ -107,7 +107,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
         dut.io.updateCacheEn.peek().litToBoolean match {
           case true =>
-            dut.io.updateCacheAddress.expect((baseAddress + offset * 8).U,
+            dut.io.updateCacheAddress.raw.expect((baseAddress + offset * 8).U,
               "Cache address should match the miss address")
             // Check data
             val expectedData = (offset + 1).U
@@ -148,20 +148,20 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         val dap = new DirectAccessPort
         val cacheMiss = Input(Bool())
         val missAddress = Input(UInt(cfg.busAddressBits.W))
-        val missThread = Input(UInt(log2Up(cfg.shaderHarts).W))
+        val missThread = Input(UInt(log2Up(cfg.shaderThreads).W))
         val updateCacheEn = Output(Bool())
         val updateCacheAddress = Output(UInt(cfg.busAddressBits.W))
         val updateCacheData = Output(UInt((cfg.busDataBits).W))
         val updateCacheDone = Output(Bool())
-        val wakeThreadBitmap = Output(UInt(cfg.shaderHarts.W))
+        val wakeThreadBitmap = Output(UInt(cfg.shaderThreads.W))
       })
 
       val icacheFill = Module(new ICacheFill())
       icacheFill.io.cacheMiss := io.cacheMiss
-      icacheFill.io.missAddress := io.missAddress
+      icacheFill.io.missAddress.raw := io.missAddress
       icacheFill.io.missThread := io.missThread
       io.updateCacheEn := icacheFill.io.updateCacheEn
-      io.updateCacheAddress := icacheFill.io.updateCacheAddress
+      io.updateCacheAddress := icacheFill.io.updateCacheAddress.raw
       io.updateCacheData := icacheFill.io.updateCacheData
       io.updateCacheDone := icacheFill.io.updateCacheDone
       io.wakeThreadBitmap := icacheFill.io.wakeThreadBitmap
@@ -185,14 +185,14 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         var issueCycle: Int = 0,
       )
 
-      val missState = Array.fill(cfg.shaderHarts)(MissState())
+      val missState = Array.fill(cfg.shaderThreads)(MissState())
       val maxLatency = 200
 
       val totalCycles = 100000
       for (cycle <- 0 until totalCycles) {
         // Don't start a new burst during the flush period
         if (rng.nextDouble() < 0.1 && cycle < totalCycles - maxLatency) {
-          val threadIdx = rng.nextInt(cfg.shaderHarts)
+          val threadIdx = rng.nextInt(cfg.shaderThreads)
           val state = missState(threadIdx)
           if (!state.active) {
             val address = rng.nextInt(memorySize / cfg.cacheLineSizeBytes) * cfg.cacheLineSizeBytes
@@ -225,7 +225,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
         val wakeBitmap = dut.io.wakeThreadBitmap.peek().litValue.toInt
         if (wakeBitmap != 0) {
-          for (thread <- 0 until cfg.shaderHarts) {
+          for (thread <- 0 until cfg.shaderThreads) {
             if ((wakeBitmap & (1 << thread)) != 0) {
               val state = missState(thread)
               assert(state.active, s"Cycle $cycle: Thread $thread was woken but has no outstanding miss")
@@ -234,7 +234,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
           }
         }
 
-        for (thread <- 0 until cfg.shaderHarts) {
+        for (thread <- 0 until cfg.shaderThreads) {
           val state = missState(thread)
           if (state.active) {
             val waiting = cycle - state.issueCycle
@@ -247,7 +247,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       }
 
       // Final check: everything should have drained within the timeout
-      for (thread <- 0 until cfg.shaderHarts) {
+      for (thread <- 0 until cfg.shaderThreads) {
         assert(!missState(thread).active,
           s"Thread $thread still has outstanding miss after flush " +
           s"(address ${missState(thread).address}, issued cycle ${missState(thread).issueCycle})")

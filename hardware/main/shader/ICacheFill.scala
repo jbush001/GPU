@@ -20,6 +20,25 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
+class ICacheAddress(implicit cfg: GpuConfig) extends Bundle {
+  val raw = UInt(cfg.busAddressBits.W)
+  def tag = raw(cfg.busAddressBits - 1, cfg.busAddressBits - cfg.tagBits)
+  def index = raw(cfg.cacheLineOffsetBits + cfg.indexBits - 1, cfg.cacheLineOffsetBits)
+  def cacheLineOffset = raw(cfg.cacheLineOffsetBits - 1, 0)
+
+  def cacheLineAligned: ICacheAddress = {
+    val aligned = Wire(new ICacheAddress)
+    aligned.raw := Cat(tag, index, 0.U(cfg.cacheLineOffsetBits.W))
+    aligned
+  }
+
+  def +(bytes: UInt): ICacheAddress = {
+    val n = Wire(new ICacheAddress)
+    n.raw := raw + bytes
+    n
+  }
+}
+
 /** Handles reading cache lines from external memory and queuing pending misses.
   */
 class ICacheFill(implicit cfg: GpuConfig) extends Module {
@@ -29,39 +48,33 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
 
     // From instruction fetch. Enqueue a new miss request.
     val cacheMiss = Input(Bool())
-    val missAddress = Input(UInt(cfg.busAddressBits.W))
-    val missThread = Input(UInt(log2Up(cfg.shaderHarts).W))
+    val missAddress = Input(new ICacheAddress)
+    val missThread = Input(UInt(log2Up(cfg.shaderThreads).W))
 
     // To instruction fetch. Write data back to the cache.
     val updateCacheEn = Output(Bool())
-    val updateCacheAddress = Output(UInt(cfg.busAddressBits.W))
+    val updateCacheAddress = Output(new ICacheAddress)
     val updateCacheData = Output(UInt((cfg.busDataBits).W))
     val updateCacheDone = Output(Bool())
 
     // Each bit corresponds to a hardware thread that should
     // be woken up because its cache miss has been filled.
-    val wakeThreadBitmap = Output(UInt(cfg.shaderHarts.W))
+    val wakeThreadBitmap = Output(UInt(cfg.shaderThreads.W))
   })
-
-  val cacheLineOffsetBits = log2Up(cfg.cacheLineSizeBytes)
-  def cacheLineAlign(address: UInt): UInt = Cat(
-    address(31, cacheLineOffsetBits),
-    0.U(cacheLineOffsetBits.W)
-  )
 
   // There is one pending miss entry per hardware thread, but if a thread misses
   // on a cache line that is already being fetched, it will be added to the waiting
   // list for that line.
   class PendingMiss extends Bundle {
     val valid = Bool()
-    val waitingThreadBitmap = UInt(cfg.shaderHarts.W)
-    val address = UInt(cfg.busAddressBits.W)
+    val waitingThreadBitmap = UInt(cfg.shaderThreads.W)
+    val address = new ICacheAddress
   }
 
-  val pendingMisses = RegInit(VecInit(Seq.fill(cfg.shaderHarts)(
+  val pendingMisses = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(
     0.U.asTypeOf(new PendingMiss))))
   val camMatchOh = VecInit(pendingMisses.map(r => r.valid
-    && r.address === cacheLineAlign(io.missAddress)))
+    && r.address.cacheLineAligned === io.missAddress.cacheLineAligned))
   val camMatchIndex = PriorityEncoder(camMatchOh)
 
   // Determine if we should combine this with a pending load
@@ -73,14 +86,14 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     } .otherwise {
       // Set up new request
       pendingMisses(io.missThread).valid := true.B
-      pendingMisses(io.missThread).address := cacheLineAlign(io.missAddress)
+      pendingMisses(io.missThread).address := io.missAddress.cacheLineAligned
       pendingMisses(io.missThread).waitingThreadBitmap := 1.U << io.missThread
     }
   }
 
   // The arbiter selects the next pending miss.
-  val nextRequest = Module(new RRArbiter(UInt(cfg.busAddressBits.W), cfg.shaderHarts))
-  for (i <- 0 until cfg.shaderHarts) {
+  val nextRequest = Module(new RRArbiter(new ICacheAddress, cfg.shaderThreads))
+  for (i <- 0 until cfg.shaderThreads) {
     nextRequest.io.in(i).valid := pendingMisses(i).valid
     nextRequest.io.in(i).bits := pendingMisses(i).address
   }
@@ -88,13 +101,13 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
   val cacheLineBeats = cfg.cacheLineSizeBytes * 8 / cfg.busDataBits
 
   val burstActive = RegInit(false.B)
-  val burstThread = RegInit(0.U(log2Up(cfg.shaderHarts).W))
-  val burstAddress = RegInit(0.U(cfg.busAddressBits.W))
+  val burstThread = RegInit(0.U(log2Up(cfg.shaderThreads).W))
+  val burstAddress = Reg(new ICacheAddress)
   val burstCounter = RegInit(0.U(log2Up(cacheLineBeats).W))
 
   io.updateCacheAddress := burstAddress
   io.updateCacheData := io.readPort.data.bits
-  io.readPort.address := nextRequest.io.out.bits
+  io.readPort.address := nextRequest.io.out.bits.raw
   io.readPort.length := cacheLineBeats.U
   io.readPort.data.ready := true.B
 
@@ -135,19 +148,22 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
   assert(!io.updateCacheDone || io.wakeThreadBitmap.orR,
     "updateCacheDone is true but wakeThreadBitmap is zero")
 
-  for (i <- 0 until cfg.shaderHarts) {
-    // Invariant 3: If a pending miss is valid, it must have at least one
+  // Invariant 3: if updateCacheDone is true, then updateCacheEn must also be true
+  assert(!io.updateCacheDone || io.updateCacheEn,
+    "updateCacheDone is true but updateCacheEn is false")
+
+  for (i <- 0 until cfg.shaderThreads) {
+    // Invariant 4: If a pending miss is valid, it must have at least one
     // waiting thread.
     assert(!pendingMisses(i).valid || pendingMisses(i).waitingThreadBitmap.orR,
       s"Pending miss ${i} is valid but has no waiting threads")
 
-    for (j <- i + 1 until cfg.shaderHarts) {
-      // Invariant 4: No two pending misses can have the same address.
+    for (j <- i + 1 until cfg.shaderThreads) {
+      // Invariant 5: No two pending misses can have the same address.
       assert(!(pendingMisses(i).valid && pendingMisses(j).valid
         && pendingMisses(i).address === pendingMisses(j).address),
         "Two pending misses for the same address")
-
-      // Invariant 5: No thread should be waiting on more than one pending miss.
+       // Invariant 5: No thread should be waiting on more than one pending miss.
       assert(!(pendingMisses(i).waitingThreadBitmap(j)
         && pendingMisses(j).waitingThreadBitmap(i)
         && pendingMisses(i).valid && pendingMisses(j).valid),
@@ -155,11 +171,11 @@ class ICacheFill(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  // Invariant 6: the caller should never queue a miss to the same line the same cycle
+  // Invariant 7 (external): the caller should never queue a miss to the same line the same cycle
   // a previous one is finishing (and waking the thread). It can detect if an update
   //is occuring to the cache line.
   assert(!(io.cacheMiss && io.updateCacheDone
-    && cacheLineAlign(io.missAddress) === cacheLineAlign(burstAddress)),
+    && io.missAddress.cacheLineAligned === burstAddress.cacheLineAligned),
     "Cache miss was queued for a line that is being updated")
 }
 
