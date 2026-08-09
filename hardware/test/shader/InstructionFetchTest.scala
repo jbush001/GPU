@@ -32,23 +32,23 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       dut.io.fetchPc.raw.poke(address.U)
       dut.io.fetchThread.poke(0.U)
       dut.clock.step(2)
-      dut.io.cacheMiss.expect(true.B)
-      dut.io.missAddress.raw.expect(address.U)
+      dut.io.fillRequest.valid.expect(true.B)
+      dut.io.fillRequest.bits.address.raw.expect(address.U)
       dut.io.fetchEnable.poke(false.B)
 
       val sequence = Seq.tabulate(16)(i => i + 1000L)
 
       // Fill cache line
       for (i <- 0 until 8) {
-        dut.io.updateCacheEn.poke(true.B)
-        dut.io.updateCacheAddress.raw.poke((address + (i * 8)).U)
-        dut.io.updateCacheData.poke((sequence(i * 2) + (sequence(i * 2 + 1) << 32)).U)
-        dut.io.updateCacheDone.poke((i == 7).B)
+        dut.io.updateCache.valid.poke(true.B)
+        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)).U)
+        dut.io.updateCache.bits.data.poke((sequence(i * 2) + (sequence(i * 2 + 1) << 32)).U)
+        dut.io.updateCache.bits.last.poke((i == 7).B)
         dut.clock.step()
       }
 
-      dut.io.updateCacheEn.poke(false.B)
-      dut.io.updateCacheDone.poke(false.B)
+      dut.io.updateCache.valid.poke(false.B)
+      dut.io.updateCache.bits.last.poke(false.B)
       dut.clock.step(2)
 
       // Cache hit
@@ -85,10 +85,10 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
 
       // Fill cache line
       for (i <- 0 until 8) {
-        dut.io.updateCacheEn.poke(true.B)
-        dut.io.updateCacheAddress.raw.poke((address + (i * 8)).U)
-        dut.io.updateCacheData.poke(((i + 1) * 0x100000002L).U)
-        dut.io.updateCacheDone.poke((i == 7).B)
+        dut.io.updateCache.valid.poke(true.B)
+        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)).U)
+        dut.io.updateCache.bits.data.poke(((i + 1) * 0x100000002L).U)
+        dut.io.updateCache.bits.last.poke((i == 7).B)
         dut.clock.step()
       }
 

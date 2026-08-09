@@ -32,15 +32,10 @@ class InstructionFetch(implicit cfg: GpuConfig) extends Module {
     val fetchThread = Input(UInt(log2Up(cfg.shaderThreads).W))
 
     // To ICacheFill
-    val cacheMiss = Output(Bool())
-    val missAddress = Output(new ICacheAddress)
-    val missThread = Output(UInt(log2Up(cfg.shaderThreads).W))
+    val fillRequest = Valid(new CacheFillRequest)
 
     // From ICacheFill. Update cache data
-    val updateCacheEn = Input(Bool())
-    val updateCacheAddress = Input(new ICacheAddress)
-    val updateCacheData = Input(UInt((cfg.busDataBits).W))
-    val updateCacheDone = Input(Bool())
+    val updateCache = Flipped(Valid(new CacheUpdateRequest))
 
     // Output
     val outValid = Output(Bool())
@@ -74,14 +69,14 @@ class InstructionFetch(implicit cfg: GpuConfig) extends Module {
     // A near miss occurs when a cache line is filled the same cycle that a thread tries
     // to read it. We shouldn't treat as a miss, since the system will hang, but we do
     // need to restart the thread to pick up the instruction.
-    val nearMiss = (io.updateCacheDone && io.updateCacheAddress.index === stage1.pc.index
-            && io.updateCacheAddress.tag === stage1.tag && stage1.fetchEnable)
+    val nearMiss = (io.updateCache.bits.last && io.updateCache.bits.address.index === stage1.pc.index
+            && io.updateCache.bits.address.tag === stage1.tag && stage1.fetchEnable)
 
     val cacheHit = stage1.tag === stage1.pc.tag && stage1.valid
     val cacheMiss = stage1.fetchEnable && !cacheHit
-    io.cacheMiss := cacheMiss && !nearMiss
-    io.missAddress := stage1.pc.cacheLineAligned
-    io.missThread := stage1.thread
+    io.fillRequest.valid := cacheMiss && !nearMiss
+    io.fillRequest.bits.address := stage1.pc.cacheLineAligned
+    io.fillRequest.bits.thread := stage1.thread
 
     io.outPc := RegNext(stage1.pc.raw)
     val readValue = instructionMemory.read(Cat(stage1.pc.index,
@@ -97,22 +92,22 @@ class InstructionFetch(implicit cfg: GpuConfig) extends Module {
   io.outInstruction := Mux(io.outPc(2), stage2.readValue(63, 32), stage2.readValue(31, 0))
 
   // Update cache on fill
-  when (io.updateCacheEn) {
-    instructionMemory.write(Cat(io.updateCacheAddress.index,
-      io.updateCacheAddress.cacheLineOffset(cfg.cacheLineOffsetBits - 1, (log2Up(cfg.busDataBits / 8)))),
-      io.updateCacheData)
+  when (io.updateCache.valid) {
+    instructionMemory.write(Cat(io.updateCache.bits.address.index,
+      io.updateCache.bits.address.cacheLineOffset(cfg.cacheLineOffsetBits - 1, (log2Up(cfg.busDataBits / 8)))),
+      io.updateCache.bits.data)
   }
 
-  when (io.cacheMiss) {
+  when (io.fillRequest.valid) {
     // Mark cache line invalid while it is being filled, as it will be in an
     // incomplete state.
-    tagValid(io.missAddress.index) := false.B
+    tagValid(io.fillRequest.bits.address.index) := false.B
   }
 
-  when (io.updateCacheDone) {
+  when (io.updateCache.valid && io.updateCache.bits.last) {
     // Fill has completed, update metadata and mark line as valid.
-    tagMemory.write(io.updateCacheAddress.index, io.updateCacheAddress.tag)
-    tagValid(io.updateCacheAddress.index) := true.B
+    tagMemory.write(io.updateCache.bits.address.index, io.updateCache.bits.address.tag)
+    tagValid(io.updateCache.bits.address.index) := true.B
   }
 }
 

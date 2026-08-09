@@ -29,11 +29,11 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
   test("ICacheFill single miss") {
     simulate(new ICacheFill()) { dut =>
       val baseAddress = 0x1000
-      dut.io.cacheMiss.poke(true.B)
-      dut.io.missAddress.raw.poke(baseAddress.U)
-      dut.io.missThread.poke(2.U)
+      dut.io.fillRequest.valid.poke(true.B)
+      dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
+      dut.io.fillRequest.bits.thread.poke(2.U)
       dut.clock.step()
-      dut.io.cacheMiss.poke(false.B)
+      dut.io.fillRequest.valid.poke(false.B)
       dut.io.readPort.valid.expect(true.B, "Should request burst from memory")
       dut.io.readPort.address.expect(baseAddress.U,
         "Memory address should match the miss address")
@@ -46,20 +46,20 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         dut.io.readPort.valid.expect(false.B, "Should not initiate new burst")
         dut.io.readPort.data.bits.poke((offset + 1).U)
 
-        dut.io.updateCacheEn.peek().litToBoolean match {
+        dut.io.updateCache.valid.peek().litToBoolean match {
           case true =>
-            dut.io.updateCacheAddress.raw.expect((baseAddress + offset * 8).U,
+            dut.io.updateCache.bits.address.raw.expect((baseAddress + offset * 8).U,
               "Cache address should match the miss address")
             // Check data
             val expectedData = (offset + 1).U
-            dut.io.updateCacheData.expect(expectedData, "Cache data should match the data returned from memory")
+            dut.io.updateCache.bits.data.expect(expectedData, "Cache data should match the data returned from memory")
             if (offset == cfg.cacheLineSizeBytes / (cfg.busDataBits / 8) - 1) {
-              dut.io.updateCacheDone.expect(true.B,
+              dut.io.updateCache.bits.last.expect(true.B,
                 "Cache update done should be asserted when the last beat is received")
               dut.io.wakeThreadBitmap.expect(4.U,
                 "Wake thread bitmap should indicate the waiting thread")
             } else {
-              dut.io.updateCacheDone.expect(false.B,
+              dut.io.updateCache.bits.last.expect(false.B,
                 "Cache update done should not be asserted until the last beat is received")
             }
 
@@ -74,7 +74,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       for (_ <- 0 until 5) {
         dut.clock.step(1)
         dut.io.wakeThreadBitmap.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
-        dut.io.updateCacheEn.expect(false.B, "Cache update should be deasserted after one cycle")
+        dut.io.updateCache.valid.expect(false.B, "Cache update should be deasserted after one cycle")
         dut.io.readPort.valid.expect(false.B, "Should not request burst from memory")
       }
     }
@@ -84,9 +84,9 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
   test("ICacheFill duplicate miss") {
     simulate(new ICacheFill()) { dut =>
       val baseAddress = 0x1000
-      dut.io.cacheMiss.poke(true.B)
-      dut.io.missAddress.raw.poke(baseAddress.U)
-      dut.io.missThread.poke(2.U)
+      dut.io.fillRequest.valid.poke(true.B)
+      dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
+      dut.io.fillRequest.bits.thread.poke(2.U)
       dut.clock.step()
       dut.io.readPort.valid.expect(true.B, "Should request burst from memory")
       dut.io.readPort.address.expect(baseAddress.U,
@@ -94,9 +94,9 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
 
       // Second miss collides with the first
-      dut.io.missThread.poke(1.U)
+      dut.io.fillRequest.bits.thread.poke(1.U)
       dut.clock.step()
-      dut.io.cacheMiss.poke(false.B)
+      dut.io.fillRequest.valid.poke(false.B)
 
       // Simulate memory returning data
       var offset = 0
@@ -105,20 +105,20 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         dut.io.readPort.valid.expect(false.B, "Should not initiate new burst")
         dut.io.readPort.data.bits.poke((offset + 1).U)
 
-        dut.io.updateCacheEn.peek().litToBoolean match {
+        dut.io.updateCache.valid.peek().litToBoolean match {
           case true =>
-            dut.io.updateCacheAddress.raw.expect((baseAddress + offset * 8).U,
+            dut.io.updateCache.bits.address.raw.expect((baseAddress + offset * 8).U,
               "Cache address should match the miss address")
             // Check data
             val expectedData = (offset + 1).U
-            dut.io.updateCacheData.expect(expectedData, "Cache data should match the data returned from memory")
+            dut.io.updateCache.bits.data.expect(expectedData, "Cache data should match the data returned from memory")
             if (offset == cfg.cacheLineSizeBytes / (cfg.busDataBits / 8) - 1) {
-              dut.io.updateCacheDone.expect(true.B,
+              dut.io.updateCache.bits.last.expect(true.B,
                 "Cache update done should be asserted when the last beat is received")
               dut.io.wakeThreadBitmap.expect(6.U,
                 "Wake thread bitmap should indicate the waiting thread")
             } else {
-              dut.io.updateCacheDone.expect(false.B,
+              dut.io.updateCache.bits.last.expect(false.B,
                 "Cache update done should not be asserted until the last beat is received")
             }
 
@@ -133,7 +133,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       for (_ <- 0 until 5) {
         dut.clock.step(1)
         dut.io.wakeThreadBitmap.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
-        dut.io.updateCacheEn.expect(false.B, "Cache update should be deasserted after one cycle")
+        dut.io.updateCache.valid.expect(false.B, "Cache update should be deasserted after one cycle")
         dut.io.readPort.valid.expect(false.B, "Should not request burst from memory")
       }
     }
@@ -146,24 +146,15 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     simulate(new Module {
       val io = IO(new Bundle {
         val dap = new DirectAccessPort
-        val cacheMiss = Input(Bool())
-        val missAddress = Input(UInt(cfg.busAddressBits.W))
-        val missThread = Input(UInt(log2Up(cfg.shaderThreads).W))
-        val updateCacheEn = Output(Bool())
-        val updateCacheAddress = Output(UInt(cfg.busAddressBits.W))
-        val updateCacheData = Output(UInt((cfg.busDataBits).W))
-        val updateCacheDone = Output(Bool())
+        val fillRequest = Flipped(Valid(new CacheFillRequest))
+        val updateCache = Output(Valid(new CacheUpdateRequest))
         val wakeThreadBitmap = Output(UInt(cfg.shaderThreads.W))
       })
 
       val icacheFill = Module(new ICacheFill())
-      icacheFill.io.cacheMiss := io.cacheMiss
-      icacheFill.io.missAddress.raw := io.missAddress
-      icacheFill.io.missThread := io.missThread
-      io.updateCacheEn := icacheFill.io.updateCacheEn
-      io.updateCacheAddress := icacheFill.io.updateCacheAddress.raw
-      io.updateCacheData := icacheFill.io.updateCacheData
-      io.updateCacheDone := icacheFill.io.updateCacheDone
+      icacheFill.io.fillRequest := io.fillRequest
+
+      io.updateCache := icacheFill.io.updateCache
       io.wakeThreadBitmap := icacheFill.io.wakeThreadBitmap
 
       val arbiter = Module(new MemoryArbiter(numReadPorts = 1, numWritePorts = 1))
@@ -176,6 +167,10 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     }) { dut =>
       val reference = Array.tabulate(memorySize)(i => i.toLong)
       SimMemAccess.write(dut.clock, dut.io.dap, 0, reference.toSeq)
+
+      dut.io.fillRequest.valid.poke(false.B)
+      dut.io.fillRequest.bits.address.raw.poke(0.U)
+      dut.io.fillRequest.bits.thread.poke(0.U)
 
       val rng = new Random(42)
 
@@ -198,27 +193,27 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
             val address = rng.nextInt(memorySize / cfg.cacheLineSizeBytes) * cfg.cacheLineSizeBytes
             // Don't start a new transaction if the cache fill is finishing for
             // the same line (cache near miss)
-            if (dut.io.updateCacheDone.peek().litToBoolean &&
-                (dut.io.updateCacheAddress.peek().litValue.toInt & ~(cfg.cacheLineSizeBytes - 1)) == address) {
+            if (dut.io.updateCache.valid.peek().litToBoolean &&
+                (dut.io.updateCache.bits.address.peek().litValue.toInt & ~(cfg.cacheLineSizeBytes - 1)) == address) {
               // Skip this miss, it would be a near miss
             } else {
               state.active = true
               state.address = address
               state.issueCycle = cycle
-              dut.io.cacheMiss.poke(true.B)
-              dut.io.missAddress.poke(address.U)
-              dut.io.missThread.poke(threadIdx.U)
+              dut.io.fillRequest.valid.poke(true.B)
+              dut.io.fillRequest.bits.address.raw.poke(address.U)
+              dut.io.fillRequest.bits.thread.poke(threadIdx.U)
             }
           } else {
-            dut.io.cacheMiss.poke(false.B)
+            dut.io.fillRequest.valid.poke(false.B)
           }
         } else {
-          dut.io.cacheMiss.poke(false.B)
+          dut.io.fillRequest.valid.poke(false.B)
         }
 
-        if (dut.io.updateCacheEn.peek().litToBoolean) {
-          val address = dut.io.updateCacheAddress.peek().litValue.toInt
-          val data = dut.io.updateCacheData.peek().litValue.toLong
+        if (dut.io.updateCache.valid.peek().litToBoolean) {
+          val address = dut.io.updateCache.bits.address.peek().litValue.toInt
+          val data = dut.io.updateCache.bits.data.peek().litValue.toLong
           val expectedData = reference(address / 8)
           assert(data == expectedData, s"Data mismatch at address $address: expected $expectedData, got $data")
         }
