@@ -35,11 +35,12 @@ case class GpuConfig(
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
 ) {
-  require((tileSizePixels & (tileSizePixels - 1)) == 0, "tileSizePixels must be a power of two")
-  require((shaderThreads & (shaderThreads - 1)) == 0, "shaderThreads must be a power of two")
-  require((shaderVectorLanes & (shaderVectorLanes - 1)) == 0, "shaderVectorLanes must be a power of two")
+  require(isPow2(tileSizePixels), "tileSizePixels must be a power of two")
+  require(isPow2(shaderThreads), "shaderThreads must be a power of two")
+  require(isPow2(shaderVectorLanes), "shaderVectorLanes must be a power of two")
   require(busDataBits % 8 == 0, "busDataBits must be a multiple of 8")
 
+  // Derived values
   val tileCoordBits = log2Up(tileSizePixels)
   val totalTilePixels = tileSizePixels * tileSizePixels
 

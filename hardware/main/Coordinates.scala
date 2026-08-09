@@ -27,16 +27,18 @@ class Point2D(implicit cfg: GpuConfig) extends Bundle {
   val y = SInt(cfg.coordinateBits.W)
 
   /** Component-wise subtraction, returning a vector this - that */
-  def -(that: Point2D): Point2D = {
-    val result = Wire(new Point2D)
-    result.x := this.x - that.x
-    result.y := this.y - that.y
-    result
-  }
+  def -(that: Point2D) = Point2D(this.x -% that.x, this.y -% that.y)
 }
 
 object Point2D {
   def apply()(implicit cfg: GpuConfig) = new Point2D()
+
+  def apply(x: SInt, y: SInt)(implicit cfg: GpuConfig): Point2D = {
+    val p = Wire(new Point2D)
+    p.x := x
+    p.y := y
+    p
+  }
 }
 
 /** Represents a rectangular region on the screen, using the same coordinate
@@ -49,12 +51,7 @@ class BoundingBox(implicit cfg: GpuConfig) extends Bundle {
   val right = SInt(cfg.coordinateBits.W)
   val bottom = SInt(cfg.coordinateBits.W)
 
-  def topLeft: Point2D = {
-    val point = Wire(new Point2D)
-    point.x := this.left
-    point.y := this.top
-    point
-  }
+  def topLeft = Point2D(this.left, this.top)
 }
 
 object BoundingBox {

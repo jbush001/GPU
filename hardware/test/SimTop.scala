@@ -56,11 +56,11 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   val fillDepth = 0.U(cfg.depthBits.W)
 
   rasterizer.io.output.ready := true.B // No wait
-  tileBuffer.io.valid := rasterizer.io.output.valid
-  tileBuffer.io.quadLoc := rasterizer.io.output.bits.location
-  tileBuffer.io.mask := rasterizer.io.output.bits.mask
-  tileBuffer.io.colors := fillColors
-  tileBuffer.io.depths := VecInit.fill(4)(fillDepth)
+  tileBuffer.io.quad.valid := rasterizer.io.output.valid
+  tileBuffer.io.quad.bits.location := rasterizer.io.output.bits.location
+  tileBuffer.io.quad.bits.mask := rasterizer.io.output.bits.mask
+  tileBuffer.io.quad.bits.colors := fillColors
+  tileBuffer.io.quad.bits.depths := VecInit.fill(4)(fillDepth)
   tileBuffer.io.clearColor.channels(0) := 0.U
   tileBuffer.io.clearColor.channels(1) := 0.U
   tileBuffer.io.clearColor.channels(2) := 0.U

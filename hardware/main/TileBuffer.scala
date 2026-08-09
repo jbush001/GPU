@@ -48,11 +48,12 @@ object RenderBufferId extends ChiselEnum {
   */
 class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val valid = Input(Bool())
-    val quadLoc = Input(Point2D())
-    val mask = Input(Bits(Consts.pixelsPerQuad.W))
-    val colors = Input(Vec(Consts.pixelsPerQuad, Color()))
-    val depths = Input(Vec(Consts.pixelsPerQuad, UInt(cfg.depthBits.W)))
+    val quad = Flipped(Valid(new Bundle {
+      val location = Point2D()
+      val mask = Bits(Consts.pixelsPerQuad.W)
+      val colors = Vec(Consts.pixelsPerQuad, Color())
+      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBits.W))
+    }))
 
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
@@ -95,12 +96,12 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   // The memory read ports are shared between flush and pixel operations
   // (which are never happening at the same time). Note we divide each
   // coordinate by two here to get the quad address from the pixel address.
-  val inputQuadAddress = Cat(io.quadLoc.y(cfg.tileCoordBits - 1, 1),
-    io.quadLoc.x(cfg.tileCoordBits - 1, 1)).asUInt
+  val inputQuadAddress = Cat(io.quad.bits.location.y(cfg.tileCoordBits - 1, 1),
+    io.quad.bits.location.x(cfg.tileCoordBits - 1, 1)).asUInt
   val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
-  val colorReadVal = VecInit(colorMemory.map(_.read(readAddress, io.valid
+  val colorReadVal = VecInit(colorMemory.map(_.read(readAddress, io.quad.valid
     || flushActive)))
-  val depthReadVal = VecInit(depthMemory.map(_.read(readAddress, io.valid
+  val depthReadVal = VecInit(depthMemory.map(_.read(readAddress, io.quad.valid
     || flushActive)))
 
   // Pipelined quad address registers
@@ -162,9 +163,9 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
     // Stage 1: This waits for the read of the old color and depth values above,
     // and passes through the other values.
     val stage1 = new {
-      val newColor = RegNext(io.colors(pixel))
-      val newDepth = RegNext(io.depths(pixel))
-      val mask = RegNext(io.mask(pixel) && io.valid, false.B)
+      val newColor = RegNext(io.quad.bits.colors(pixel))
+      val newDepth = RegNext(io.quad.bits.depths(pixel))
+      val mask = RegNext(io.quad.bits.mask(pixel) && io.quad.valid, false.B)
     }
 
     // Stage 2: visibility checks, destination blending

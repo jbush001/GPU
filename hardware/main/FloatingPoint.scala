@@ -84,12 +84,8 @@ class FpAddSub extends Module with FloatingPointBlock {
       io.operand1.exponent - io.operand2.exponent,
       io.operand2.exponent - io.operand1.exponent)
 
-    val alignShift = Wire(UInt(log2Up(Float32.fractionWidth).W))
-    when (exponentDiff <= (Float32.fractionWidth + 1).U) {
-      alignShift := exponentDiff(4, 0)
-    }.otherwise {
-      alignShift := (Float32.fractionWidth + 1).U
-    }
+    val maxShift = (Float32.fractionWidth + 1).U
+    val alignShift = Mux(exponentDiff > maxShift, maxShift, exponentDiff)
 
     val largerFractionNext = Mux(op1IsLarger, io.operand1.fullFraction, io.operand2.fullFraction)
     val smallerFraction = Mux(op1IsLarger, io.operand2.fullFraction, io.operand1.fullFraction)
@@ -109,7 +105,7 @@ class FpAddSub extends Module with FloatingPointBlock {
     val smallerFractionAligned = RegNext(smallerFractionAlignedNext, 0.U(24.W))
   }
 
-    val sumResultWidth = Float32.fractionWidth + 2
+  val sumResultWidth = Float32.fractionWidth + 2
 
   //
   // - Add/subtract aligned fractions
@@ -130,14 +126,7 @@ class FpAddSub extends Module with FloatingPointBlock {
   //
   val stage3 = new {
     val isZeroResult = stage2.sumResult === 0.U
-    val normalizeShift = Wire(UInt(log2Up(sumResultWidth).W))
-    normalizeShift := sumResultWidth.U
-    for (i <- (sumResultWidth - 1) to 0 by -1) {
-      when (stage2.sumResult(sumResultWidth - 1 - i)) {
-        normalizeShift := i.U
-      }
-    }
-
+    val normalizeShift = PriorityEncoder(Reverse(stage2.sumResult(sumResultWidth - 1, 0)))
     val normalizedSum = (stage2.sumResult << normalizeShift)(Float32.fractionWidth, 1)
 
     val resultFraction = WireInit(0.U(Float32.fractionWidth.W))

@@ -35,33 +35,18 @@ class Color extends Bundle {
     * introduce bias. Instead, we can approximate this division by:
     * result = (product + (product >> W)) + (1 << (W - 1))) >> W
     */
-  def scale(factor: UInt): Color = {
-    val result = Wire(new Color)
-    for (ch <- 0 until Color.numChannels) {
-      val product = this.channels(ch) * factor
-      val norm = (((product +% (product >> Color.channelBits))
-        +% (1.U << (Color.channelBits - 1))) >> Color.channelBits)
-
-      result.channels(ch) := norm
-    }
-
-    result
-  }
+  def scale(factor: UInt) = Color(channels.map { ch =>
+    val product = ch * factor
+    ((product +% (product >> Color.channelBits)) +% (1.U << (Color.channelBits - 1))) >> Color.channelBits
+  })
 
   /** Adds each component of the given color to this color, clamping the
     * results to the maximum value (2^N - 1).
     */
-  def +|(that: Color): Color = {
-    val result = Wire(new Color)
-    for (ch <- 0 until Color.numChannels) {
-      val sum = this.channels(ch) +& that.channels(ch)
-      result.channels(ch) := Mux(sum(Color.channelBits),
-        ~0.U(Color.channelBits.W),
-        sum(Color.channelBits - 1, 0))
-    }
-
-    result
-  }
+  def +|(that: Color) = Color(channels.zip(that.channels).map { case (a, b) =>
+    val sum = a +& b
+    Mux(sum(Color.channelBits), Color.maxChannelValue.U, sum(Color.channelBits - 1, 0))
+  })
 
   /** Truncate an internal channel to 8-bits with appropriate rounding.
     */
@@ -88,6 +73,14 @@ object Color {
   final val maxChannelValue = ((1 << channelBits) - 1)
 
   def apply() = new Color
+
+  def apply(channels: Seq[UInt]): Color = {
+    val result = Wire(new Color)
+    for (i <- 0 until numChannels) {
+      result.channels(i) := channels(i)
+    }
+    result
+  }
 
   def fromArgb32(bits: Bits): Color = {
     val result = Wire(new Color)
