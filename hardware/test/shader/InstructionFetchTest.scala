@@ -63,15 +63,15 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
         }
 
         if (cycle >= latency) {
-          dut.io.outNearMiss.expect(false.B)
-          dut.io.outValid.expect(true.B)
-          dut.io.outPc.expect((address + ((cycle - latency) * 4)).U)
-          dut.io.outThread.expect(1.U)
+          dut.io.nearMiss.expect(false.B)
+          dut.io.output.valid.expect(true.B)
+          dut.io.output.bits.pc.expect((address + ((cycle - latency) * 4)).U)
+          dut.io.output.bits.thread.expect(1.U)
 
           // We're using a little endian convention, so this is the low 32 bits of the 64 bit bus value.
-          dut.io.outInstruction.expect(sequence(cycle - latency).U(32.W))
+          dut.io.output.bits.instruction.expect(sequence(cycle - latency).U(32.W))
         } else {
-          dut.io.outValid.expect(false.B)
+          dut.io.output.valid.expect(false.B)
         }
 
         dut.clock.step()
@@ -97,8 +97,8 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       dut.io.fetchPc.raw.poke((address + 4).U)
       dut.io.fetchThread.poke(0.U)
       dut.clock.step(2)
-      dut.io.outNearMiss.expect(true.B)
-      dut.io.outValid.expect(false.B)
+      dut.io.nearMiss.expect(true.B)
+      dut.io.output.valid.expect(false.B)
     }
   }
 }

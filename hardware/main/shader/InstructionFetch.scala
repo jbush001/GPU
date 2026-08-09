@@ -38,11 +38,13 @@ class InstructionFetch(implicit cfg: GpuConfig) extends Module {
     val updateCache = Flipped(Valid(new CacheUpdateRequest))
 
     // Output
-    val outValid = Output(Bool())
-    val outInstruction = Output(UInt(instructionWidth.W))
-    val outPc = Output(UInt(cfg.busAddressBits.W))
-    val outNearMiss = Output(Bool())
-    val outThread = Output(UInt(log2Up(cfg.shaderThreads).W))
+    val output = Valid(new Bundle {
+      val instruction = UInt(instructionWidth.W)
+      val pc = UInt(cfg.busAddressBits.W)
+      val thread = UInt(log2Up(cfg.shaderThreads).W)
+    })
+
+    val nearMiss = Output(Bool())
   })
 
   ///////////////////////////////////////////////////////////
@@ -78,18 +80,19 @@ class InstructionFetch(implicit cfg: GpuConfig) extends Module {
     io.fillRequest.bits.address := stage1.pc.cacheLineAligned
     io.fillRequest.bits.thread := stage1.thread
 
-    io.outPc := RegNext(stage1.pc.raw)
+    io.output.bits.pc := RegNext(stage1.pc.raw)
     val readValue = instructionMemory.read(Cat(stage1.pc.index,
       stage1.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3)))
 
-    io.outValid := RegNext(stage1.fetchEnable && (cacheHit && !nearMiss))
-    io.outNearMiss := RegNext(nearMiss)
-    io.outThread := RegNext(stage1.thread)
+    io.output.valid := RegNext(stage1.fetchEnable && (cacheHit && !nearMiss))
+    io.nearMiss := RegNext(nearMiss)
+    io.output.bits.thread := RegNext(stage1.thread)
   }
 
   // Cache memory is 64 bits, but instructions are 32, so need to select correct
   // half of returned data
-  io.outInstruction := Mux(io.outPc(2), stage2.readValue(63, 32), stage2.readValue(31, 0))
+  val instWords = stage2.readValue.asTypeOf(Vec(2, UInt(32.W)))
+  io.output.bits.instruction := Mux(io.output.bits.pc(2), instWords(1), instWords(0))
 
   // Update cache on fill
   when (io.updateCache.valid) {
