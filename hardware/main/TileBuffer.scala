@@ -161,14 +161,14 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   for (pixel <- 0 until Consts.pixelsPerQuad) {
     // Stage 1: This waits for the read of the old color and depth values above,
     // and passes through the other values.
-    object stage1 {
+    val stage1 = new {
       val newColor = RegNext(io.colors(pixel))
       val newDepth = RegNext(io.depths(pixel))
       val mask = RegNext(io.mask(pixel) && io.valid, false.B)
     }
 
     // Stage 2: visibility checks, destination blending
-    object stage2 {
+    val stage2 = new {
       val oneMinusAlpha = Color.maxChannelValue.U - stage1.newColor.alpha
       val oldWeightedColor = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
       val newColor = RegNext(stage1.newColor)
