@@ -35,13 +35,13 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       dut.io.startJob.valid.poke(false.B)
 
       // Record the thread that was allocated.
-      val allocatedThread = dut.io.nextIssue.bits.threadId.peek().litValue
+      val allocatedThread = dut.io.nextIssue.bits.thread.peek().litValue
 
       // Expect next issue on same thread to advance by +4
       for (i <- 0 until 5) {
         dut.io.nextIssue.valid.expect(true.B)
-        dut.io.nextIssue.bits.threadId.expect(allocatedThread.U)
-        dut.io.nextIssue.bits.pc.expect((0x1000 + (i * 4)).U)
+        dut.io.nextIssue.bits.thread.expect(allocatedThread.U)
+        dut.io.nextIssue.bits.pc.raw.expect((0x1000 + (i * 4)).U)
         dut.clock.step()
       }
     }
@@ -56,26 +56,26 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       dut.io.startJob.valid.poke(false.B)
 
       // Record the thread that was allocated.
-      val allocatedThread = dut.io.nextIssue.bits.threadId.peek().litValue
+      val allocatedThread = dut.io.nextIssue.bits.thread.peek().litValue
 
       // Issue a few cycles
       for (i <- 0 until 3) {
         dut.io.nextIssue.valid.expect(true.B)
-        dut.io.nextIssue.bits.threadId.expect(allocatedThread.U)
-        dut.io.nextIssue.bits.pc.expect((0x2000 + (i * 4)).U)
+        dut.io.nextIssue.bits.thread.expect(allocatedThread.U)
+        dut.io.nextIssue.bits.pc.raw.expect((0x2000 + (i * 4)).U)
         dut.clock.step()
       }
 
       // Trigger a rollback for the issued thread to 0x0500
       dut.io.rollback.valid.poke(true.B)
-      dut.io.rollback.bits.threadId.poke(allocatedThread.U)
+      dut.io.rollback.bits.thread.poke(allocatedThread.U)
       dut.io.rollback.bits.pc.poke(0x0500.U)
 
       // Ensure we're not executing from the new location
       for (i <- 0 until 3) {
         dut.io.nextIssue.valid.expect(true.B)
-        dut.io.nextIssue.bits.threadId.expect(allocatedThread.U)
-        dut.io.nextIssue.bits.pc.expect((0x500 + (i * 4)).U)
+        dut.io.nextIssue.bits.thread.expect(allocatedThread.U)
+        dut.io.nextIssue.bits.pc.raw.expect((0x500 + (i * 4)).U)
         dut.clock.step()
         dut.io.rollback.valid.poke(false.B)
       }
@@ -91,20 +91,20 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       dut.io.startJob.valid.poke(false.B)
 
       // Record the thread that was allocated.
-      val allocatedThread = dut.io.nextIssue.bits.threadId.peek().litValue
+      val allocatedThread = dut.io.nextIssue.bits.thread.peek().litValue
 
       // Issue a few cycles
       for (i <- 0 until 8) {
         dut.io.nextIssue.valid.expect(true.B)
-        dut.io.nextIssue.bits.threadId.expect(allocatedThread.U)
-        dut.io.nextIssue.bits.pc.expect((0x1000 + (i * 4)).U)
+        dut.io.nextIssue.bits.thread.expect(allocatedThread.U)
+        dut.io.nextIssue.bits.pc.raw.expect((0x1000 + (i * 4)).U)
         dut.clock.step()
       }
 
       // Stall Thread and roll back
       dut.io.stallThreadBitmap.poke((1 << allocatedThread.toInt).U)
       dut.io.rollback.valid.poke(true.B)
-      dut.io.rollback.bits.threadId.poke(allocatedThread.U)
+      dut.io.rollback.bits.thread.poke(allocatedThread.U)
       dut.io.rollback.bits.pc.poke(0x100c.U)
       dut.clock.step()
       dut.io.stallThreadBitmap.poke(0.U)
@@ -124,8 +124,8 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       // Should resume issuing from the rollback location.
       for (i <- 0 until 4) {
         dut.io.nextIssue.valid.expect(true.B)
-        dut.io.nextIssue.bits.threadId.expect(allocatedThread.U)
-        dut.io.nextIssue.bits.pc.expect((0x100c + (i * 4)).U)
+        dut.io.nextIssue.bits.thread.expect(allocatedThread.U)
+        dut.io.nextIssue.bits.pc.raw.expect((0x100c + (i * 4)).U)
         dut.clock.step()
       }
     }
@@ -140,13 +140,13 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       dut.io.startJob.valid.poke(false.B)
 
       // Record the thread that was allocated.
-      val allocatedThread = dut.io.nextIssue.bits.threadId.peek().litValue
+      val allocatedThread = dut.io.nextIssue.bits.thread.peek().litValue
 
       // Issue a few cycles
       for (i <- 0 until 3) {
         dut.io.nextIssue.valid.expect(true.B)
-        dut.io.nextIssue.bits.threadId.expect(allocatedThread.U)
-        dut.io.nextIssue.bits.pc.expect((0x1000 + (i * 4)).U)
+        dut.io.nextIssue.bits.thread.expect(allocatedThread.U)
+        dut.io.nextIssue.bits.pc.raw.expect((0x1000 + (i * 4)).U)
         dut.clock.step()
       }
 
@@ -181,7 +181,7 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       // Collect the sequence of issuing thread IDs over consecutive cycles
       val issuedSequence = (0 until numThreads).map { _ =>
         dut.io.nextIssue.valid.expect(true.B)
-        val tId = dut.io.nextIssue.bits.threadId.peek().litValue.toInt
+        val tId = dut.io.nextIssue.bits.thread.peek().litValue.toInt
         dut.clock.step()
         tId
       }
@@ -194,7 +194,7 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
       for (_ <- 0 until 3) {
         for (expectedThread <- issuedSequence) {
           dut.io.nextIssue.valid.expect(true.B)
-          dut.io.nextIssue.bits.threadId.expect(expectedThread.U)
+          dut.io.nextIssue.bits.thread.expect(expectedThread.U)
           dut.clock.step()
         }
       }

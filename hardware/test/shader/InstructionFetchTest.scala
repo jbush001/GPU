@@ -28,13 +28,13 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     simulate(new InstructionFetchStage()) { dut =>
       // Simulate a cache miss
       val address = 0x1000
-      dut.io.fetchEnable.poke(true.B)
-      dut.io.fetchPc.raw.poke(address.U)
-      dut.io.fetchThread.poke(0.U)
+      dut.io.fetchRequest.valid.poke(true.B)
+      dut.io.fetchRequest.bits.pc.raw.poke(address.U)
+      dut.io.fetchRequest.bits.thread.poke(0.U)
       dut.clock.step(2)
       dut.io.fillRequest.valid.expect(true.B)
       dut.io.fillRequest.bits.address.raw.expect(address.U)
-      dut.io.fetchEnable.poke(false.B)
+      dut.io.fetchRequest.valid.poke(false.B)
 
       val sequence = Seq.tabulate(16)(i => i + 1000L)
 
@@ -55,11 +55,11 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       val latency = 2
       for (cycle <- 0 until 16) {
         if (cycle < sequence.length) {
-          dut.io.fetchEnable.poke(true.B)
-          dut.io.fetchPc.raw.poke((address + (cycle * 4)).U)
-          dut.io.fetchThread.poke(1.U)
+          dut.io.fetchRequest.valid.poke(true.B)
+          dut.io.fetchRequest.bits.pc.raw.poke((address + (cycle * 4)).U)
+          dut.io.fetchRequest.bits.thread.poke(1.U)
         } else {
-          dut.io.fetchEnable.poke(false.B)
+          dut.io.fetchRequest.valid.poke(false.B)
         }
 
         if (cycle >= latency) {
@@ -93,9 +93,9 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       }
 
       // Read the same cache line.
-      dut.io.fetchEnable.poke(true.B)
-      dut.io.fetchPc.raw.poke((address + 4).U)
-      dut.io.fetchThread.poke(0.U)
+      dut.io.fetchRequest.valid.poke(true.B)
+      dut.io.fetchRequest.bits.pc.raw.poke((address + 4).U)
+      dut.io.fetchRequest.bits.thread.poke(0.U)
       dut.clock.step(2)
       dut.io.nearMiss.expect(true.B)
       dut.io.output.valid.expect(false.B)

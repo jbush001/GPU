@@ -32,10 +32,7 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
     }))
 
     // Output to the instruction cache.
-    val nextIssue = Valid(new Bundle {
-      val threadId = UInt(log2Ceil(cfg.shaderThreads).W)
-      val pc = UInt(cfg.busAddressBits.W)
-    })
+    val nextIssue = Valid(new FetchRequest)
 
     val haltRequest = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
     val wakeThreadBitmap = Input(UInt(cfg.shaderThreads.W))
@@ -44,7 +41,7 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
     // We an rollback a thread in response to a branch instruction or if
     // it stalls for some reason.
     val rollback = Flipped(Valid(new Bundle {
-      val threadId = UInt(log2Ceil(cfg.shaderThreads).W)
+      val thread = UInt(log2Ceil(cfg.shaderThreads).W)
       val pc = UInt(cfg.busAddressBits.W)
     }))
   })
@@ -102,20 +99,20 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
 
   io.nextIssue.valid := (threadIssueArbiter.io.out.valid
     && !(io.stallThreadBitmap(threadIssueArbiter.io.chosen)))
-  io.nextIssue.bits.threadId := threadIssueArbiter.io.chosen
+  io.nextIssue.bits.thread := threadIssueArbiter.io.chosen
 
   // Note: the rollback signal can end up being a critical timing path. An
   // alternative would be to set valid to false this cycle and skip issuing
   // the instruction, but should do timing analysis to see if this is
   // necessary.
-  val nextIssuePc = Mux(io.rollback.valid && io.rollback.bits.threadId === threadIssueArbiter.io.chosen,
+  val nextIssuePc = Mux(io.rollback.valid && io.rollback.bits.thread === threadIssueArbiter.io.chosen,
                         io.rollback.bits.pc,
                         programCounters(threadIssueArbiter.io.chosen))
-  io.nextIssue.bits.pc := nextIssuePc
+  io.nextIssue.bits.pc.raw := nextIssuePc
 
   // Rollback a thread to a previous PC.
   when (io.rollback.valid) {
-    programCounters(io.rollback.bits.threadId) := io.rollback.bits.pc
+    programCounters(io.rollback.bits.thread) := io.rollback.bits.pc
   }
 
   // Advance the selected program counter.

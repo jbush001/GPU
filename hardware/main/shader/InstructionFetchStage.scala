@@ -20,6 +20,11 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
+class FetchRequest(implicit val cfg: GpuConfig) extends Bundle {
+  val pc = new ICacheAddress
+  val thread = UInt(log2Up(cfg.shaderThreads).W)
+}
+
 /** Instruction cache
  */
 class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
@@ -27,9 +32,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
 
   val io = IO(new Bundle {
     // From thread select
-    val fetchEnable = Input(Bool())
-    val fetchPc = Input(new ICacheAddress)
-    val fetchThread = Input(UInt(log2Up(cfg.shaderThreads).W))
+    val fetchRequest = Input(Valid(new FetchRequest))
 
     // To ICacheFillUnit
     val fillRequest = Valid(new CacheFillRequest)
@@ -54,11 +57,9 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   val tagValid = RegInit(VecInit(Seq.fill(cfg.icacheLines)(false.B)))
 
   val stage1 = new {
-    val tag = tagMemory.read(io.fetchPc.index)
-    val valid = RegNext(tagValid(io.fetchPc.index))
-    val pc = RegNext(io.fetchPc)
-    val thread = RegNext(io.fetchThread)
-    val fetchEnable = RegNext(io.fetchEnable, init = false.B)
+    val tag = tagMemory.read(io.fetchRequest.bits.pc.index)
+    val valid = RegNext(tagValid(io.fetchRequest.bits.pc.index))
+    val fetchRequest = RegNext(io.fetchRequest)
   }
 
   ///////////////////////////////////////////////////////////
@@ -71,22 +72,22 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     // A near miss occurs when a cache line is filled the same cycle that a thread tries
     // to read it. We shouldn't treat as a miss, since the system will hang, but we do
     // need to restart the thread to pick up the instruction.
-    val nearMiss = (io.updateCache.bits.last && io.updateCache.bits.address.index === stage1.pc.index
-            && io.updateCache.bits.address.tag === stage1.tag && stage1.fetchEnable)
+    val nearMiss = (io.updateCache.bits.last && io.updateCache.bits.address.index === stage1.fetchRequest.bits.pc.index
+            && io.updateCache.bits.address.tag === stage1.tag && stage1.fetchRequest.valid)
 
-    val cacheHit = stage1.tag === stage1.pc.tag && stage1.valid
-    val cacheMiss = stage1.fetchEnable && !cacheHit
+    val cacheHit = stage1.tag === stage1.fetchRequest.bits.pc.tag && stage1.valid
+    val cacheMiss = stage1.fetchRequest.valid && !cacheHit
     io.fillRequest.valid := cacheMiss && !nearMiss
-    io.fillRequest.bits.address := stage1.pc.cacheLineAligned
-    io.fillRequest.bits.thread := stage1.thread
+    io.fillRequest.bits.address := stage1.fetchRequest.bits.pc.cacheLineAligned
+    io.fillRequest.bits.thread := stage1.fetchRequest.bits.thread
 
-    io.output.bits.pc := RegNext(stage1.pc.raw)
-    val readValue = instructionMemory.read(Cat(stage1.pc.index,
-      stage1.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3)))
+    io.output.bits.pc := RegNext(stage1.fetchRequest.bits.pc.raw)
+    val readValue = instructionMemory.read(Cat(stage1.fetchRequest.bits.pc.index,
+      stage1.fetchRequest.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3)))
 
-    io.output.valid := RegNext(stage1.fetchEnable && (cacheHit && !nearMiss))
+    io.output.valid := RegNext(stage1.fetchRequest.valid && (cacheHit && !nearMiss))
     io.nearMiss := RegNext(nearMiss)
-    io.output.bits.thread := RegNext(stage1.thread)
+    io.output.bits.thread := RegNext(stage1.fetchRequest.bits.thread)
   }
 
   // Cache memory is 64 bits, but instructions are 32, so need to select correct
