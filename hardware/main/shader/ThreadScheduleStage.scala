@@ -24,7 +24,7 @@ import gpu._
   * tracks current runnable state of each thread and handles assigning new jobs to
   * threads.
   */
-class ThreadScheduler(implicit val cfg: GpuConfig) extends Module {
+class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
   val io  = IO(new Bundle {
     // From external fixed function units.
     val startJob = Flipped(Decoupled(new Bundle {

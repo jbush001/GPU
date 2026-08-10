@@ -24,8 +24,8 @@ import org.scalatest.funsuite.AnyFunSuite
 class InstructionFetchTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("InstructionFetch basic operation") {
-    simulate(new InstructionFetch()) { dut =>
+  test("InstructionFetchStage basic operation") {
+    simulate(new InstructionFetchStage()) { dut =>
       // Simulate a cache miss
       val address = 0x1000
       dut.io.fetchEnable.poke(true.B)
@@ -79,8 +79,8 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionFetch near miss") {
-    simulate(new InstructionFetch()) { dut =>
+  test("InstructionFetchStage near miss") {
+    simulate(new InstructionFetchStage()) { dut =>
       val address = 0x1000
 
       // Fill cache line

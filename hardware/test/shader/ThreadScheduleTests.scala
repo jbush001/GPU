@@ -22,11 +22,11 @@ import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class ThreadSchedulerTests extends AnyFunSuite with ChiselSim {
+class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
-  test("ThreadScheduler single thread") {
-    simulate(new ThreadScheduler()) { dut =>
+  test("ThreadScheduleStage single thread") {
+    simulate(new ThreadScheduleStage()) { dut =>
       // Allocate a new job
       dut.io.startJob.ready.expect(true.B)
       dut.io.startJob.valid.poke(true.B)
@@ -47,8 +47,8 @@ class ThreadSchedulerTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduler rollback") {
-    simulate(new ThreadScheduler()) { dut =>
+  test("ThreadScheduleStage rollback") {
+    simulate(new ThreadScheduleStage()) { dut =>
       // Start a job at 0x2000
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x2000.U)
@@ -82,8 +82,8 @@ class ThreadSchedulerTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduler stall/resume") {
-    simulate(new ThreadScheduler()) { dut =>
+  test("ThreadScheduleStage stall/resume") {
+    simulate(new ThreadScheduleStage()) { dut =>
       // Start job
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x1000.U)
@@ -131,8 +131,8 @@ class ThreadSchedulerTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduler halt") {
-    simulate(new ThreadScheduler()) { dut =>
+  test("ThreadScheduleStage halt") {
+    simulate(new ThreadScheduleStage()) { dut =>
       // Start job on Thread 0
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x1000.U)
@@ -164,8 +164,8 @@ class ThreadSchedulerTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduler multiple thread") {
-    simulate(new ThreadScheduler()) { dut =>
+  test("ThreadScheduleStage multiple thread") {
+    simulate(new ThreadScheduleStage()) { dut =>
       // Start jobs on 3 threads
       val numThreads = 3
       val startPcs = Seq(0x1000.U, 0x2000.U, 0x3000.U)

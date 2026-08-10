@@ -26,8 +26,8 @@ import scala.util.Random
 class ICacheFillTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("ICacheFill single miss") {
-    simulate(new ICacheFill()) { dut =>
+  test("ICacheFillUnit single miss") {
+    simulate(new ICacheFillUnit()) { dut =>
       val baseAddress = 0x1000
       dut.io.fillRequest.valid.poke(true.B)
       dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
@@ -81,8 +81,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
   }
 
   // Miss on a cache line while there is already a burst in progress.
-  test("ICacheFill duplicate miss") {
-    simulate(new ICacheFill()) { dut =>
+  test("ICacheFillUnit duplicate miss") {
+    simulate(new ICacheFillUnit()) { dut =>
       val baseAddress = 0x1000
       dut.io.fillRequest.valid.poke(true.B)
       dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
@@ -139,7 +139,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ICacheFill random") {
+  test("ICacheFillUnit random") {
     // 32 cache lines. We use 8 threads, so there is a 25% change of a collision each miss.
     val memorySize = 2048
 
@@ -151,7 +151,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         val wakeThreadBitmap = Output(UInt(cfg.shaderThreads.W))
       })
 
-      val icacheFill = Module(new ICacheFill())
+      val icacheFill = Module(new ICacheFillUnit())
       icacheFill.io.fillRequest := io.fillRequest
 
       io.updateCache := icacheFill.io.updateCache

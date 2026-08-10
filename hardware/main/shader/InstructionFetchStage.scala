@@ -22,7 +22,7 @@ import gpu._
 
 /** Instruction cache
  */
-class InstructionFetch(implicit cfg: GpuConfig) extends Module {
+class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   val instructionWidth = 32
 
   val io = IO(new Bundle {
@@ -31,10 +31,10 @@ class InstructionFetch(implicit cfg: GpuConfig) extends Module {
     val fetchPc = Input(new ICacheAddress)
     val fetchThread = Input(UInt(log2Up(cfg.shaderThreads).W))
 
-    // To ICacheFill
+    // To ICacheFillUnit
     val fillRequest = Valid(new CacheFillRequest)
 
-    // From ICacheFill. Update cache data
+    // From ICacheFillUnit. Update cache data
     val updateCache = Flipped(Valid(new CacheUpdateRequest))
 
     // Output

@@ -46,7 +46,7 @@ class CacheUpdateRequest (implicit cfg: GpuConfig) extends Bundle {
 
 /** Handles reading cache lines from external memory and queuing pending misses.
   */
-class ICacheFill(implicit cfg: GpuConfig) extends Module {
+class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // To memory arbiter
     val readPort = new MemReadPort
