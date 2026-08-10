@@ -17,14 +17,35 @@
 package gpu.shader
 
 import chisel3._
+import chisel3.util._
 import gpu._
 
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val icacheReadPort = new MemReadPort
+    val startJob = Flipped(Decoupled(new Bundle {
+      val startPc = UInt(cfg.busAddressBits.W)
+    }))
   })
 
-  // Stub
-  io.icacheReadPort <> DontCare
+  val icacheFillUnit = Module(new ICacheFillUnit)
+  val threadScheduleStage = Module(new ThreadScheduleStage)
+  val instructionFetchStage = Module(new InstructionFetchStage)
+
+  icacheFillUnit.io.readPort <> io.icacheReadPort
+  icacheFillUnit.io.fillRequest <> instructionFetchStage.io.fillRequest
+  icacheFillUnit.io.updateCache <> instructionFetchStage.io.updateCache
+  threadScheduleStage.io.wakeThreadBitmap := icacheFillUnit.io.wakeThreadBitmap
+
+  threadScheduleStage.io.startJob <> io.startJob
+
+  instructionFetchStage.io.fetchRequest <> threadScheduleStage.io.fetchRequest
+
+  // Not implemented yet
+  threadScheduleStage.io.haltRequest.valid := false.B
+  threadScheduleStage.io.haltRequest.bits := DontCare
+  threadScheduleStage.io.stallThreadBitmap := 0.U
+  threadScheduleStage.io.rollback.valid := false.B
+  threadScheduleStage.io.rollback.bits := DontCare
 }
 

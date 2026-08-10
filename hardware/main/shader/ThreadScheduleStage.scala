@@ -32,7 +32,7 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
     }))
 
     // Output to the instruction cache.
-    val nextIssue = Valid(new FetchRequest)
+    val fetchRequest = Valid(new FetchRequest)
 
     val haltRequest = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
     val wakeThreadBitmap = Input(UInt(cfg.shaderThreads.W))
@@ -97,9 +97,9 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
 
   threadIssueArbiter.io.out.ready := true.B
 
-  io.nextIssue.valid := (threadIssueArbiter.io.out.valid
+  io.fetchRequest.valid := (threadIssueArbiter.io.out.valid
     && !(io.stallThreadBitmap(threadIssueArbiter.io.chosen)))
-  io.nextIssue.bits.thread := threadIssueArbiter.io.chosen
+  io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
 
   // Note: the rollback signal can end up being a critical timing path. An
   // alternative would be to set valid to false this cycle and skip issuing
@@ -108,7 +108,7 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
   val nextIssuePc = Mux(io.rollback.valid && io.rollback.bits.thread === threadIssueArbiter.io.chosen,
                         io.rollback.bits.pc,
                         programCounters(threadIssueArbiter.io.chosen))
-  io.nextIssue.bits.pc.raw := nextIssuePc
+  io.fetchRequest.bits.pc.raw := nextIssuePc
 
   // Rollback a thread to a previous PC.
   when (io.rollback.valid) {
@@ -118,7 +118,7 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
   // Advance the selected program counter.
   // NOTE: if the thread is rolled back the same cycle it is issued, this
   // should take precendence, since it factors in the increment.
-  when (io.nextIssue.valid) {
+  when (io.fetchRequest.valid) {
     programCounters(threadIssueArbiter.io.chosen) := nextIssuePc + 4.U
   }
 }

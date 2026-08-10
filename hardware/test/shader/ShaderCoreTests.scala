@@ -122,6 +122,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     val core = Module(new ShaderCore)
 
     core.io.icacheReadPort <> arbiter.io.readPorts(0)
+    core.io.startJob.valid := false.B
+    core.io.startJob.bits := DontCare
     arbiter.io.axiBus <> memory.io
     memory.dap <> io.dap
 
