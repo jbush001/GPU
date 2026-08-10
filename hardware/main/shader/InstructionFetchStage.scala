@@ -25,8 +25,12 @@ class FetchRequest(implicit val cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
 }
 
-/** Instruction cache
- */
+/**
+  * Instruction cache. This is a direct mapped cache, with two cycles of latency.
+  * The first stage reads tag memory to determine if the requested address is in
+  * the cache. The second stage reads the instruction memory and returns the
+  * instruction if it is a hit.
+  */
 class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   val instructionWidth = 32
 

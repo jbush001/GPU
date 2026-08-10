@@ -29,7 +29,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   })
 
   val icacheFillUnit = Module(new ICacheFillUnit)
-  val threadScheduleStage = Module(new ThreadScheduleStage)
+  val threadScheduleStage = Module(new FetchSelectStage)
   val instructionFetchStage = Module(new InstructionFetchStage)
 
   icacheFillUnit.io.readPort <> io.icacheReadPort

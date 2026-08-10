@@ -20,11 +20,15 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-/** This module select between hardware thread to issue to the pipeline. It also
-  * tracks current runnable state of each thread and handles assigning new jobs to
-  * threads.
+/**
+  * This is the first stage in the instruction pipeline, responsible for:
+  * - Maintaining the program counter for each thread.
+  * - Selecting which address to send to the instruction cache each cycle.
+  * - Allocating/deallocating threads for jobs.
+  * - Suspending threads that are waiting on instruction cache misses.
+  * - Handling rollbacks for branches or other blocking conditions.
   */
-class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
+class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   val io  = IO(new Bundle {
     // From external fixed function units.
     val startJob = Flipped(Decoupled(new Bundle {
@@ -66,8 +70,7 @@ class ThreadScheduleStage(implicit val cfg: GpuConfig) extends Module {
     threadHalted(io.haltRequest.bits) := true.B
   }
 
-  // The pipeline itself never stalls, but threads can stall if they are waiting for
-  // external soruces. This manages the stall state for each thread.
+  // This handles stalling threads that are waiting on instruction cache misses.
   for (i <- 0 until cfg.shaderThreads) {
     assert(!(io.wakeThreadBitmap(i) && io.stallThreadBitmap(i)), "Cannot wake and stall a thread at the same time")
     assert(!threadStalled(i) || !io.stallThreadBitmap(i), "Cannot stall a thread that is already stalled")

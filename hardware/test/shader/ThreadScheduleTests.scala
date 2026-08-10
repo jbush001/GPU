@@ -25,8 +25,8 @@ import org.scalatest.funsuite.AnyFunSuite
 class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
-  test("ThreadScheduleStage single thread") {
-    simulate(new ThreadScheduleStage()) { dut =>
+  test("FetchSelectStage single thread") {
+    simulate(new FetchSelectStage()) { dut =>
       // Allocate a new job
       dut.io.startJob.ready.expect(true.B)
       dut.io.startJob.valid.poke(true.B)
@@ -47,8 +47,8 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduleStage rollback") {
-    simulate(new ThreadScheduleStage()) { dut =>
+  test("FetchSelectStage rollback") {
+    simulate(new FetchSelectStage()) { dut =>
       // Start a job at 0x2000
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x2000.U)
@@ -82,8 +82,8 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduleStage stall/resume") {
-    simulate(new ThreadScheduleStage()) { dut =>
+  test("FetchSelectStage stall/resume") {
+    simulate(new FetchSelectStage()) { dut =>
       // Start job
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x1000.U)
@@ -131,8 +131,8 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduleStage halt") {
-    simulate(new ThreadScheduleStage()) { dut =>
+  test("FetchSelectStage halt") {
+    simulate(new FetchSelectStage()) { dut =>
       // Start job on Thread 0
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x1000.U)
@@ -164,8 +164,8 @@ class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ThreadScheduleStage multiple thread") {
-    simulate(new ThreadScheduleStage()) { dut =>
+  test("FetchSelectStage multiple thread") {
+    simulate(new FetchSelectStage()) { dut =>
       // Start jobs on 3 threads
       val numThreads = 3
       val startPcs = Seq(0x1000.U, 0x2000.U, 0x3000.U)

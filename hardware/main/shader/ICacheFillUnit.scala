@@ -44,7 +44,8 @@ class CacheUpdateRequest (implicit cfg: GpuConfig) extends Bundle {
   val last = Bool()
 }
 
-/** Handles reading cache lines from external memory and queuing pending misses.
+/** Handles tracking pending L1 instruction cache misses, issuing requests to
+  * the memory arbiter, and writing data back to the cache.
   */
 class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
