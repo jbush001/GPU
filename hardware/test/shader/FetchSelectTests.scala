@@ -22,7 +22,7 @@ import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class ThreadScheduleTests extends AnyFunSuite with ChiselSim {
+class FetchSelectTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
   test("FetchSelectStage single thread") {

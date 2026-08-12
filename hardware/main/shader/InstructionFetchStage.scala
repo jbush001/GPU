@@ -25,6 +25,12 @@ class FetchRequest(implicit val cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
 }
 
+class FetchResponse(implicit val cfg: GpuConfig) extends Bundle {
+  val instruction = UInt(cfg.busDataBits.W)
+  val pc = UInt(cfg.busAddressBits.W)
+  val thread = UInt(log2Up(cfg.shaderThreads).W)
+}
+
 /**
   * Instruction cache. This is a direct mapped cache, with two cycles of latency.
   * The first stage reads tag memory to determine if the requested address is in
@@ -45,11 +51,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     val updateCache = Flipped(Valid(new CacheUpdateRequest))
 
     // Output
-    val output = Valid(new Bundle {
-      val instruction = UInt(instructionWidth.W)
-      val pc = UInt(cfg.busAddressBits.W)
-      val thread = UInt(log2Up(cfg.shaderThreads).W)
-    })
+    val output = Valid(new FetchResponse)
 
     val nearMiss = Output(Bool())
   })

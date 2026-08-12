@@ -174,13 +174,13 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
       val rng = new Random(42)
 
-      case class MissState(
+      class MissState(
         var active: Boolean = false,
         var address: Int = 0,
         var issueCycle: Int = 0,
       )
 
-      val missState = Array.fill(cfg.shaderThreads)(MissState())
+      val missState = Array.fill(cfg.shaderThreads)(new MissState)
       val maxLatency = 200
 
       val totalCycles = 100000
