@@ -91,10 +91,39 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     }
   }
 
+  // We don't issue instructions from the same thread more than once every
+  // n cycles to avoid potential raw hazards in the execute stages.
+  // e.g.
+  //
+  //    add r1, r2, r3
+  //    add r4, r1, r5
+  //
+  // The second instruction reads r1 before the first instruction writes it.
+  // Not every instruction will have this hazard, but we enforce a 3-cycle delay
+  // to simplify the pipeline.
+  val rawLatency = 2 // Will issue every nth cycle, where n = rawLatency + 1
+  val issueRawDelay = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(3.W))))
+  val inRawWait = Wire(Vec(cfg.shaderThreads, Bool()))
+  for (i <- 0 until cfg.shaderThreads) {
+    when (io.rollback.valid && io.rollback.bits.thread === i.U) {
+      // If a thread is rolled back, it is safe to issue the instruction again
+      // immediately, since the previous instruction was not executed.
+      issueRawDelay(i) := 0.U
+    } .elsewhen (io.fetchRequest.valid && io.fetchRequest.bits.thread === i.U) {
+      // Issue an instruction on this thread
+      assert(issueRawDelay(i) === 0.U, "Cannot issue an instruction on a thread that is still in RAW wait")
+      issueRawDelay(i) := rawLatency.U
+    } .elsewhen (issueRawDelay(i) =/= 0.U) {
+      issueRawDelay(i) := issueRawDelay(i) - 1.U
+    }
+
+    inRawWait(i) := issueRawDelay(i) =/= 0.U
+  }
+
   // Select the thread to issue.
   val threadIssueArbiter = Module(new RRArbiter(UInt(cfg.busAddressBits.W), cfg.shaderThreads))
   for (i <- 0 until cfg.shaderThreads) {
-    threadIssueArbiter.io.in(i).valid := !threadHalted(i) && !threadStalled(i)
+    threadIssueArbiter.io.in(i).valid := !threadHalted(i) && !threadStalled(i) && !inRawWait(i)
     threadIssueArbiter.io.in(i).bits := programCounters(i)
   }
 

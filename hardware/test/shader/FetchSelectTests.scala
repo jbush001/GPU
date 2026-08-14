@@ -25,6 +25,9 @@ import org.scalatest.funsuite.AnyFunSuite
 class FetchSelectTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
+  // Should equal rawLatency in FetchSelectStage.scala.
+  val backToBackLatency = 2
+
   test("FetchSelectStage single thread") {
     simulate(new FetchSelectStage()) { dut =>
       // Allocate a new job
@@ -37,12 +40,19 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       // Record the thread that was allocated.
       val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
 
-      // Expect next issue on same thread to advance by +4
-      for (i <- 0 until 5) {
+      // Issue a few more fetch requests
+      for (i <- 1 until 5) {
+        // Wait for RAW delay
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
         dut.io.fetchRequest.valid.expect(true.B)
+        assert(dut.io.fetchRequest.valid.peek().litToBoolean, "Fetch request should be valid")
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
-        dut.clock.step()
       }
     }
   }
@@ -59,25 +69,38 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
 
       // Issue a few cycles
-      for (i <- 0 until 3) {
+      for (i <- 1 until 3) {
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
         dut.io.fetchRequest.valid.expect(true.B)
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x2000 + (i * 4)).U)
-        dut.clock.step()
       }
+
+      dut.clock.step()
 
       // Trigger a rollback for the issued thread to 0x0500
       dut.io.rollback.valid.poke(true.B)
       dut.io.rollback.bits.thread.poke(allocatedThread.U)
       dut.io.rollback.bits.pc.poke(0x0500.U)
 
-      // Ensure we're not executing from the new location
+      // Ensure we're executing from the new location
       for (i <- 0 until 3) {
+        dut.clock.step()
+        dut.io.rollback.valid.poke(false.B)
         dut.io.fetchRequest.valid.expect(true.B)
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x500 + (i * 4)).U)
-        dut.clock.step()
-        dut.io.rollback.valid.poke(false.B)
+
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+          dut.io.rollback.valid.poke(false.B)
+        }
       }
     }
   }
@@ -94,11 +117,16 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
 
       // Issue a few cycles
-      for (i <- 0 until 8) {
+      for (i <- 1 until 8) {
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
         dut.io.fetchRequest.valid.expect(true.B)
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
-        dut.clock.step()
       }
 
       // Stall Thread and roll back
@@ -112,8 +140,8 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Thread should no longer issue
       for (_ <- 0 until 3) {
-        dut.io.fetchRequest.valid.expect(false.B)
         dut.clock.step()
+        dut.io.fetchRequest.valid.expect(false.B)
       }
 
       // Resume Thread
@@ -122,11 +150,16 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       dut.io.wakeThreadBitmap.poke(0.U)
 
       // Should resume issuing from the rollback location.
-      for (i <- 0 until 4) {
+      for (i <- 1 until 4) {
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
         dut.io.fetchRequest.valid.expect(true.B)
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x100c + (i * 4)).U)
-        dut.clock.step()
       }
     }
   }
@@ -143,11 +176,16 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
 
       // Issue a few cycles
-      for (i <- 0 until 3) {
+      for (i <- 1 until 3) {
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
         dut.io.fetchRequest.valid.expect(true.B)
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
-        dut.clock.step()
       }
 
       // Halt Thread
@@ -166,9 +204,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage multiple thread") {
     simulate(new FetchSelectStage()) { dut =>
-      // Start jobs on 3 threads
-      val numThreads = 3
-      val startPcs = Seq(0x1000.U, 0x2000.U, 0x3000.U)
+      // Start jobs on 4 threads
+      val numThreads = 4
+      val startPcs = Seq(0x1000.U, 0x2000.U, 0x3000.U, 0x4000.U)
 
       for (pc <- startPcs) {
         dut.io.startJob.ready.expect(true.B)
@@ -176,6 +214,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         dut.io.startJob.bits.startPc.poke(pc)
         dut.clock.step()
       }
+
       dut.io.startJob.valid.poke(false.B)
 
       // Collect the sequence of issuing thread IDs over consecutive cycles
@@ -186,7 +225,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         tId
       }
 
-      // Verify all 3 threads issued exactly once without repeating
+      // Verify all 4 threads issued exactly once without repeating
       assert(issuedSequence.distinct.length == numThreads,
              s"Expected $numThreads distinct threads, got $issuedSequence")
 
