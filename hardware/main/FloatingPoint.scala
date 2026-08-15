@@ -298,9 +298,7 @@ class FpToInt extends Module with FloatingPointBlock {
     val shiftAmount = Float32.exponentBias - io.operand.exponent + 32.U
     val shifted = ((io.operand.fullFraction ## 0.U((32 - Float32.fractionWidth).W)) >>
       shiftAmount).asUInt.pad(32)
-    resultNext := Mux(io.operand.negative,
-      (shifted ^ 0xffffffffL.U(32.W)) + 1.U,
-      shifted)
+    resultNext := Mux(io.operand.negative, -shifted, shifted).tail(1)
   }
 
   io.result := RegNext(resultNext, 0.U)

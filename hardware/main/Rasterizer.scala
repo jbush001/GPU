@@ -95,13 +95,13 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
           }
         }
         is(StepCommand.Right) {
-          edgeValue := edgeValue + (inParams.xStep(edge) << 1).pad(cfg.edgeFunctionBits)
+          edgeValue := edgeValue + (inParams.xStep(edge) << 1.U).tail(1).asSInt
         }
         is(StepCommand.Down) {
-          edgeValue := edgeValue + (inParams.yStep(edge) << 1).pad(cfg.edgeFunctionBits)
+          edgeValue := edgeValue + (inParams.yStep(edge) << 1.U).tail(1).asSInt
         }
         is(StepCommand.Left) {
-          edgeValue := edgeValue - (inParams.xStep(edge) << 1).pad(cfg.edgeFunctionBits)
+          edgeValue := edgeValue - (inParams.xStep(edge) << 1.U).tail(1).asSInt
         }
       }
 
