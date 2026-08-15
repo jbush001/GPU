@@ -42,7 +42,6 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(i).poke((i + 100).U)
       }
-      dut.io.writeback.bits.mask.poke(0xff.U)
       dut.clock.step(1)
 
       dut.io.writeback.bits.thread.poke(1.U)
@@ -50,7 +49,6 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(i).poke((i + 1000).U)
       }
-      dut.io.writeback.bits.mask.poke(0xff.U)
       dut.clock.step(1)
       dut.io.writeback.valid.poke(false.B)
 
@@ -75,29 +73,34 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
   }
 
   test("InstructionDecodeStage masked vector write") {
-      simulate(new InstructionDecodeStage()) { dut =>
-        // write register with mask
-        dut.io.writeback.valid.poke(true.B)
-        dut.io.writeback.bits.thread.poke(1.U)
-        dut.io.writeback.bits.regId.poke(64.U)
-        for (i <- 0 until cfg.shaderVectorLanes) {
-          dut.io.writeback.bits.value(i).poke(0xffff.U)
-        }
+    simulate(new InstructionDecodeStage()) { dut =>
+      // Write default vector value
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(64.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke(0xffff.U)
+      }
 
-        dut.io.writeback.bits.mask.poke(0xff.U)
-        dut.clock.step(1)
+      dut.clock.step(1)
 
-        for (i <- 0 until cfg.shaderVectorLanes) {
-          dut.io.writeback.bits.value(i).poke((i + 100).U)
-        }
+      // Write exec mask
+      dut.io.writeback.bits.regId.poke(32.U)
+      dut.io.writeback.bits.value(0).poke("b01010101".U)
+      dut.clock.step(1)
 
-        dut.io.writeback.bits.mask.poke(0x55.U)
-        dut.clock.step(1)
-        dut.io.writeback.valid.poke(false.B)
+      // Write new vector value
+      dut.io.writeback.bits.regId.poke(64.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke((i + 100).U)
+      }
 
-        dut.io.input.bits.thread.poke(1.U)
-        dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 64, 65).U)
-        dut.clock.step(1)
+      dut.clock.step(1)
+      dut.io.writeback.valid.poke(false.B)
+
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 64, 65).U)
+      dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
         if (i % 2 == 0) {
@@ -105,6 +108,53 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
         } else {
           dut.io.output.bits.operand1(i).expect(0xffff.U)
         }
+      }
+    }
+  }
+
+  test("InstructionDecodeStage mask reset") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      // Write a default vector value
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(64.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke(0.U)
+      }
+
+      dut.clock.step(1)
+
+      // Write exec mask
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(32.U)
+      dut.io.writeback.bits.value(0).poke("b01010101".U)
+      dut.clock.step(1)
+      dut.io.writeback.valid.poke(false.B)
+
+      // Reset thread, which should reset the mask to all 1s
+      dut.io.resetThread.valid.poke(true.B)
+      dut.io.resetThread.bits.poke(1.U)
+      dut.clock.step(1)
+      dut.io.resetThread.valid.poke(false.B)
+
+      // Write new vector value
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.regId.poke(64.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke((i + 100).U)
+      }
+
+      dut.clock.step(1)
+      dut.io.writeback.valid.poke(false.B)
+
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 64, 65).U)
+      dut.clock.step(1)
+
+      // Ensure it wrote to all lanes
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.output.bits.operand1(i).expect((i + 100).U)
       }
     }
   }

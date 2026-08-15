@@ -37,7 +37,6 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
   val regId = UInt(7.W)
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
-  val mask = UInt(cfg.shaderVectorLanes.W)
 }
 
 /**
@@ -59,6 +58,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     })
 
     val writeback = Flipped(Valid(new WritebackRequest))
+    val resetThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
   })
 
   val numRegisters = 64
@@ -67,6 +67,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     UInt(32.W))
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)))
+  val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
 
   case class InstEntry(
     mnenomic: String = "unknown",
@@ -149,11 +150,19 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   when (io.writeback.valid) {
     when (io.writeback.bits.regId(6)) {
       vectorRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(5, 0)),
-        io.writeback.bits.value, io.writeback.bits.mask.asBools)
+        io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
     }.otherwise {
-      scalarRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(5, 0)),
-        io.writeback.bits.value(0))
+      when (io.writeback.bits.regId === 32.U) {
+        execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
+      }.otherwise {
+        scalarRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(5, 0)),
+          io.writeback.bits.value(0))
+      }
     }
+  }
+
+  when (io.resetThread.valid) {
+    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
   }
 
   io.output.valid := RegNext(io.input.valid)
