@@ -40,7 +40,11 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
     val haltRequest = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
     val wakeThreadBitmap = Input(UInt(cfg.shaderThreads.W))
-    val stallThreadBitmap = Input(UInt(cfg.shaderThreads.W))
+
+
+    val icacheMiss = Input(Bool())
+    val icacheNearMiss = Input(Bool())
+    val icacheMissThread = Input(UInt(log2Up(cfg.shaderThreads).W))
 
     // We an rollback a thread in response to a branch instruction or if
     // it stalls for some reason.
@@ -71,23 +75,23 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   }
 
   // This handles stalling threads that are waiting on instruction cache misses.
-  for (i <- 0 until cfg.shaderThreads) {
-    assert(!(io.wakeThreadBitmap(i) && io.stallThreadBitmap(i)), "Cannot wake and stall a thread at the same time")
-    assert(!threadStalled(i) || !io.stallThreadBitmap(i), "Cannot stall a thread that is already stalled")
-    assert(threadStalled(i) || !io.wakeThreadBitmap(i), "Cannot wake a thread that is not stalled")
-    assert(!threadHalted(i) || !io.stallThreadBitmap(i), "Cannot stall a thread that is halted")
+  for (thid <- 0 until cfg.shaderThreads) {
+    assert(!(io.wakeThreadBitmap(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot wake and stall a thread at the same time")
+    assert(!(threadStalled(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot stall a thread that is already stalled")
+    assert(threadStalled(thid) || !io.wakeThreadBitmap(thid), "Cannot wake a thread that is not stalled")
+    assert(!threadHalted(thid) || !(io.icacheMiss && io.icacheMissThread === thid.U), "Cannot stall a thread that is halted")
 
     // TODO There is actually an edge case where this can happen: if an instruction cache miss occurs
     // while fetching the next instruction and a previously fetched instruction is HALT, the
     // wakeup can occur later. Need to handle this case explicitly.
-    assert(!threadHalted(i) || !io.wakeThreadBitmap(i), "Cannot wake a thread that is halted")
+    assert(!threadHalted(thid) || !io.wakeThreadBitmap(thid), "Cannot wake a thread that is halted")
 
-    when (io.wakeThreadBitmap(i)) {
-      threadStalled(i) := false.B
+    when (io.wakeThreadBitmap(thid)) {
+      threadStalled(thid) := false.B
     }
 
-    when (io.stallThreadBitmap(i)) {
-      threadStalled(i) := true.B
+    when (io.icacheMiss && io.icacheMissThread === thid.U) {
+      threadStalled(thid) := true.B
     }
   }
 
@@ -122,35 +126,31 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
   // Select the thread to issue.
   val threadIssueArbiter = Module(new RRArbiter(UInt(cfg.busAddressBits.W), cfg.shaderThreads))
-  for (i <- 0 until cfg.shaderThreads) {
-    threadIssueArbiter.io.in(i).valid := !threadHalted(i) && !threadStalled(i) && !inRawWait(i)
-    threadIssueArbiter.io.in(i).bits := programCounters(i)
+  for (thid <- 0 until cfg.shaderThreads) {
+    threadIssueArbiter.io.in(thid).valid := (!threadHalted(thid) && !threadStalled(thid) && !inRawWait(thid)
+      && !(io.rollback.valid && io.rollback.bits.thread === thid.U)
+      && !((io.icacheMiss || io.icacheNearMiss) && io.icacheMissThread === thid.U))
+    threadIssueArbiter.io.in(thid).bits := programCounters(thid)
   }
 
   threadIssueArbiter.io.out.ready := true.B
 
-  io.fetchRequest.valid := (threadIssueArbiter.io.out.valid
-    && !(io.stallThreadBitmap(threadIssueArbiter.io.chosen)))
+  io.fetchRequest.valid := threadIssueArbiter.io.out.valid
   io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
+  io.fetchRequest.bits.pc.raw := programCounters(threadIssueArbiter.io.chosen)
 
-  // Note: the rollback signal can end up being a critical timing path. An
-  // alternative would be to set valid to false this cycle and skip issuing
-  // the instruction, but should do timing analysis to see if this is
-  // necessary.
-  val nextIssuePc = Mux(io.rollback.valid && io.rollback.bits.thread === threadIssueArbiter.io.chosen,
-                        io.rollback.bits.pc,
-                        programCounters(threadIssueArbiter.io.chosen))
-  io.fetchRequest.bits.pc.raw := nextIssuePc
-
-  // Rollback a thread to a previous PC.
-  when (io.rollback.valid) {
-    programCounters(io.rollback.bits.thread) := io.rollback.bits.pc
-  }
-
-  // Advance the selected program counter.
-  // NOTE: if the thread is rolled back the same cycle it is issued, this
-  // should take precendence, since it factors in the increment.
-  when (io.fetchRequest.valid) {
-    programCounters(threadIssueArbiter.io.chosen) := nextIssuePc + 4.U
+  // Program counter update logic.
+  for (thid <- 0 until cfg.shaderThreads) {
+    when (io.rollback.valid && io.rollback.bits.thread === thid.U) {
+      // Rollback a thread, due to a branch or other blocking condition.
+      programCounters(thid) := io.rollback.bits.pc
+    }.elsewhen (io.icacheMiss && io.icacheMissThread === thid.U) {
+      // Back up to previously missed instruction
+      programCounters(thid) := programCounters(thid) - 4.U
+    }.elsewhen (io.fetchRequest.valid && io.fetchRequest.bits.thread === thid.U) {
+      // Advance the selected program counter. Note, because of the thread ready logic,
+      // this will never occur when one of the above conditions is true.
+      programCounters(thid) := programCounters(thid) + 4.U
+    }
   }
 }

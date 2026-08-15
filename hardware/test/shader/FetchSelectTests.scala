@@ -129,19 +129,15 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
       }
 
-      // Stall Thread and roll back
-      dut.io.stallThreadBitmap.poke((1 << allocatedThread.toInt).U)
-      dut.io.rollback.valid.poke(true.B)
-      dut.io.rollback.bits.thread.poke(allocatedThread.U)
-      dut.io.rollback.bits.pc.poke(0x100c.U)
-      dut.clock.step()
-      dut.io.stallThreadBitmap.poke(0.U)
-      dut.io.rollback.valid.poke(false.B)
+      // Stall Thread on icache miss
+      dut.io.icacheMiss.poke(true.B)
+      dut.io.icacheMissThread.poke(allocatedThread.U)
 
       // Thread should no longer issue
       for (_ <- 0 until 3) {
         dut.clock.step()
         dut.io.fetchRequest.valid.expect(false.B)
+        dut.io.icacheMiss.poke(false.B)
       }
 
       // Resume Thread
@@ -149,8 +145,8 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
       dut.io.wakeThreadBitmap.poke(0.U)
 
-      // Should resume issuing from the rollback location.
-      for (i <- 1 until 4) {
+      // Should resume issuing from the prior location.
+      for (i <- 7 until 12) {
         for (_ <- 0 until backToBackLatency) {
           dut.clock.step()
           dut.io.fetchRequest.valid.expect(false.B)
@@ -159,7 +155,58 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         dut.clock.step()
         dut.io.fetchRequest.valid.expect(true.B)
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
-        dut.io.fetchRequest.bits.pc.raw.expect((0x100c + (i * 4)).U)
+        dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
+      }
+    }
+  }
+
+  test("FetchSelectStage near miss") {
+    simulate(new FetchSelectStage()) { dut =>
+      // Start job
+      dut.io.startJob.valid.poke(true.B)
+      dut.io.startJob.bits.startPc.poke(0x1000.U)
+      dut.clock.step()
+      dut.io.startJob.valid.poke(false.B)
+
+      // Record the thread that was allocated.
+      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+
+      // Issue a few cycles
+      for (i <- 1 until 8) {
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
+        if (i == 7) {
+          // The last instruction should be a near miss, which will not stall the thread.
+          dut.io.icacheNearMiss.poke(true.B)
+          dut.io.icacheMissThread.poke(allocatedThread.U)
+          dut.io.fetchRequest.valid.expect(false.B)
+        } else {
+          dut.io.fetchRequest.valid.expect(true.B)
+          dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
+          dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
+        }
+      }
+
+      dut.clock.step()
+      dut.io.icacheNearMiss.poke(false.B)
+
+      // Should resume issuing from the prior location.
+      for (i <- 7 until 12) {
+        dut.io.fetchRequest.valid.expect(true.B)
+        dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
+        dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
+
+        for (_ <- 0 until backToBackLatency) {
+          dut.clock.step()
+          dut.io.icacheNearMiss.poke(false.B)
+          dut.io.fetchRequest.valid.expect(false.B)
+        }
+
+        dut.clock.step()
       }
     }
   }

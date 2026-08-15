@@ -29,23 +29,27 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   })
 
   val icacheFillUnit = Module(new ICacheFillUnit)
-  val threadScheduleStage = Module(new FetchSelectStage)
+  val fetchSelectStage = Module(new FetchSelectStage)
   val instructionFetchStage = Module(new InstructionFetchStage)
 
   icacheFillUnit.io.readPort <> io.icacheReadPort
   icacheFillUnit.io.fillRequest <> instructionFetchStage.io.fillRequest
   icacheFillUnit.io.updateCache <> instructionFetchStage.io.updateCache
-  threadScheduleStage.io.wakeThreadBitmap := icacheFillUnit.io.wakeThreadBitmap
+  fetchSelectStage.io.wakeThreadBitmap := icacheFillUnit.io.wakeThreadBitmap
+  fetchSelectStage.io.icacheMiss := instructionFetchStage.io.fillRequest.valid
+  fetchSelectStage.io.icacheNearMiss := instructionFetchStage.io.nearMiss
+  fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.fillRequest.bits.thread
 
-  threadScheduleStage.io.startJob <> io.startJob
+  fetchSelectStage.io.startJob <> io.startJob
 
-  instructionFetchStage.io.fetchRequest <> threadScheduleStage.io.fetchRequest
+  instructionFetchStage.io.fetchRequest <> fetchSelectStage.io.fetchRequest
 
   // Not implemented yet
-  threadScheduleStage.io.haltRequest.valid := false.B
-  threadScheduleStage.io.haltRequest.bits := DontCare
-  threadScheduleStage.io.stallThreadBitmap := 0.U
-  threadScheduleStage.io.rollback.valid := false.B
-  threadScheduleStage.io.rollback.bits := DontCare
+  fetchSelectStage.io.haltRequest.valid := false.B
+  fetchSelectStage.io.haltRequest.bits := DontCare
+  fetchSelectStage.io.icacheMiss := false.B
+  fetchSelectStage.io.icacheNearMiss := false.B
+  fetchSelectStage.io.rollback.valid := false.B
+  fetchSelectStage.io.rollback.bits := DontCare
 }
 
