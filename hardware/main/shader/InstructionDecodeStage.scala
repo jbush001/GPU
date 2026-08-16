@@ -20,19 +20,6 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-
-//               31      27         21 20         14 13          7 6           0
-//              +-------+-------------+-------------+-------------+-------------+
-// R: Arith     |       |   rs2 (7)   |    rs1 (7)  |    rd (7)   |  opcode (7) |
-//              +-------+-------------+-+-----------+-------------+-------------+
-// B: Branch    |       offset[18:7]    |  rs1 (6)  | offset[6:0] |  opcode (7) |
-//              +-----------------------+-----------+-------------+-------------+
-// X: Inherent  |                    unused (25)                  |  opcode (7) |
-//              +-------------------------------+---+-------------+-------------+
-// K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
-//              +-------------------------------+---+-------------+-------------+
-//
-
 class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
   val regId = UInt(7.W)
@@ -42,7 +29,6 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
 /**
   * Instruction decode stage. This stage decodes the instruction and reads the
   * source registers. It also handles writing back to registers.
-  * @todo registers 32-63 are reserved for special purposes. Currently not handled.
   */
 class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -61,7 +47,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val resetThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
   })
 
-  val numRegisters = 64
+  val numRegisters = 32
 
   val scalarRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
     UInt(32.W))
@@ -69,93 +55,106 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     Vec(cfg.shaderVectorLanes, UInt(32.W)))
   val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
 
-  case class InstEntry(
-    mnenomic: String = "unknown",
-    hasDest: Boolean = false,
-    isBranch: Boolean = false,
-    isLoadConst: Boolean = false
-  )
+  //  Instruction formats:
+  //
+  //               31      27         21 20         14 13          7 6           0
+  //              +-------+-------------+-------------+-------------+-------------+
+  // R: Arith     |       |   rs2 (7)   |    rs1 (7)  |    rd (7)   |  opcode (7) |
+  //              +-------+-------------+-+-----------+-------------+-------------+
+  // B: Branch    |       offset[18:7]    |  rs1 (6)  | offset[6:0] |  opcode (7) |
+  //              +-----------------------+-----------+-------------+-------------+
+  // X: Inherent  |                    unused (25)                  |  opcode (7) |
+  //              +-------------------------------+---+-------------+-------------+
+  // K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
+  //              +-------------------------------+---+-------------+-------------+
 
-  val instructionTable: Map[Int, InstEntry] = Map(
-    // opcode      mnemonic   hasDest isBranch isLoadConst
-    0 -> InstEntry("halt",    false,  false,   false),
-    1 -> InstEntry("and",     true,   false,   false),
-    2 -> InstEntry("or",      true,   false,   false),
-    3 -> InstEntry("xor",     true,   false,   false),
-    4 -> InstEntry("addi",    true,   false,   false),
-    5 -> InstEntry("subi",    true,   false,   false),
-    6 -> InstEntry("muli",    true,   false,   false),
-    7 -> InstEntry("mulh",    true,   false,   false),
-    8 -> InstEntry("lsl",     true,   false,   false),
-    9 -> InstEntry("asr",     true,   false,   false),
-    10 -> InstEntry("lsr",    true,   false,   false),
-    11 -> InstEntry("addf",   true,   false,   false),
-    12 -> InstEntry("subf",   true,   false,   false),
-    13 -> InstEntry("mulf",   true,   false,   false),
-    14 -> InstEntry("recip",  true,   false,   false),
-    15 -> InstEntry("ftoi",   true,   false,   false),
-    16 -> InstEntry("itof",   true,   false,   false),
-    17 -> InstEntry("setgtf", true,   false,   false),
-    18 -> InstEntry("setltf", true,   false,   false),
-    19 -> InstEntry("setgei", true,   false,   false),
-    20 -> InstEntry("setlti", true,   false,   false),
-    21 -> InstEntry("setgeu", true,   false,   false),
-    22 -> InstEntry("setltu", true,   false,   false),
-    23 -> InstEntry("seteq",  true,   false,   false),
-    24 -> InstEntry("setne",  true,   false,   false),
-    25 -> InstEntry("bnz",    false,  true,    false),
-    26 -> InstEntry("bz",     false,  true,    false),
-    27 -> InstEntry("j",      false,  true,    false),
-    28 -> InstEntry("loadlo", true,   false,   true),
-    29 -> InstEntry("loadhi", true,   false,   true),
-  )
+  def isLoadConst(inst: UInt): Bool = {
+    val opcode = inst(6, 0)
 
-  // This will presumably synthesize into random logic.
-  val hasDestLookup = VecInit((0 until 32).map { i =>
-    instructionTable.getOrElse(i, InstEntry()).hasDest.B
-  })
-
-  val isBranchLookup = VecInit((0 until 32).map { i =>
-    instructionTable.getOrElse(i, InstEntry()).isBranch.B
-  })
-
-  val isLoadConstLookup = VecInit((0 until 32).map { i =>
-    instructionTable.getOrElse(i, InstEntry()).isLoadConst.B
-  })
-
-  val operand1Reg = Wire(UInt(7.W))
-  when (isLoadConstLookup(io.input.bits.instruction(4, 0))) {
-    // The dest reg is the first operand for load constant instructions.
-    operand1Reg := io.input.bits.instruction(13, 7)
-  }.otherwise {
-    operand1Reg := io.input.bits.instruction(20, 14)
+    opcode === 28.U || // loadlo
+    opcode === 29.U    // loadhi
   }
 
-  when (operand1Reg(6)) {
-    io.output.bits.operand1 := vectorRegisters.read(Cat(io.input.bits.thread, operand1Reg(5, 0)))
-  }.otherwise {
-    // Need to duplicate this across lanes
-    io.output.bits.operand1 := VecInit(Seq.fill(cfg.shaderVectorLanes)(scalarRegisters.read(Cat(io.input.bits.thread, operand1Reg(5, 0)))))
+  object SpecialReg {
+    val ExecMask     = 32.U
+    val LpmReadAddr  = 33.U
+    val LpmWriteAddr = 34.U
+    val UniformAddr  = 35.U
+    val UniformVal   = 36.U
+
+    val Const0       = 53.U
+    val Const1       = 54.U
+    val ConstNeg1    = 55.U
+    val Const2       = 56.U
+    val Const4       = 57.U
+    val Const0_5f    = 58.U
+    val ConstNeg0_5f = 59.U
+    val Const1_0f    = 60.U
+    val ConstNeg1_0f = 61.U
+    val Const2_0f    = 62.U
+    val ConstNeg2_0f = 63.U
+
+    val LaneId       = 111.U
   }
+
+  def constFloat(f: Float): UInt = {
+    val bits = java.lang.Float.floatToIntBits(f)
+    (bits.toLong & 0xFFFFFFFFL).U(32.W)
+  }
+
+  def broadcast(v: UInt): Vec[UInt] = VecInit(Seq.fill(cfg.shaderVectorLanes)(v))
+
+  def readOperand(regId: UInt): Vec[UInt] = {
+    val gprIndex = Cat(io.input.bits.thread, regId(4, 0)) // GPR index within a bank, 5 bits (0-31)
+    val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+
+    // default: scalar GPR read (covers 0-31)
+    result := broadcast(scalarRegisters.read(gprIndex))
+
+    switch(regId) {
+      is(SpecialReg.ExecMask)     { result := execMask(io.input.bits.thread).asTypeOf(result) }
+      is(SpecialReg.LaneId)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
+
+      is(SpecialReg.Const0)       { result := broadcast(0.U(32.W)) }
+      is(SpecialReg.Const1)       { result := broadcast(1.U(32.W)) }
+      is(SpecialReg.ConstNeg1)    { result := broadcast((-1).S(32.W).asUInt) }
+      is(SpecialReg.Const2)       { result := broadcast(2.U(32.W)) }
+      is(SpecialReg.Const4)       { result := broadcast(4.U(32.W)) }
+      is(SpecialReg.Const0_5f)    { result := broadcast(constFloat(0.5f)) }
+      is(SpecialReg.ConstNeg0_5f) { result := broadcast(constFloat(-0.5f)) }
+      is(SpecialReg.Const1_0f)    { result := broadcast(constFloat(1.0f)) }
+      is(SpecialReg.ConstNeg1_0f) { result := broadcast(constFloat(-1.0f)) }
+      is(SpecialReg.Const2_0f)    { result := broadcast(constFloat(2.0f)) }
+      is(SpecialReg.ConstNeg2_0f) { result := broadcast(constFloat(-2.0f)) }
+    }
+
+    // vector GPR bank (64-95): overrides the previous
+    when (regId(6) && !regId(5)) { // 64-95: bit6=1, bit5=0
+      result := vectorRegisters.read(gprIndex)
+    }
+
+    result
+  }
+
+  val operand1Reg = Mux(isLoadConst(io.input.bits.instruction),
+    io.input.bits.instruction(13, 7), // Dest reg is first operand for load const.
+    io.input.bits.instruction(20, 14)
+  )
 
   val operand2Reg = io.input.bits.instruction(27, 21)
-  when (operand2Reg(6)) {
-    io.output.bits.operand2 := vectorRegisters.read(Cat(io.input.bits.thread, operand2Reg(5, 0)))
-  }.otherwise {
-    // Need to duplicate this across lanes
-    io.output.bits.operand2 := VecInit(Seq.fill(cfg.shaderVectorLanes)(scalarRegisters.read(
-      Cat(io.input.bits.thread, operand2Reg(5, 0)))))
-  }
+
+  io.output.bits.operand1 := readOperand(operand1Reg)
+  io.output.bits.operand2 := readOperand(operand2Reg)
 
   when (io.writeback.valid) {
     when (io.writeback.bits.regId(6)) {
-      vectorRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(5, 0)),
+      vectorRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(4, 0)),
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
     }.otherwise {
       when (io.writeback.bits.regId === 32.U) {
         execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
       }.otherwise {
-        scalarRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(5, 0)),
+        scalarRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(4, 0)),
           io.writeback.bits.value(0))
       }
     }

@@ -88,8 +88,17 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.writeback.bits.regId.poke(32.U)
       dut.io.writeback.bits.value(0).poke("b01010101".U)
       dut.clock.step(1)
+      dut.io.writeback.valid.poke(false.B)
+
+      // Read back mask
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 32, 0).U)
+      dut.clock.step(1)
+
+      dut.io.output.bits.operand1(0).expect("b01010101".U)
 
       // Write new vector value
+      dut.io.writeback.valid.poke(true.B)
       dut.io.writeback.bits.regId.poke(64.U)
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(i).poke((i + 100).U)
@@ -137,6 +146,13 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.resetThread.bits.poke(1.U)
       dut.clock.step(1)
       dut.io.resetThread.valid.poke(false.B)
+
+      // Read back mask
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 32, 0).U)
+      dut.clock.step(1)
+
+      dut.io.output.bits.operand1(0).expect("b11111111".U)
 
       // Write new vector value
       dut.io.writeback.valid.poke(true.B)
@@ -208,6 +224,64 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.output.bits.operand1(i).expect(1234.U)
+      }
+    }
+  }
+
+  test("InstructionDecodeStage constants") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+
+      def floatToUInt(fval: Float): UInt = (java.lang.Float.floatToIntBits(fval) & 0xffffffffL).U
+      def intToUInt(ival: Int): UInt = (ival & 0xffffffffL).U
+
+      val constants = Seq(
+        (53, intToUInt(0)), // constant 0
+        (54, intToUInt(1)),
+        (55, intToUInt(-1)),
+        (56, intToUInt(2)),
+        (57, intToUInt(4)),
+        (58, floatToUInt(0.5f)),
+        (59, floatToUInt(-0.5f)),
+        (60, floatToUInt(1.0f)),
+        (61, floatToUInt(-1.0f)),
+        (62, floatToUInt(2.0f)),
+        (63, floatToUInt(-2.0f))
+      )
+
+      // Test as first operand
+      for ((regId, value) <- constants) {
+        dut.io.input.bits.instruction.poke(rInst(12, 0, regId, 0).U)
+        dut.clock.step(1)
+
+        for (i <- 0 until cfg.shaderVectorLanes) {
+          dut.io.output.bits.operand1(i).expect(value)
+        }
+      }
+
+      // Test as second operand
+      for ((regId, value) <- constants) {
+        dut.io.input.bits.instruction.poke(rInst(12, 0, 0, regId).U)
+        dut.clock.step(1)
+
+        for (i <- 0 until cfg.shaderVectorLanes) {
+          dut.io.output.bits.operand2(i).expect(value)
+        }
+      }
+    }
+  }
+
+  test("InstructionDecodeStage read vector lane id") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+
+      dut.io.input.bits.instruction.poke(rInst(12, 0, 111, 0).U) // lane id
+      dut.clock.step(1)
+
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.output.bits.operand1(i).expect(i.U)
       }
     }
   }
