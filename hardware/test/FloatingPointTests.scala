@@ -267,4 +267,47 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
       )
     }
   }
+
+  test("Float32 greaterThan") {
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val a = Input(UInt(32.W))
+        val b = Input(UInt(32.W))
+        val result = Output(Bool())
+      })
+
+      io.result := io.a.asTypeOf(Float32()).greaterThan(io.b.asTypeOf(Float32()))
+    }) { dut =>
+      val testVectors = Seq(
+        (1.0f, 2.0f, false),
+        (2.0f, 1.0f, true),
+        (1.0f, 1.0f, false),
+        (-1.0f, 1.0f, false),
+        (1.0f, -1.0f, true),
+        (-1.0f, -2.0f, true),
+        (-2.0f, -1.0f, false),
+        (+0.0f, -0.0f, false),
+        (-0.0f, +0.0f, false),
+        (Float.PositiveInfinity, 1.0f, true),
+        (1.0f, Float.PositiveInfinity, false),
+        (Float.NegativeInfinity, 1.0f, false),
+        (1.0f, Float.NegativeInfinity, true),
+        (Float.PositiveInfinity, Float.NegativeInfinity, true),
+        (Float.NegativeInfinity, Float.PositiveInfinity, false),
+        (Float.NaN, 1.0f, false),
+        (1.0f, Float.NaN, false),
+        (Float.NaN, Float.NaN, false)
+      )
+
+      for ((a, b, expected) <- testVectors) {
+        dut.io.a.poke(floatToRawBits(a).U)
+        dut.io.b.poke(floatToRawBits(b).U)
+        dut.clock.step()
+        if (dut.io.result.peek().litToBoolean != expected) {
+          println(f"mismatch: $a%.3f > $b%.3f, expected $expected actual ${dut.io.result.peek().litToBoolean}")
+          fail()
+        }
+      }
+    }
+  }
 }

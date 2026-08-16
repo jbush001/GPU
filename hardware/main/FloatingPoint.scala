@@ -39,10 +39,29 @@ class Float32 extends Bundle {
   // This adds the leading hidden bit
   def fullFraction = (!this.isZero ## this.fraction).asUInt
 
-  def absLargerThan(that: Float32): Bool = {
+  def absGreaterThan(that: Float32): Bool = {
     ((this.exponent > that.exponent)
       || ((this.exponent === that.exponent)
-      && this.fullFraction >= that.fullFraction))
+      && this.fullFraction > that.fullFraction))
+  }
+
+  def greaterThan(that: Float32): Bool = {
+    val result = WireInit(false.B)
+    when (this.negative === that.negative) {
+      when (this.negative) {
+        result := that.absGreaterThan(this)
+      }.otherwise {
+        result := this.absGreaterThan(that)
+      }
+    }.otherwise {
+      result := that.negative
+    }
+
+    when (this.isNaN || that.isNaN || (this.isZero && that.isZero)) {
+      result := false.B
+    }
+
+    result
   }
 }
 
@@ -79,7 +98,7 @@ class FpAddSub extends Module with FloatingPointBlock {
   // - Check for special cases: inf/NaN
   //
   val stage1 = new {
-    val op1IsLarger = io.operand1.absLargerThan(io.operand2)
+    val op1IsLarger = io.operand1.absGreaterThan(io.operand2)
     val exponentDiff = Mux(op1IsLarger,
       io.operand1.exponent - io.operand2.exponent,
       io.operand2.exponent - io.operand1.exponent)
