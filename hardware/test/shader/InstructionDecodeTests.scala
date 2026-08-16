@@ -286,4 +286,89 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.output.bits.operand1(0).expect("b10101010".U)
     }
   }
+
+  // Read and write the same register during the same cycle
+  test("InstructionDecodeStage write under read scalar") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      // write default values
+      writeScalar(dut, 1, 2, 0)
+
+      // Now write and read the same register
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(2.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke(111.U)
+      }
+
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0, 2, 0).U)
+      dut.clock.step(1)
+
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.output.bits.operand1(i).expect(111.U)
+      }
+    }
+  }
+
+  test("InstructionDecodeStage write under read vector") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      // Write default values
+      writeVector(dut, 1, 64, Seq.fill(cfg.shaderVectorLanes)(0))
+
+      // Now write and read a the same register.
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(64.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke((i + 100).U)
+      }
+
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0, 64, 0).U)
+      dut.clock.step(1)
+
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.output.bits.operand1(i).expect((i + 100).U)
+      }
+    }
+  }
+
+  test("InstructionDecodeStage write under read scalar special") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(32.U) // exec mask
+      dut.io.writeback.bits.value(0).poke("b01010101".U)
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0, 32, 0).U) // read exec mask
+      dut.clock.step(1)
+
+      dut.io.output.bits.operand1(0).expect("b01010101".U)
+    }
+  }
+
+  test("InstructionDecodeStage write under read vector special") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      val regIndex = 105 // store pixel red
+      dut.io.writeback.valid.poke(true.B)
+      dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.regId.poke(regIndex.U)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeback.bits.value(i).poke((i + 100).U)
+      }
+
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(12, 0, regIndex, 0).U) // read lane id
+      dut.clock.step(1)
+
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.output.bits.operand1(i).expect((i + 100).U)
+      }
+    }
+  }
 }

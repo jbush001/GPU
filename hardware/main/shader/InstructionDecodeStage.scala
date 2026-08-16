@@ -50,9 +50,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val numRegisters = 32
 
   val scalarRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
-    UInt(32.W))
+    UInt(32.W), SyncReadMem.Undefined)
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
-    Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
   val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
 
   //  Instruction formats:
@@ -114,10 +114,13 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
     val gprIndex = Cat(io.input.bits.thread, regId(4, 0))
 
-    when (regId(6, 5) === 0.U) {
+    when (io.writeback.valid && regId === io.writeback.bits.regId) {
+      // Bypass if reading the same register that is being written.
+      result := io.writeback.bits.value
+    }.elsewhen (regId(6, 5) === 0.U) {
       // 0-31: scalar general purpose registers
       result := broadcast(scalarRegisters.read(gprIndex))
-    } .elsewhen (regId(6, 5) === 2.U) {
+    }.elsewhen (regId(6, 5) === 2.U) {
       // 64-95: vector general purpose registers
       result := vectorRegisters.read(gprIndex)
     } .otherwise {
