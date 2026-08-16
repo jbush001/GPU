@@ -46,9 +46,11 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         for (_ <- 0 until backToBackLatency) {
           dut.clock.step()
           dut.io.fetchRequest.valid.expect(false.B)
+          dut.io.resetThread.valid.expect(false.B)
         }
 
         dut.clock.step()
+        dut.io.resetThread.valid.expect(false.B)
         dut.io.fetchRequest.valid.expect(true.B)
         assert(dut.io.fetchRequest.valid.peek().litToBoolean, "Fetch request should be valid")
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
@@ -56,6 +58,25 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
     }
   }
+
+  // Ensure this resets the thread state appropriately.
+  test("FetchSelectStage thread reset") {
+    simulate(new FetchSelectStage()) { dut =>
+      // Allocate a new job
+      dut.io.startJob.ready.expect(true.B)
+      dut.io.startJob.valid.poke(true.B)
+      dut.io.startJob.bits.startPc.poke(0x1000.U)
+      dut.io.resetThread.valid.expect(true.B)
+      val resetThread = dut.io.resetThread.bits.peek().litValue
+      dut.clock.step()
+      dut.io.startJob.valid.poke(false.B)
+
+      // Record the thread that was allocated.
+      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+      assert(allocatedThread == resetThread, s"Allocated thread $allocatedThread does not match reset thread $resetThread")
+    }
+  }
+
 
   test("FetchSelectStage rollback") {
     simulate(new FetchSelectStage()) { dut =>

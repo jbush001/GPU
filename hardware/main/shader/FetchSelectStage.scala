@@ -35,12 +35,14 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
       val startPc = UInt(cfg.busAddressBits.W)
     }))
 
+    // To decode stage. Clear state when a new thread starts.
+    val resetThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
+
     // Output to the instruction cache.
     val fetchRequest = Valid(new FetchRequest)
 
     val haltRequest = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
     val wakeThreadBitmap = Input(UInt(cfg.shaderThreads.W))
-
 
     val icacheMiss = Input(Bool())
     val icacheNearMiss = Input(Bool())
@@ -67,6 +69,11 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   when (io.startJob.fire) {
     threadHalted(nextFreeThread) := false.B
     programCounters(nextFreeThread) := io.startJob.bits.startPc
+    io.resetThread.valid := true.B
+    io.resetThread.bits := nextFreeThread
+  } .otherwise {
+    io.resetThread.valid := false.B
+    io.resetThread.bits := 0.U
   }
 
   when (io.haltRequest.valid) {

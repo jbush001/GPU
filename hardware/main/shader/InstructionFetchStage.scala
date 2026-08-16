@@ -53,7 +53,9 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     // Output
     val output = Valid(new FetchResponse)
 
+    val miss = Output(Bool())
     val nearMiss = Output(Bool())
+    val missThread = Output(UInt(log2Up(cfg.shaderThreads).W))
   })
 
   ///////////////////////////////////////////////////////////
@@ -92,7 +94,9 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
       stage1.fetchRequest.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3)))
 
     io.output.valid := RegNext(stage1.fetchRequest.valid && (cacheHit && !nearMiss))
+    io.miss := RegNext(cacheMiss && !nearMiss)
     io.nearMiss := RegNext(nearMiss)
+    io.missThread := RegNext(stage1.fetchRequest.bits.thread)
     io.output.bits.thread := RegNext(stage1.fetchRequest.bits.thread)
   }
 
