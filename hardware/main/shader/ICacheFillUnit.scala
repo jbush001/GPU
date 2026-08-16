@@ -64,8 +64,9 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   })
 
   // There is one pending miss entry per hardware thread, but if a thread misses
-  // on a cache line that is already being fetched, it will be added to the waiting
-  // list for that line.
+  // on a cache line that is already being fetched for another thread, it will
+  // piggyback on the other thread's request. This is tracked by the
+  // waitingThreadBitmap field.
   class PendingMiss extends Bundle {
     val valid = Bool()
     val waitingThreadBitmap = UInt(cfg.shaderThreads.W)
@@ -130,9 +131,9 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
 
   nextFillArbiter.io.out.ready := false.B
   io.readPort.burst.valid := false.B
-  when (!burstActive && nextFillArbiter.io.out.valid) {
+  nextFillArbiter.io.out.ready := !burstActive
+  when (nextFillArbiter.io.out.fire) {
     // Start a new burst, issue address to memory arbiter
-    nextFillArbiter.io.out.ready := true.B
     burstActive := true.B
     burstCounter := 0.U
     burstThread := nextFillArbiter.io.chosen
@@ -140,44 +141,38 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     io.readPort.burst.valid := true.B
   }
 
-  // Invariant 1: If burstActive is true, then the nextFillArbiter must be valid.
-  assert(!burstActive || nextFillArbiter.io.out.valid,
-    "burstActive is true but nextFillArbiter is not valid")
-
-  // Invariant 2: if a cache line update is complete, wakeThreadBitmap must be non-zero.
+  // Invariant 1: if a cache line update is complete, wakeThreadBitmap must be non-zero.
   assert(!(io.updateCache.valid && io.updateCache.bits.last) || io.wakeThreadBitmap.orR,
     "updateCache is valid but wakeThreadBitmap is zero")
 
-  // Invariant 3: if updateCache.valid is true, then burstActive must also be true
+  // Invariant 2: if updateCache.valid is true, then burstActive must also be true
   assert(!io.updateCache.valid || burstActive,
     "updateCache is valid but burstActive is false")
 
-  for (i <- 0 until cfg.shaderThreads) {
-    // Invariant 4: If a pending miss is valid, it must have at least one
+  for (thidA <- 0 until cfg.shaderThreads) {
+    // Invariant 3: If a pending miss is valid, it must have at least one
     // waiting thread.
-    assert(!pendingMisses(i).valid || pendingMisses(i).waitingThreadBitmap.orR,
-      s"Pending miss ${i} is valid but has no waiting threads")
+    assert(!pendingMisses(thidA).valid || pendingMisses(thidA).waitingThreadBitmap.orR,
+      "Pending miss is valid but has no waiting threads")
 
-    for (j <- i + 1 until cfg.shaderThreads) {
-      // Invariant 5: No two pending misses can have the same address.
-      assert(!(pendingMisses(i).valid && pendingMisses(j).valid
-        && pendingMisses(i).address === pendingMisses(j).address),
+    for (thidB <- thidA + 1 until cfg.shaderThreads) {
+      // Invariant 4: Active pending misses cannot have the same address.
+      assert(!(pendingMisses(thidA).valid && pendingMisses(thidB).valid
+        && pendingMisses(thidA).address === pendingMisses(thidB).address),
         "Two pending misses for the same address")
-       // Invariant 6: No thread should be waiting on more than one pending miss.
-      assert(!(pendingMisses(i).waitingThreadBitmap(j)
-        && pendingMisses(j).waitingThreadBitmap(i)
-        && pendingMisses(i).valid && pendingMisses(j).valid),
+
+      // Invariant 5: No thread should be waiting on more than one pending miss.
+      assert(!(pendingMisses(thidA).waitingThreadBitmap(thidB)
+        && pendingMisses(thidB).waitingThreadBitmap(thidA)
+        && pendingMisses(thidA).valid && pendingMisses(thidB).valid),
         "Two pending misses are waiting on the same thread")
     }
   }
 
-  // Invariant 7 (external): the caller should never queue a miss to the same line the same cycle
+  // Invariant 6 (external): the caller should never queue a miss to the same line the same cycle
   // a previous one is finishing (and waking the thread). It can detect if an update
   //is occuring to the cache line.
   assert(!(io.fillRequest.valid && io.updateCache.valid && io.updateCache.bits.last
     && io.fillRequest.bits.address.cacheLineAligned === burstAddress.cacheLineAligned),
     "Cache miss was queued for a line that is being updated")
 }
-
-
-
