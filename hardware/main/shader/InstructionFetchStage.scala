@@ -36,6 +36,9 @@ class FetchResponse(implicit val cfg: GpuConfig) extends Bundle {
   * The first stage reads tag memory to determine if the requested address is in
   * the cache. The second stage reads the instruction memory and returns the
   * instruction if it is a hit.
+  *
+  * @todo probably need a way to force cache invalidation externally when
+  *       a shader program is updated by the host.
   */
 class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   val instructionWidth = 32
@@ -61,12 +64,13 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////
   // Stage 1: read tag memory
   ///////////////////////////////////////////////////////////
-  val tagMemory = SyncReadMem(cfg.icacheLines, UInt(cfg.tagBits.W))
+  val tagMemory = SyncReadMem(cfg.icacheLines, UInt(cfg.tagBits.W), SyncReadMem.WriteFirst)
   val tagValid = RegInit(VecInit(Seq.fill(cfg.icacheLines)(false.B)))
 
   val stage1 = new {
+    val validUpdated = io.updateCache.valid && io.updateCache.bits.last && (io.updateCache.bits.address.index === io.fetchRequest.bits.pc.index)
     val tag = tagMemory.read(io.fetchRequest.bits.pc.index)
-    val valid = RegNext(tagValid(io.fetchRequest.bits.pc.index))
+    val valid = RegNext(tagValid(io.fetchRequest.bits.pc.index) || validUpdated)
     val fetchRequest = RegNext(io.fetchRequest)
   }
 
@@ -84,7 +88,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
             && io.updateCache.bits.last
             && stage1.fetchRequest.valid
             && io.updateCache.bits.address.index === stage1.fetchRequest.bits.pc.index
-            && io.updateCache.bits.address.tag === stage1.tag)
+            && io.updateCache.bits.address.tag === stage1.fetchRequest.bits.pc.tag)
 
     val cacheHit = stage1.tag === stage1.fetchRequest.bits.pc.tag && stage1.valid
     val cacheMiss = stage1.fetchRequest.valid && !cacheHit
@@ -113,18 +117,23 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     instructionMemory.write(Cat(io.updateCache.bits.address.index,
       io.updateCache.bits.address.cacheLineOffset(cfg.cacheLineOffsetBits - 1, (log2Up(cfg.busDataBits / 8)))),
       io.updateCache.bits.data)
+
+    // Invariant: a cache must be marked invalid while it is being filled to
+    // prevent returning from a partially filled line to a thread.
+    assert(!tagValid(io.updateCache.bits.address.index),
+      "Cache line cannot be valid while being filled")
+
+    when (io.updateCache.bits.last) {
+      // Fill has completed, update metadata and mark line as valid.
+      tagMemory.write(io.updateCache.bits.address.index, io.updateCache.bits.address.tag)
+      tagValid(io.updateCache.bits.address.index) := true.B
+    }
   }
 
   when (io.fillRequest.valid) {
     // Mark cache line invalid while it is being filled, as it will be in an
     // incomplete state.
     tagValid(io.fillRequest.bits.address.index) := false.B
-  }
-
-  when (io.updateCache.valid && io.updateCache.bits.last) {
-    // Fill has completed, update metadata and mark line as valid.
-    tagMemory.write(io.updateCache.bits.address.index, io.updateCache.bits.address.tag)
-    tagValid(io.updateCache.bits.address.index) := true.B
   }
 }
 
