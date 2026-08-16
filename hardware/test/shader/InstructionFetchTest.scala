@@ -101,5 +101,32 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       dut.io.output.valid.expect(false.B)
     }
   }
+
+  test("InstructionFetchStage miss tag mismatch") {
+    simulate(new InstructionFetchStage()) { dut =>
+      val address = 0x1000
+
+      // Fill cache line
+      for (i <- 0 until 8) {
+        dut.io.updateCache.valid.poke(true.B)
+        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)).U)
+        dut.io.updateCache.bits.data.poke(((i + 1) * 0x100000002L).U)
+        dut.io.updateCache.bits.last.poke((i == 7).B)
+        dut.clock.step()
+      }
+
+      dut.io.updateCache.valid.poke(false.B)
+
+      // This maps to the same cache line, but the tag is different, so it should be a miss.
+      dut.io.fetchRequest.valid.poke(true.B)
+      dut.io.fetchRequest.bits.pc.raw.poke((address + cfg.cacheLineSizeBytes * cfg.icacheLines).U)
+      dut.io.fetchRequest.bits.thread.poke(0.U)
+      dut.clock.step(2)
+      dut.io.nearMiss.expect(false.B)
+      dut.io.output.valid.expect(false.B)
+      dut.io.fillRequest.valid.expect(true.B)
+      dut.io.fillRequest.bits.address.raw.expect((address + cfg.cacheLineSizeBytes * cfg.icacheLines).U)
+    }
+  }
 }
 

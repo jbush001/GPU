@@ -25,20 +25,24 @@ import org.scalatest.funsuite.AnyFunSuite
 class FetchSelectTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
+  def startJob(dut: FetchSelectStage, startPc: UInt): Int = {
+    dut.io.startJob.ready.expect(true.B)
+    dut.io.startJob.valid.poke(true.B)
+    dut.io.startJob.bits.startPc.poke(startPc)
+    dut.clock.step()
+    dut.io.startJob.valid.poke(false.B)
+
+    // Record the thread that was allocated.
+    val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+    allocatedThread.toInt
+  }
+
   // Should equal rawLatency in FetchSelectStage.scala.
   val backToBackLatency = 2
 
   test("FetchSelectStage single thread") {
     simulate(new FetchSelectStage()) { dut =>
-      // Allocate a new job
-      dut.io.startJob.ready.expect(true.B)
-      dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0x1000.U)
-      dut.clock.step()
-      dut.io.startJob.valid.poke(false.B)
-
-      // Record the thread that was allocated.
-      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+      val allocatedThread = startJob(dut, 0x1000.U)
 
       // Issue a few more fetch requests
       for (i <- 1 until 5) {
@@ -77,17 +81,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-
   test("FetchSelectStage rollback") {
     simulate(new FetchSelectStage()) { dut =>
-      // Start a job at 0x2000
-      dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0x2000.U)
-      dut.clock.step()
-      dut.io.startJob.valid.poke(false.B)
-
-      // Record the thread that was allocated.
-      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+      val allocatedThread = startJob(dut, 0x2000.U)
 
       // Issue a few cycles
       for (i <- 1 until 3) {
@@ -128,14 +124,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage stall/resume") {
     simulate(new FetchSelectStage()) { dut =>
-      // Start job
-      dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0x1000.U)
-      dut.clock.step()
-      dut.io.startJob.valid.poke(false.B)
-
-      // Record the thread that was allocated.
-      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+      val allocatedThread = startJob(dut, 0x1000.U)
 
       // Issue a few cycles
       for (i <- 1 until 8) {
@@ -183,14 +172,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage near miss") {
     simulate(new FetchSelectStage()) { dut =>
-      // Start job
-      dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0x1000.U)
-      dut.clock.step()
-      dut.io.startJob.valid.poke(false.B)
-
-      // Record the thread that was allocated.
-      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+      val allocatedThread = startJob(dut, 0x1000.U)
 
       // Issue a few cycles
       for (i <- 1 until 8) {
@@ -234,14 +216,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage halt") {
     simulate(new FetchSelectStage()) { dut =>
-      // Start job on Thread 0
-      dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0x1000.U)
-      dut.clock.step()
-      dut.io.startJob.valid.poke(false.B)
-
-      // Record the thread that was allocated.
-      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
+      val allocatedThread = startJob(dut, 0x1000.U)
 
       // Issue a few cycles
       for (i <- 1 until 3) {
@@ -276,14 +251,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       val numThreads = 4
       val startPcs = Seq(0x1000.U, 0x2000.U, 0x3000.U, 0x4000.U)
 
-      for (pc <- startPcs) {
-        dut.io.startJob.ready.expect(true.B)
-        dut.io.startJob.valid.poke(true.B)
-        dut.io.startJob.bits.startPc.poke(pc)
-        dut.clock.step()
-      }
-
-      dut.io.startJob.valid.poke(false.B)
+      startPcs.map(pc => startJob(dut, pc))
 
       // Collect the sequence of issuing thread IDs over consecutive cycles
       val issuedSequence = (0 until numThreads).map { _ =>
@@ -295,7 +263,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Verify all 4 threads issued exactly once without repeating
       assert(issuedSequence.distinct.length == numThreads,
-             s"Expected $numThreads distinct threads, got $issuedSequence")
+             "Did not see all threads")
 
       // Verify the round-robin cycle repeats in the same order for a few more cycles
       for (_ <- 0 until 3) {
@@ -307,7 +275,89 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
     }
   }
+
+  test("FetchSelectStage halt does not affect other threads") {
+    simulate(new FetchSelectStage()) { dut =>
+      val allocatedThreads = (0 until 4).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
+
+      // Issue a few cycles to ensure all threads are active
+      for (_ <- 0 until 4) {
+        dut.io.fetchRequest.valid.expect(true.B)
+        dut.clock.step()
+      }
+
+      // Halt one of the threads
+      val threadToHalt = allocatedThreads.head
+      dut.io.haltRequest.valid.poke(true.B)
+      dut.io.haltRequest.bits.poke(threadToHalt.U)
+      dut.clock.step()
+      dut.io.haltRequest.valid.poke(false.B)
+
+      // Ensure the halted thread does not issue anymore, but others continue
+      for (_ <- 0 until 8) {
+        dut.io.fetchRequest.valid.expect(true.B)
+        val currentThread = dut.io.fetchRequest.bits.thread.peek().litValue.toInt
+        assert(currentThread != threadToHalt, "Halted thread should not issue")
+        dut.clock.step()
+      }
+    }
+  }
+
+  test("FetchSelectStage one thread stalled does not block others") {
+    simulate(new FetchSelectStage()) { dut =>
+      val allocatedThreads = (0 until 4).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
+
+      // Issue a few cycles
+      for (_ <- 0 until 4) {
+        dut.io.fetchRequest.valid.expect(true.B)
+        dut.clock.step()
+      }
+
+      // Stall one of the threads
+      val stalledThread = allocatedThreads.head
+      dut.io.icacheMiss.poke(true.B)
+      dut.io.icacheMissThread.poke(stalledThread.U)
+      dut.clock.step()
+      dut.io.icacheMiss.poke(false.B)
+
+      // Ensure the stalled thread does not issue anymore, but others continue
+      for (_ <- 0 until 8) {
+        dut.io.fetchRequest.valid.expect(true.B)
+        val currentThread = dut.io.fetchRequest.bits.thread.peek().litValue.toInt
+        assert(currentThread != stalledThread, "Stalled thread should not issue")
+        dut.clock.step()
+      }
+
+      // Resume the stalled thread
+      dut.io.wakeThreadBitmap.poke((1 << stalledThread).U)
+      dut.clock.step()
+      dut.io.wakeThreadBitmap.poke(0.U)
+
+      // Ensure the previously stalled thread can now issue again
+      var foundStalledThread = false
+      for (_ <- 0 until 8) {
+        dut.io.fetchRequest.valid.expect(true.B)
+        val currentThread = dut.io.fetchRequest.bits.thread.peek().litValue.toInt
+        if (currentThread == stalledThread) {
+          foundStalledThread = true
+        }
+        dut.clock.step()
+      }
+      assert(foundStalledThread, "Previously stalled thread did not issue after being resumed")
+    }
+   }
+
+  test("FetchSelectStage startJob deasserts ready when no threads are free") {
+    simulate(new FetchSelectStage()) { dut =>
+      // Start jobs on all available threads
+      val numThreads = 8
+      for (i <- 0 until numThreads) {
+        dut.io.startJob.ready.expect(true.B, "startJob should be ready")
+        startJob(dut, (0x1000 + i * 0x1000).U)
+      }
+
+      // Now, all threads are allocated. The next startJob should not be ready.
+      dut.io.startJob.ready.expect(false.B)
+    }
+  }
 }
-
-
-
