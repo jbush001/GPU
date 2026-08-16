@@ -19,7 +19,8 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** A simple burst-oriented memory read port.
+/** A simple burst-oriented memory read port
+  * This is the client side of the interface
   *
   * Protocol:
   *
@@ -39,9 +40,11 @@ import chisel3.util._
   *     on each other.
   */
 class MemReadPort(implicit cfg: GpuConfig) extends Bundle {
-  val valid = Output(Bool())
-  val address = Output(UInt(cfg.busAddressBits.W))
-  val length = Output(UInt(cfg.busBurstLengthBits.W))
+  val burst = Valid(new Bundle {
+    val address = UInt(cfg.busAddressBits.W)
+    val length = UInt(cfg.busBurstLengthBits.W)
+  })
+
   val data = Flipped(Decoupled(UInt(cfg.busDataBits.W)))
 }
 
@@ -50,9 +53,11 @@ class MemReadPort(implicit cfg: GpuConfig) extends Bundle {
   * the roles of the client and arbiter are reversed.
   */
 class MemWritePort(implicit cfg: GpuConfig) extends Bundle {
-  val valid = Output(Bool())
-  val address = Output(UInt(cfg.busAddressBits.W))
-  val length = Output(UInt(cfg.busBurstLengthBits.W))
+  val burst = Valid(new Bundle {
+    val address = UInt(cfg.busAddressBits.W)
+    val length = UInt(cfg.busBurstLengthBits.W)
+  })
+
   val data = Decoupled(UInt(cfg.busDataBits.W))
 }
 
@@ -65,9 +70,9 @@ class MemoryArbiter(
   val numWritePorts: Int = 2
 )(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val readPorts  = Vec(numReadPorts, Flipped(new MemReadPort))
+    val readPorts = Vec(numReadPorts, Flipped(new MemReadPort))
     val writePorts = Vec(numWritePorts, Flipped(new MemWritePort))
-    val axiBus     = new AxiBus()(cfg)
+    val axiBus = new AxiBus()(cfg)
   })
 
   //
@@ -77,13 +82,13 @@ class MemoryArbiter(
     val readRequests = VecInit(io.readPorts.map { port =>
       val request = Wire(Decoupled(chiselTypeOf(io.axiBus.readRequest.bits)))
 
-      request.valid := port.valid
-      request.bits.address := port.address
-      request.bits.length := port.length
+      request.valid := port.burst.valid
+      request.bits.address := port.burst.bits.address
+      request.bits.length := port.burst.bits.length
 
       // Latch requests from clients
       val queue = Queue(request, entries = 1)
-      assert(request.ready || !port.valid, "Client initiated overlapping transaction")
+      assert(request.ready || !port.burst.valid, "Client initiated overlapping transaction")
       queue
     })
 
@@ -136,13 +141,13 @@ class MemoryArbiter(
     val writeRequests = VecInit(io.writePorts.map { port =>
       val request = Wire(Decoupled(chiselTypeOf(io.axiBus.writeRequest.bits)))
 
-      request.valid := port.valid
-      request.bits.address := port.address
-      request.bits.length := port.length
+      request.valid := port.burst.valid
+      request.bits.address := port.burst.bits.address
+      request.bits.length := port.burst.bits.length
 
       // Latch requests from clients
       val queue = Queue(request, entries = 1)
-      assert(request.ready || !port.valid, "Client initiated overlapping transaction")
+      assert(request.ready || !port.burst.valid, "Client initiated overlapping transaction")
       queue
     })
 

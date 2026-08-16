@@ -109,8 +109,8 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   io.updateCache.bits.address := burstAddress
   io.updateCache.bits.data := io.readPort.data.bits
   io.updateCache.bits.last := burstCounter === (cacheLineBeats - 1).U
-  io.readPort.address := nextFillArbiter.io.out.bits.raw
-  io.readPort.length := cacheLineBeats.U
+  io.readPort.burst.bits.address := nextFillArbiter.io.out.bits.raw
+  io.readPort.burst.bits.length := cacheLineBeats.U
   io.readPort.data.ready := true.B
 
   io.wakeThreadBitmap := 0.U
@@ -129,7 +129,7 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   }
 
   nextFillArbiter.io.out.ready := false.B
-  io.readPort.valid := false.B
+  io.readPort.burst.valid := false.B
   when (!burstActive && nextFillArbiter.io.out.valid) {
     // Start a new burst, issue address to memory arbiter
     nextFillArbiter.io.out.ready := true.B
@@ -137,7 +137,7 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     burstCounter := 0.U
     burstThread := nextFillArbiter.io.chosen
     burstAddress := nextFillArbiter.io.out.bits
-    io.readPort.valid := true.B
+    io.readPort.burst.valid := true.B
   }
 
   // Invariant 1: If burstActive is true, then the nextFillArbiter must be valid.

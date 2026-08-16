@@ -127,10 +127,10 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     arbiter.io.axiBus <> memory.io
     memory.dap <> io.dap
 
-    arbiter.io.writePorts(0).valid := false.B
+    arbiter.io.writePorts(0).burst.valid := false.B
     arbiter.io.writePorts(0).data.valid := false.B
-    arbiter.io.writePorts(0).address := 0.U
-    arbiter.io.writePorts(0).length := 0.U
+    arbiter.io.writePorts(0).burst.bits.address := 0.U
+    arbiter.io.writePorts(0).burst.bits.length := 0.U
     arbiter.io.writePorts(0).data.bits := 0.U
   }
 

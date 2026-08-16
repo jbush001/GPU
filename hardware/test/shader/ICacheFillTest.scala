@@ -34,8 +34,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       dut.io.fillRequest.bits.thread.poke(2.U)
       dut.clock.step()
       dut.io.fillRequest.valid.poke(false.B)
-      dut.io.readPort.valid.expect(true.B, "Should request burst from memory")
-      dut.io.readPort.address.expect(baseAddress.U,
+      dut.io.readPort.burst.valid.expect(true.B, "Should request burst from memory")
+      dut.io.readPort.burst.bits.address.expect(baseAddress.U,
         "Memory address should match the miss address")
       dut.clock.step()
 
@@ -43,7 +43,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       var offset = 0
       dut.io.readPort.data.valid.poke(true.B)
       while (offset < cfg.cacheLineSizeBytes / (cfg.busDataBits / 8)) {
-        dut.io.readPort.valid.expect(false.B, "Should not initiate new burst")
+        dut.io.readPort.burst.valid.expect(false.B, "Should not initiate new burst")
         dut.io.readPort.data.bits.poke((offset + 1).U)
 
         dut.io.updateCache.valid.peek().litToBoolean match {
@@ -75,7 +75,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         dut.clock.step(1)
         dut.io.wakeThreadBitmap.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
         dut.io.updateCache.valid.expect(false.B, "Cache update should be deasserted after one cycle")
-        dut.io.readPort.valid.expect(false.B, "Should not request burst from memory")
+        dut.io.readPort.burst.valid.expect(false.B, "Should not request burst from memory")
       }
     }
   }
@@ -88,8 +88,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
       dut.io.fillRequest.bits.thread.poke(2.U)
       dut.clock.step()
-      dut.io.readPort.valid.expect(true.B, "Should request burst from memory")
-      dut.io.readPort.address.expect(baseAddress.U,
+      dut.io.readPort.burst.valid.expect(true.B, "Should request burst from memory")
+      dut.io.readPort.burst.bits.address.expect(baseAddress.U,
         "Memory address should match the miss address")
       dut.clock.step()
 
@@ -102,7 +102,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       var offset = 0
       dut.io.readPort.data.valid.poke(true.B)
       while (offset < cfg.cacheLineSizeBytes / (cfg.busDataBits / 8)) {
-        dut.io.readPort.valid.expect(false.B, "Should not initiate new burst")
+        dut.io.readPort.burst.valid.expect(false.B, "Should not initiate new burst")
         dut.io.readPort.data.bits.poke((offset + 1).U)
 
         dut.io.updateCache.valid.peek().litToBoolean match {
@@ -134,7 +134,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         dut.clock.step(1)
         dut.io.wakeThreadBitmap.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
         dut.io.updateCache.valid.expect(false.B, "Cache update should be deasserted after one cycle")
-        dut.io.readPort.valid.expect(false.B, "Should not request burst from memory")
+        dut.io.readPort.burst.valid.expect(false.B, "Should not request burst from memory")
       }
     }
   }

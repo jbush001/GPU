@@ -29,17 +29,17 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
   // Single read burst
   test("MemoryArbiter read burst") {
     simulate(new MemoryArbiter(1, 1)) { dut =>
-      dut.io.readPorts(0).valid.poke(true.B)
+      dut.io.readPorts(0).burst.valid.poke(true.B)
 
       val address = 33
       val testData = Seq(10, 20, 30, 40, 50, 60, 70)
 
-      dut.io.readPorts(0).address.poke(address)
-      dut.io.readPorts(0).length.poke(testData.length - 1)
+      dut.io.readPorts(0).burst.bits.address.poke(address)
+      dut.io.readPorts(0).burst.bits.length.poke(testData.length - 1)
       dut.io.axiBus.readRequest.ready.poke(false.B)
       dut.io.axiBus.readData.valid.poke(false.B)
       dut.clock.step()
-      dut.io.readPorts(0).valid.poke(false.B)
+      dut.io.readPorts(0).burst.valid.poke(false.B)
 
       dut.io.axiBus.readRequest.valid.expect(true.B)
       dut.io.axiBus.readRequest.bits.address.expect(address.U)
@@ -71,17 +71,17 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
   test("MemoryArbiter write burst") {
     simulate(new MemoryArbiter(1, 1)) { dut =>
       // Initialize inputs
-      dut.io.writePorts(0).valid.poke(true.B)
+      dut.io.writePorts(0).burst.valid.poke(true.B)
 
       val address = 33
       val testData = Seq(10, 20, 30, 40, 50, 60, 70)
 
-      dut.io.writePorts(0).address.poke(address)
-      dut.io.writePorts(0).length.poke(testData.length - 1)
+      dut.io.writePorts(0).burst.bits.address.poke(address)
+      dut.io.writePorts(0).burst.bits.length.poke(testData.length - 1)
       dut.io.axiBus.writeRequest.ready.poke(false.B)
       dut.io.axiBus.writeData.ready.poke(false.B)
       dut.clock.step()
-      dut.io.writePorts(0).valid.poke(false.B)
+      dut.io.writePorts(0).burst.valid.poke(false.B)
 
       dut.io.axiBus.writeRequest.valid.expect(true.B)
       dut.io.axiBus.writeRequest.bits.address.expect(address)
@@ -151,15 +151,15 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
       // Initialize DUT inputs to safe defaults
       for (i <- 0 until numReaders) {
-        dut.io.readPorts(i).valid.poke(false.B)
-        dut.io.readPorts(i).address.poke(0.U)
-        dut.io.readPorts(i).length.poke(0.U)
+        dut.io.readPorts(i).burst.valid.poke(false.B)
+        dut.io.readPorts(i).burst.bits.address.poke(0.U)
+        dut.io.readPorts(i).burst.bits.length.poke(0.U)
         dut.io.readPorts(i).data.ready.poke(false.B)
       }
       for (i <- 0 until numWriters) {
-        dut.io.writePorts(i).valid.poke(false.B)
-        dut.io.writePorts(i).address.poke(0.U)
-        dut.io.writePorts(i).length.poke(0.U)
+        dut.io.writePorts(i).burst.valid.poke(false.B)
+        dut.io.writePorts(i).burst.bits.address.poke(0.U)
+        dut.io.writePorts(i).burst.bits.length.poke(0.U)
         dut.io.writePorts(i).data.valid.poke(false.B)
         dut.io.writePorts(i).data.bits.poke(0.U)
       }
@@ -194,7 +194,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
         var wordsRemaining = 0
 
         () => {
-          port.valid.poke(false.B) // Default value
+          port.burst.valid.poke(false.B) // Default value
           if (burstActive) {
             val ready = rng.nextBoolean()
             port.data.ready.poke(ready.B)
@@ -219,9 +219,9 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
             wordsRemaining = len
             burstActive = true
 
-            port.valid.poke(true.B)
-            port.address.poke((currentAddr * 8).U)
-            port.length.poke((len - 1).U)
+            port.burst.valid.poke(true.B)
+            port.burst.bits.address.poke((currentAddr * 8).U)
+            port.burst.bits.length.poke((len - 1).U)
           }
         }
       }
@@ -235,7 +235,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
         () => {
           // Drive data transmission
-          port.valid.poke(false.B)
+          port.burst.valid.poke(false.B)
           if (burstActive) {
             val valid = rng.nextBoolean() || finishSimulation
             port.data.valid.poke(valid.B)
@@ -265,9 +265,9 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
               reference(i) = rng.nextLong()
             }
 
-            port.valid.poke(true.B)
-            port.address.poke((currentAddr * 8).U)
-            port.length.poke((len - 1).U)
+            port.burst.valid.poke(true.B)
+            port.burst.bits.address.poke((currentAddr * 8).U)
+            port.burst.bits.length.poke((len - 1).U)
           }
         }
       }
