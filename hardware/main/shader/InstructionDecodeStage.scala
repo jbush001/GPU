@@ -76,25 +76,31 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   }
 
   object SpecialReg {
-    val ExecMask     = 32.U
-    val LpmReadAddr  = 33.U
-    val LpmWriteAddr = 34.U
-    val UniformAddr  = 35.U
-    val UniformVal   = 36.U
+    val ExecMask        = 32.U
+    val LpmReadAddr     = 33.U
+    val LpmWriteAddr    = 34.U
+    val UniformAddr     = 35.U
+    val UniformVal      = 36.U
 
-    val Const0       = 53.U
-    val Const1       = 54.U
-    val ConstNeg1    = 55.U
-    val Const2       = 56.U
-    val Const4       = 57.U
-    val Const0_5f    = 58.U
-    val ConstNeg0_5f = 59.U
-    val Const1_0f    = 60.U
-    val ConstNeg1_0f = 61.U
-    val Const2_0f    = 62.U
-    val ConstNeg2_0f = 63.U
+    val Const0          = 53.U
+    val Const1          = 54.U
+    val ConstNeg1       = 55.U
+    val Const2          = 56.U
+    val Const4          = 57.U
+    val Const0_5f       = 58.U
+    val ConstNeg0_5f    = 59.U
+    val Const1_0f       = 60.U
+    val ConstNeg1_0f    = 61.U
+    val Const2_0f       = 62.U
+    val ConstNeg2_0f    = 63.U
 
-    val LaneId       = 111.U
+    val StorePixelRed   = 105.U
+    val StorePixelGreen = 106.U
+    val StorePixelBlue  = 107.U
+    val StorePixelAlpha = 108.U
+    val LpmReadValue    = 109.U
+    val LpmWriteValue   = 110.U
+    val LaneId          = 111.U
   }
 
   def constFloat(f: Float): UInt = {
@@ -105,32 +111,33 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   def broadcast(v: UInt): Vec[UInt] = VecInit(Seq.fill(cfg.shaderVectorLanes)(v))
 
   def readOperand(regId: UInt): Vec[UInt] = {
-    val gprIndex = Cat(io.input.bits.thread, regId(4, 0)) // GPR index within a bank, 5 bits (0-31)
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val gprIndex = Cat(io.input.bits.thread, regId(4, 0))
 
-    // default: scalar GPR read (covers 0-31)
-    result := broadcast(scalarRegisters.read(gprIndex))
-
-    switch(regId) {
-      is(SpecialReg.ExecMask)     { result := execMask(io.input.bits.thread).asTypeOf(result) }
-      is(SpecialReg.LaneId)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
-
-      is(SpecialReg.Const0)       { result := broadcast(0.U(32.W)) }
-      is(SpecialReg.Const1)       { result := broadcast(1.U(32.W)) }
-      is(SpecialReg.ConstNeg1)    { result := broadcast((-1).S(32.W).asUInt) }
-      is(SpecialReg.Const2)       { result := broadcast(2.U(32.W)) }
-      is(SpecialReg.Const4)       { result := broadcast(4.U(32.W)) }
-      is(SpecialReg.Const0_5f)    { result := broadcast(constFloat(0.5f)) }
-      is(SpecialReg.ConstNeg0_5f) { result := broadcast(constFloat(-0.5f)) }
-      is(SpecialReg.Const1_0f)    { result := broadcast(constFloat(1.0f)) }
-      is(SpecialReg.ConstNeg1_0f) { result := broadcast(constFloat(-1.0f)) }
-      is(SpecialReg.Const2_0f)    { result := broadcast(constFloat(2.0f)) }
-      is(SpecialReg.ConstNeg2_0f) { result := broadcast(constFloat(-2.0f)) }
-    }
-
-    // vector GPR bank (64-95): overrides the previous
-    when (regId(6) && !regId(5)) { // 64-95: bit6=1, bit5=0
+    when (regId(6, 5) === 0.U) {
+      // 0-31: scalar general purpose registers
+      result := broadcast(scalarRegisters.read(gprIndex))
+    } .elsewhen (regId(6, 5) === 2.U) {
+      // 64-95: vector general purpose registers
       result := vectorRegisters.read(gprIndex)
+    } .otherwise {
+      result := DontCare  // Default
+      switch (regId) {
+        // Special registers
+        is(SpecialReg.ExecMask)     { result := broadcast(execMask(io.input.bits.thread)) }
+        is(SpecialReg.LaneId)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
+        is(SpecialReg.Const0)       { result := broadcast(0.U(32.W)) }
+        is(SpecialReg.Const1)       { result := broadcast(1.U(32.W)) }
+        is(SpecialReg.ConstNeg1)    { result := broadcast((-1).S(32.W).asUInt) }
+        is(SpecialReg.Const2)       { result := broadcast(2.U(32.W)) }
+        is(SpecialReg.Const4)       { result := broadcast(4.U(32.W)) }
+        is(SpecialReg.Const0_5f)    { result := broadcast(constFloat(0.5f)) }
+        is(SpecialReg.ConstNeg0_5f) { result := broadcast(constFloat(-0.5f)) }
+        is(SpecialReg.Const1_0f)    { result := broadcast(constFloat(1.0f)) }
+        is(SpecialReg.ConstNeg1_0f) { result := broadcast(constFloat(-1.0f)) }
+        is(SpecialReg.Const2_0f)    { result := broadcast(constFloat(2.0f)) }
+        is(SpecialReg.ConstNeg2_0f) { result := broadcast(constFloat(-2.0f)) }
+      }
     }
 
     result
@@ -147,15 +154,27 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.output.bits.operand2 := readOperand(operand2Reg)
 
   when (io.writeback.valid) {
-    when (io.writeback.bits.regId(6)) {
-      vectorRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(4, 0)),
+    val regId = io.writeback.bits.regId
+    val gprIndex = Cat(io.writeback.bits.thread, regId(4, 0))
+
+    when (regId(6, 5) === 0.U) {
+      // 0-31: scalar general purpose registers
+      scalarRegisters.write(gprIndex, io.writeback.bits.value(0))
+    }.elsewhen (regId(6, 5) === 2.U) {
+      // 64-95: vector general purpose registers
+      vectorRegisters.write(gprIndex,
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
-    }.otherwise {
-      when (io.writeback.bits.regId === 32.U) {
-        execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
-      }.otherwise {
-        scalarRegisters.write(Cat(io.writeback.bits.thread, io.writeback.bits.regId(4, 0)),
-          io.writeback.bits.value(0))
+    } .otherwise {
+      switch (regId) {
+        is(SpecialReg.ExecMask) {
+          execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
+        }
+
+        is(SpecialReg.StorePixelRed)   { /* TODO... */ }
+        is(SpecialReg.StorePixelGreen) { /* TODO... */ }
+        is(SpecialReg.StorePixelBlue)  { /* TODO... */ }
+        is(SpecialReg.StorePixelAlpha) { /* TODO... */ }
+        is(SpecialReg.LpmWriteValue)   { /* TODO... */ }
       }
     }
   }
