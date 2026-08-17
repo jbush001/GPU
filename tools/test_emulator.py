@@ -204,14 +204,6 @@ class TestEmulator(unittest.TestCase):
                                  4: 0x3f800000}, # 1.0
                       final_regs={2: 0b11100000})
 
-    def test_setltf(self):
-        self.run_test([make_r(18, 2, 64 + 3, 4)],
-                      # -3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0
-                      init_regs={64 + 3: [0xc0400000, 0xc0000000, 0xbf800000, 0, 0x3f800000, 0x40000000, 0x40400000, 0x40800000],
-                                 4: 0x3f800000}, # 1.0
-                      final_regs={2: 0b00001111})
-
-
     def test_setgei(self):
         self.run_test([make_r(19, 2, 64 + 3, 4)],
                       init_regs={64 + 3: [-3, -2, -1, 0, 1, 2, 3, 4],

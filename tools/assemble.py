@@ -46,7 +46,6 @@ INSTRS = {
     'ftoi':   (15, FMT_RR,            False),
     'itof':   (16, FMT_RR,            False),
     'setgtf': (17, FMT_COMPARE,       False),
-    'setltf': (18, FMT_COMPARE,       False),
     'setgei': (19, FMT_COMPARE,       False),
     'setlei': (19, FMT_COMPARE,       True),
     'setlti': (20, FMT_COMPARE,       False),

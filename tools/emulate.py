@@ -93,7 +93,6 @@ INSTR_TABLE = {
     15: (FMT_RR,     lambda a: int(reinterp_u2f(a)) & 0xffffffff), # ftoi
     16: (FMT_RR,     lambda a: reinterp_f2u(float(reinterp_u2i(a)))), # itof
     17: (FMT_CMP,    lambda a, b: reinterp_u2f(a) > reinterp_u2f(b)), # setgtf
-    18: (FMT_CMP,    lambda a, b: reinterp_u2f(a) < reinterp_u2f(b)), # setltf
     19: (FMT_CMP,    lambda a, b: reinterp_u2i(a) >= reinterp_u2i(b)), # setgei
     20: (FMT_CMP,    lambda a, b: reinterp_u2i(a) < reinterp_u2i(b)), # setlti
     21: (FMT_CMP,    lambda a, b: a >= b), # setgeu

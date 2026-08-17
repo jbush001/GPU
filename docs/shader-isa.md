@@ -76,7 +76,6 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 |   15    | ftoi rd, rs              | Float to integer            |   R    |
 |   16    | itof rd, rs              | Integer to float            |   R    |
 |   17    | setgtf rd, rs0, rs1      | FP Compare greater          |   R    |
-|   18    | setltf rd, rs0, rs1      | FP Compare less than        |   R    |
 |   19    | setgei rd, rs0, rs1      | Greater or equal, signed int|   R    |
 |   20    | setlti rd, rs0, rs1      | Less than, signed int       |   R    |
 |   21    | setgeu rd, rs0, rs1      | Greater or equal, unsigned  |   R    |

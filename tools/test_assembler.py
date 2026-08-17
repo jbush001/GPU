@@ -159,7 +159,6 @@ class TestAssemblerConstants(unittest.TestCase):
         asm = Assembler()
         asm.assemble('''
             setgtf r1, v2, v3
-            setltf r4, v5, r6
             setgei r7, r8, v9
             setlei r10, r11, r12
             setlti r13, v14, v15
@@ -174,7 +173,6 @@ class TestAssemblerConstants(unittest.TestCase):
 
         self.assertEqual(asm.code, [
             make_r(17, 1, 64 + 2, 64 + 3),
-            make_r(18, 4, 64 + 5, 6),
             make_r(19, 7, 8, 64 + 9),
             make_r(19, 10, 12, 11),
             make_r(20, 13, 64 + 14, 64 + 15),
