@@ -26,6 +26,15 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
 }
 
+class DecodedInstruction(implicit cfg: GpuConfig) extends Bundle {
+  val opcode = UInt(7.W)
+  val destReg = UInt(7.W)
+  val operand1 = Vec(cfg.shaderVectorLanes, UInt(32.W))
+  val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
+  val pc = UInt(cfg.busAddressBits.W)
+  val thread = UInt(log2Up(cfg.shaderThreads).W)
+}
+
 /**
   * Instruction decode stage. This stage decodes the instruction and reads the
   * source registers. It also handles writing back to registers.
@@ -34,14 +43,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val input = Flipped(Valid(new FetchResponse))
 
-    val output = Valid(new Bundle {
-      val opcode = UInt(7.W)
-      val destReg = UInt(7.W)
-      val operand1 = Vec(cfg.shaderVectorLanes, UInt(32.W))
-      val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
-      val pc = UInt(cfg.busAddressBits.W)
-      val thread = UInt(log2Up(cfg.shaderThreads).W)
-    })
+    val output = Valid(new DecodedInstruction)
 
     val writeback = Flipped(Valid(new WritebackRequest))
     val resetThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))

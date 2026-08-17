@@ -21,38 +21,6 @@ import org.scalatest.funsuite.AnyFunSuite
 import chisel3._
 import gpu._
 
-object OpCode {
-  val HALT = 0
-  val AND = 1
-  val OR = 2
-  val XOR = 3
-  val ADDI = 4
-  val SUBI = 5
-  val MULI = 6
-  val MULIH = 7
-  val LSL = 8
-  val ASR = 9
-  val LSR = 10
-  val ADDF = 11
-  val SUBF = 12
-  val MULF = 13
-  val RECIP = 14
-  val FTOI = 15
-  val ITOF = 16
-  val SETGTF = 17
-  val SETLTF = 18
-  val SETGEI = 19
-  val SETLTI = 20
-  val SETGEU = 21
-  val SETLTU = 22
-  val SETEQ = 23
-  val SETNE = 24
-  val BNZ = 25
-  val BZ = 26
-  val J = 27
-  val LOADLO = 28
-  val LOADHI = 29
-}
 
 class ShaderBuilder {
   private val instructions = scala.collection.mutable.ArrayBuffer[Long]()
@@ -150,9 +118,9 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   test("ShaderCore execution") {
     val asm = new ShaderBuilder()
     asm
-      .kInst(OpCode.LOADLO, 1, 5) // r1 = 5
-      .kInst(OpCode.LOADHI, 2, 10) // r2 = 10
-      .rrrInst(OpCode.ADDI, 3, 1, 2) // r3 = r1 + r2
+      .kInst(OpCode.LoadLo, 1, 5) // r1 = 5
+      .kInst(OpCode.LoadHi, 2, 10) // r2 = 10
+      .rrrInst(OpCode.Addi, 3, 1, 2) // r3 = r1 + r2
     // ...
 
     runShaderTest(asm.finish()) { dut =>
