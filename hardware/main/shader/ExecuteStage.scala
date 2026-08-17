@@ -53,24 +53,30 @@ object OpCode {
 }
 
 class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
+  def VectorResult(): Vec[UInt] = Vec(cfg.shaderVectorLanes, UInt(32.W))
+
   val io = IO(new Bundle {
     val in = Flipped(Valid(new DecodedInstruction))
-    val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val result = Valid(VectorResult())
   })
 
-  // Instruction registers
-  val opcode1 = RegNext(io.in.bits.opcode)
-  val opcode2 = RegNext(opcode1)
-  val opcode3 = RegNext(opcode2)
-  val valid1 = RegNext(io.in.valid, init = false.B)
-  val valid2 = RegNext(valid1, init = false.B)
-  val valid3 = RegNext(valid2, init = false.B)
+  class Instruction extends Bundle {
+    val valid = Bool()
+    val opcode = UInt(7.W)
+  }
+
+  val inst0 = Wire(new Instruction)
+  inst0.valid := io.in.valid
+  inst0.opcode := io.in.bits.opcode
+  val inst1 = RegNext(inst0, init = 0.U.asTypeOf(new Instruction))
+  val inst2 = RegNext(inst1, init = 0.U.asTypeOf(new Instruction))
+  val inst3 = RegNext(inst2, init = 0.U.asTypeOf(new Instruction))
 
   def f32(u: UInt): Float32 = u.asTypeOf(new Float32)
 
   // Long latency pipelines (3 cycles)
-  val fpAddSubResult = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
-  val fpMulResult = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+  val fpAddSubResult = Wire(VectorResult())
+  val fpMulResult = Wire(VectorResult())
   for (lane <- 0 until cfg.shaderVectorLanes) {
     val fpAddSub = Module(new FpAddSub)
     val fpMul = Module(new FpMul)
@@ -102,7 +108,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Lsr.U -> ((a, b) => a >> b(4, 0))
   )
 
-  val singleCycleResult = MuxLookup(io.in.bits.opcode, VecInit(Seq.fill(cfg.shaderVectorLanes)(0.U(32.W))))(binOps.map {
+  val singleCycleResult = MuxLookup(io.in.bits.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
     case (op, f) => op -> vecOp(io.in.bits.operand1, io.in.bits.operand2)(f)
   })
 
@@ -124,7 +130,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Setne.U  -> ((a, b) => a =/= b),
   )
 
-  val comparisonResult = MuxLookup(io.in.bits.opcode, 0.U(cfg.shaderVectorLanes.W))(
+  val comparisonResult = MuxLookup(io.in.bits.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
     cmpOps.map { case (op, f) => op -> vecCompare(io.in.bits.operand1, io.in.bits.operand2)(f) }
   )
 
@@ -132,23 +138,20 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val comparisonResult2 = RegNext(comparisonResult1)
   val comparisonResult3 = RegNext(comparisonResult2)
 
-  // result
-  io.result.bits := DontCare
-  switch (opcode3) {
-    is (OpCode.Setgtf.U, OpCode.Setgei.U, OpCode.Setlti.U, OpCode.Setgeu.U, OpCode.Setltu.U, OpCode.Seteq.U, OpCode.Setne.U) {
-      io.result.bits(0) := comparisonResult3.pad(32)
-      for (lane <- 1 until cfg.shaderVectorLanes) {
-        io.result.bits(lane) := DontCare
-      }
-    }
-    is (OpCode.Addf.U, OpCode.Subf.U) { io.result.bits := fpAddSubResult }
-    is (OpCode.Mulf.U) { io.result.bits := fpMulResult }
-    // Default to single cycle result
-    is (OpCode.And.U, OpCode.Or.U, OpCode.Xor.U, OpCode.Addi.U, OpCode.Subi.U,
-        OpCode.Muli.U, OpCode.Mulih.U, OpCode.Lsl.U, OpCode.Asr.U, OpCode.Lsr.U) {
-      io.result.bits := singleCycleResult3
-    }
-  }
+  val compareAsVec = WireInit(VecInit(Seq.fill(cfg.shaderVectorLanes)(0.U(32.W))))
+  compareAsVec(0) := comparisonResult3
 
-  io.result.valid := valid3
+  // result
+  val resultTable: Seq[(UInt, Vec[UInt])] =
+    Seq(
+      OpCode.Addf.U -> fpAddSubResult,
+      OpCode.Subf.U -> fpAddSubResult,
+      OpCode.Mulf.U -> fpMulResult,
+    ) ++
+    binOps.map { case (op, _) => op -> singleCycleResult3 } ++
+    cmpOps.map { case (op, _) => op -> compareAsVec }
+
+  io.result.bits := MuxLookup(inst3.opcode, WireInit(VectorResult(), DontCare))(resultTable)
+
+  io.result.valid := inst3.valid
 }
