@@ -29,6 +29,8 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
   def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
 
+  // This also validates that the latency of the pipeline is correct, that the
+  // result only shows up in the proper cycle.
   test("ExecuteStage fp multiply") {
     simulate(new ExecuteStage) { dut =>
       dut.io.in.valid.poke(true.B)
@@ -56,12 +58,22 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
       dut.io.in.bits.opcode.poke(OpCode.Addf.U)
       dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
       dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
-      dut.clock.step(3)
+      dut.clock.step()
+      dut.io.in.bits.operand1(0).poke(0.U)
+      dut.io.in.bits.operand2(0).poke(0.U)
+      dut.io.in.valid.poke(false.B)
+      dut.io.result.valid.expect(false.B)
+      dut.clock.step()
+      dut.io.result.valid.expect(false.B)
+      dut.clock.step()
       dut.io.result.valid.expect(true.B)
       dut.io.result.bits(0).expect(floatToRawBits(8.5f).U) // 6.0 + 2.5
+      dut.clock.step()
+      dut.io.result.valid.expect(false.B)
     }
   }
 
+  // Subtract just sets a flag on the add pipeline. Ensure this is handled properly.
   test("ExecuteStage fp subtract") {
     simulate(new ExecuteStage) { dut =>
       dut.io.in.valid.poke(true.B)
@@ -78,6 +90,9 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     simulate(new ExecuteStage) { dut =>
       type TestVector = (Int, Long, Long, Long)
       val testVectors: Seq[TestVector] = Seq(
+        (OpCode.And, 0x5a5a5a5a, 0x76543210, 0x52501210),
+        (OpCode.Or, 0x5a5a5a5a, 0x76543210, 0x7e5e7a5a),
+        (OpCode.Xor, 0x5a5a5a5a, 0x76543210, 0x2c0e684a),
         (OpCode.Addi, 5, 3, 8),
         (OpCode.Subi, 5, 3, 2),
         (OpCode.Muli, 5, 3, 15),
@@ -107,7 +122,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
           for (lane <- 0 until dut.cfg.shaderVectorLanes) {
             val result = dut.io.result.bits(lane).peek().litValue
             if (result != (expected & 0xffffffffL)) {
-              fail(s"Test failed for opcode $opcode, lane $lane got $result, expected=${expected & 0xffffffffL}")
+              fail(s"Test failed for opcode $opcode, lane $lane got $result, expected ${expected & 0xffffffffL}")
             }
           }
         } else {
