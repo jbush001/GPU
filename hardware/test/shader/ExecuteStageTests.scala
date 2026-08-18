@@ -34,7 +34,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   test("ExecuteStage fp multiply") {
     simulate(new ExecuteStage) { dut =>
       dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.opcode.poke(OpCode.Mulf.U)
+      dut.io.in.bits.meta.opcode.poke(OpCode.Mulf.U)
       dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
       dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
       dut.clock.step()
@@ -55,7 +55,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   test("ExecuteStage fp add") {
     simulate(new ExecuteStage) { dut =>
       dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.opcode.poke(OpCode.Addf.U)
+      dut.io.in.bits.meta.opcode.poke(OpCode.Addf.U)
       dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
       dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
       dut.clock.step()
@@ -76,7 +76,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   test("ExecuteStage reciprocal") {
     simulate(new ExecuteStage) { dut =>
       dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.opcode.poke(OpCode.Recip.U)
+      dut.io.in.bits.meta.opcode.poke(OpCode.Recip.U)
       dut.io.in.bits.operand1(0).poke(floatToRawBits(8.0f).U)
       dut.io.in.bits.operand1(7).poke(floatToRawBits(0.25f).U)
       dut.clock.step(3)
@@ -90,7 +90,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   test("ExecuteStage fp subtract") {
     simulate(new ExecuteStage) { dut =>
       dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.opcode.poke(OpCode.Subf.U)
+      dut.io.in.bits.meta.opcode.poke(OpCode.Subf.U)
       dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
       dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
       dut.clock.step(3)
@@ -120,7 +120,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
         if (cycle < testVectors.length) {
           val (opcode, op1, op2, expected) = testVectors(cycle)
           dut.io.in.valid.poke(true.B)
-          dut.io.in.bits.opcode.poke(opcode.U)
+          dut.io.in.bits.meta.opcode.poke(opcode.U)
           for (lane <- 0 until dut.cfg.shaderVectorLanes) {
             dut.io.in.bits.operand1(lane).poke((op1 & 0xffffffffL).U)
             dut.io.in.bits.operand2(lane).poke((op2 & 0xffffffffL).U)
@@ -170,7 +170,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
         if (cycle < testVectors.length) {
           val (opcode, op1, op2, expected) = testVectors(cycle)
           dut.io.in.valid.poke(true.B)
-          dut.io.in.bits.opcode.poke(opcode.U)
+          dut.io.in.bits.meta.opcode.poke(opcode.U)
           for (lane <- 0 until dut.cfg.shaderVectorLanes) {
             dut.io.in.bits.operand1(lane).poke((op1 & 0xffffffffL).U)
             dut.io.in.bits.operand2(lane).poke((op2 & 0xffffffffL).U)

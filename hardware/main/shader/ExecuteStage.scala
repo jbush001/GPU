@@ -56,21 +56,21 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   def VectorResult(): Vec[UInt] = Vec(cfg.shaderVectorLanes, UInt(32.W))
 
   val io = IO(new Bundle {
-    val in = Flipped(Valid(new DecodedInstruction))
+    val in = Flipped(Valid(new Bundle{
+      val meta = new InstructionMetadata
+      val operand1 = Vec(cfg.shaderVectorLanes, UInt(32.W))
+      val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
+    }))
+
     val result = Valid(VectorResult())
   })
 
-  class Instruction extends Bundle {
-    val valid = Bool()
-    val opcode = UInt(7.W)
-  }
-
-  val inst0 = Wire(new Instruction)
+  val inst0 = Wire(Valid(new InstructionMetadata))
   inst0.valid := io.in.valid
-  inst0.opcode := io.in.bits.opcode
-  val inst1 = RegNext(inst0, init = 0.U.asTypeOf(new Instruction))
-  val inst2 = RegNext(inst1, init = 0.U.asTypeOf(new Instruction))
-  val inst3 = RegNext(inst2, init = 0.U.asTypeOf(new Instruction))
+  inst0.bits := io.in.bits.meta
+  val inst1 = RegNext(inst0, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
+  val inst2 = RegNext(inst1, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
+  val inst3 = RegNext(inst2, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
 
   def f32(u: UInt): Float32 = u.asTypeOf(new Float32)
 
@@ -81,7 +81,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val fpAddSub = Module(new FpAddSub)
     val fpMul = Module(new FpMul)
 
-    fpAddSub.io.subtract := io.in.bits.opcode === OpCode.Subf.U
+    fpAddSub.io.subtract := io.in.bits.meta.opcode === OpCode.Subf.U
     fpAddSub.io.operand1 := f32(io.in.bits.operand1(lane))
     fpAddSub.io.operand2 := f32(io.in.bits.operand2(lane))
     fpAddSubResult(lane) := fpAddSub.io.result.raw
@@ -108,7 +108,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Lsr.U -> ((a, b) => a >> b(4, 0))
   )
 
-  val singleCycleResult = MuxLookup(io.in.bits.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
+  val singleCycleResult = MuxLookup(io.in.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
     case (op, f) => op -> vecOp(io.in.bits.operand1, io.in.bits.operand2)(f)
   })
 
@@ -143,7 +143,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Setne.U  -> ((a, b) => a =/= b),
   )
 
-  val comparisonResult = MuxLookup(io.in.bits.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
+  val comparisonResult = MuxLookup(io.in.bits.meta.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
     cmpOps.map { case (op, f) => op -> vecCompare(io.in.bits.operand1, io.in.bits.operand2)(f) }
   )
 
@@ -165,7 +165,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
 
-  io.result.bits := MuxLookup(inst3.opcode, WireInit(VectorResult(), DontCare))(resultTable)
+  io.result.bits := MuxLookup(inst3.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
 
   io.result.valid := inst3.valid
 }

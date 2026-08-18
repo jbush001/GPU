@@ -67,10 +67,10 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.clock.step(1)
 
       dut.io.output.valid.expect(true.B)
-      dut.io.output.bits.pc.expect(address.U)
-      dut.io.output.bits.thread.expect(1.U)
-      dut.io.output.bits.opcode.expect(12.U)
-      dut.io.output.bits.destReg.expect(0x0B.U)
+      dut.io.output.bits.meta.pc.expect(address.U)
+      dut.io.output.bits.meta.thread.expect(1.U)
+      dut.io.output.bits.meta.opcode.expect(12.U)
+      dut.io.output.bits.meta.destReg.expect(0x0B.U)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.output.bits.operand1(i).expect((i + 100).U)
