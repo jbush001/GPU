@@ -73,6 +73,19 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
+  test("ExecuteStage reciprocal") {
+    simulate(new ExecuteStage) { dut =>
+      dut.io.in.valid.poke(true.B)
+      dut.io.in.bits.opcode.poke(OpCode.Recip.U)
+      dut.io.in.bits.operand1(0).poke(floatToRawBits(8.0f).U)
+      dut.io.in.bits.operand1(7).poke(floatToRawBits(0.25f).U)
+      dut.clock.step(3)
+      dut.io.result.valid.expect(true.B)
+      dut.io.result.bits(0).expect(floatToRawBits(0.125f).U)
+      dut.io.result.bits(7).expect(floatToRawBits(4.0f).U)
+    }
+  }
+
   // Subtract just sets a flag on the add pipeline. Ensure this is handled properly.
   test("ExecuteStage fp subtract") {
     simulate(new ExecuteStage) { dut =>

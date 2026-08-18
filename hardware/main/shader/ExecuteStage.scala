@@ -116,6 +116,19 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val singleCycleResult2 = RegNext(singleCycleResult1)
   val singleCycleResult3 = RegNext(singleCycleResult2)
 
+  // Single cycle floating point.
+  // The reciprocal estimate block has one cycle of latency; the output
+  // is registered.
+  val recipResult1 = Wire(VectorResult())
+  for (lane <- 0 until cfg.shaderVectorLanes) {
+    val recipEstimate = Module(new FpReciprocalEstimate)
+    recipEstimate.io.operand.raw := io.in.bits.operand1(lane)
+    recipResult1(lane) := recipEstimate.io.result.raw
+  }
+
+  val recipResult2 = RegNext(recipResult1)
+  val recipResult3 = RegNext(recipResult2)
+
   // Comparison operations
   def vecCompare(a: Vec[UInt], b: Vec[UInt])(f: (UInt, UInt) => Bool): UInt =
     Cat((0 until cfg.shaderVectorLanes).reverse.map(i => f(a(i), b(i))))
@@ -147,6 +160,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
       OpCode.Addf.U -> fpAddSubResult,
       OpCode.Subf.U -> fpAddSubResult,
       OpCode.Mulf.U -> fpMulResult,
+      OpCode.Recip.U -> recipResult3
     ) ++
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
