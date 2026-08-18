@@ -33,14 +33,13 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val result = Valid(VectorResult())
   })
 
+  // Shadow instruction pipeline to align with results.
   val inst0 = Wire(Valid(new InstructionMetadata))
   inst0.valid := io.in.valid
   inst0.bits := io.in.bits.meta
   val inst1 = RegNext(inst0, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
   val inst2 = RegNext(inst1, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
   val inst3 = RegNext(inst2, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
-
-  def f32(u: UInt): Float32 = u.asTypeOf(new Float32)
 
   // Long latency pipelines (3 cycles)
   val fpAddSubResult = Wire(VectorResult())
@@ -50,12 +49,12 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val fpMul = Module(new FpMul)
 
     fpAddSub.io.subtract := io.in.bits.meta.opcode === OpCode.Subf
-    fpAddSub.io.operand1 := f32(io.in.bits.operand1(lane))
-    fpAddSub.io.operand2 := f32(io.in.bits.operand2(lane))
+    fpAddSub.io.operand1 := Float32(io.in.bits.operand1(lane))
+    fpAddSub.io.operand2 := Float32(io.in.bits.operand2(lane))
     fpAddSubResult(lane) := fpAddSub.io.result.raw
 
-    fpMul.io.operand1 := f32(io.in.bits.operand1(lane))
-    fpMul.io.operand2 := f32(io.in.bits.operand2(lane))
+    fpMul.io.operand1 := Float32(io.in.bits.operand1(lane))
+    fpMul.io.operand2 := Float32(io.in.bits.operand2(lane))
     fpMulResult(lane) := fpMul.io.result.raw
   }
 
@@ -90,7 +89,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val recipResult1 = Wire(VectorResult())
   for (lane <- 0 until cfg.shaderVectorLanes) {
     val recipEstimate = Module(new FpReciprocalEstimate)
-    recipEstimate.io.operand.raw := io.in.bits.operand1(lane)
+    recipEstimate.io.operand := Float32(io.in.bits.operand1(lane))
     recipResult1(lane) := recipEstimate.io.result.raw
   }
 
@@ -102,7 +101,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     Cat((0 until cfg.shaderVectorLanes).reverse.map(i => f(a(i), b(i))))
 
   val cmpOps: Seq[(OpCode.Type, (UInt, UInt) => Bool)] = Seq(
-    OpCode.Setgtf -> ((a, b) => f32(a).greaterThan(f32(b))),
+    OpCode.Setgtf -> ((a, b) => Float32(a).greaterThan(Float32(b))),
     OpCode.Setgei -> ((a, b) => a.asSInt >= b.asSInt),
     OpCode.Setlti -> ((a, b) => a.asSInt < b.asSInt),
     OpCode.Setgeu -> ((a, b) => a >= b),

@@ -71,6 +71,11 @@ object Float32 {
   final def exponentBias = 127.U(exponentWidth.W) // This is an exponent of zero
 
   def apply() = new Float32()
+  def apply(raw: UInt) = {
+    val f = Wire(new Float32)
+    f.raw := raw
+    f
+  }
 }
 
 /** These blocks
@@ -242,7 +247,7 @@ class FpMul extends Module with FloatingPointBlock {
       resultNext := stage2.isNegative ## adjustedExponent ## normalizedFraction
     }
 
-    io.result.raw := RegNext(resultNext, 0.U)
+    io.result := Float32(RegNext(resultNext, 0.U))
   }
 }
 
@@ -291,7 +296,7 @@ class FpReciprocalEstimate extends Module with FloatingPointBlock {
     resultNext := io.operand.negative ## exponentNext ## (fractionNext << 17).pad(Float32.fractionWidth)
   }
 
-  io.result.raw := RegNext(resultNext, 0.U)
+  io.result := Float32(RegNext(resultNext, 0.U))
 }
 
 // This has one cycle of latency
