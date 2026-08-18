@@ -20,38 +20,6 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-object OpCode {
-  val Halt = 0
-  val And = 1
-  val Or = 2
-  val Xor = 3
-  val Addi = 4
-  val Subi = 5
-  val Muli = 6
-  val Mulih = 7
-  val Lsl = 8
-  val Asr = 9
-  val Lsr = 10
-  val Addf = 11
-  val Subf = 12
-  val Mulf = 13
-  val Recip = 14
-  val Ftoi = 15
-  val Itof = 16
-  val Setgtf = 17
-  val Setgei = 19
-  val Setlti = 20
-  val Setgeu = 21
-  val Setltu = 22
-  val Seteq = 23
-  val Setne = 24
-  val Bnz = 25
-  val Bz = 26
-  val Jump = 27
-  val LoadLo = 28
-  val LoadHi = 29
-}
-
 class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   def VectorResult(): Vec[UInt] = Vec(cfg.shaderVectorLanes, UInt(32.W))
 
@@ -81,7 +49,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val fpAddSub = Module(new FpAddSub)
     val fpMul = Module(new FpMul)
 
-    fpAddSub.io.subtract := io.in.bits.meta.opcode === OpCode.Subf.U
+    fpAddSub.io.subtract := io.in.bits.meta.opcode === OpCode.Subf
     fpAddSub.io.operand1 := f32(io.in.bits.operand1(lane))
     fpAddSub.io.operand2 := f32(io.in.bits.operand2(lane))
     fpAddSubResult(lane) := fpAddSub.io.result.raw
@@ -95,17 +63,17 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   def vecOp(a: Vec[UInt], b: Vec[UInt])(f: (UInt, UInt) => UInt): Vec[UInt] =
     VecInit((0 until a.length).map(i => f(a(i), b(i))))
 
-  val binOps = Seq[(UInt, (UInt, UInt) => UInt)](
-    OpCode.And.U -> ((a, b) => a & b),
-    OpCode.Or.U -> ((a, b) => a | b),
-    OpCode.Xor.U -> ((a, b) => a ^ b),
-    OpCode.Addi.U -> ((a, b) => a + b),
-    OpCode.Subi.U -> ((a, b) => a - b),
-    OpCode.Muli.U -> ((a, b) => (a * b)(31, 0)),
-    OpCode.Mulih.U -> ((a, b) => (a.asSInt * b.asSInt)(63, 32).asUInt),
-    OpCode.Lsl.U -> ((a, b) => (a << b(4, 0))(31, 0)),
-    OpCode.Asr.U -> ((a, b) => (a.asSInt >> b(4, 0)).asUInt),
-    OpCode.Lsr.U -> ((a, b) => a >> b(4, 0))
+  val binOps = Seq[(OpCode.Type, (UInt, UInt) => UInt)](
+    OpCode.And -> ((a, b) => a & b),
+    OpCode.Or -> ((a, b) => a | b),
+    OpCode.Xor -> ((a, b) => a ^ b),
+    OpCode.Addi -> ((a, b) => a + b),
+    OpCode.Subi -> ((a, b) => a - b),
+    OpCode.Muli -> ((a, b) => (a * b)(31, 0)),
+    OpCode.Mulih -> ((a, b) => (a.asSInt * b.asSInt)(63, 32).asUInt),
+    OpCode.Lsl -> ((a, b) => (a << b(4, 0))(31, 0)),
+    OpCode.Asr -> ((a, b) => (a.asSInt >> b(4, 0)).asUInt),
+    OpCode.Lsr -> ((a, b) => a >> b(4, 0))
   )
 
   val singleCycleResult = MuxLookup(io.in.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
@@ -133,14 +101,14 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   def vecCompare(a: Vec[UInt], b: Vec[UInt])(f: (UInt, UInt) => Bool): UInt =
     Cat((0 until cfg.shaderVectorLanes).reverse.map(i => f(a(i), b(i))))
 
-  val cmpOps: Seq[(UInt, (UInt, UInt) => Bool)] = Seq(
-    OpCode.Setgtf.U -> ((a, b) => f32(a).greaterThan(f32(b))),
-    OpCode.Setgei.U -> ((a, b) => a.asSInt >= b.asSInt),
-    OpCode.Setlti.U -> ((a, b) => a.asSInt < b.asSInt),
-    OpCode.Setgeu.U -> ((a, b) => a >= b),
-    OpCode.Setltu.U -> ((a, b) => a < b),
-    OpCode.Seteq.U  -> ((a, b) => a === b),
-    OpCode.Setne.U  -> ((a, b) => a =/= b),
+  val cmpOps: Seq[(OpCode.Type, (UInt, UInt) => Bool)] = Seq(
+    OpCode.Setgtf -> ((a, b) => f32(a).greaterThan(f32(b))),
+    OpCode.Setgei -> ((a, b) => a.asSInt >= b.asSInt),
+    OpCode.Setlti -> ((a, b) => a.asSInt < b.asSInt),
+    OpCode.Setgeu -> ((a, b) => a >= b),
+    OpCode.Setltu -> ((a, b) => a < b),
+    OpCode.Seteq  -> ((a, b) => a === b),
+    OpCode.Setne  -> ((a, b) => a =/= b),
   )
 
   val comparisonResult = MuxLookup(io.in.bits.meta.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
@@ -155,12 +123,12 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   compareAsVec(0) := comparisonResult3
 
   // result
-  val resultTable: Seq[(UInt, Vec[UInt])] =
+  val resultTable: Seq[(OpCode.Type, Vec[UInt])] =
     Seq(
-      OpCode.Addf.U -> fpAddSubResult,
-      OpCode.Subf.U -> fpAddSubResult,
-      OpCode.Mulf.U -> fpMulResult,
-      OpCode.Recip.U -> recipResult3
+      OpCode.Addf -> fpAddSubResult,
+      OpCode.Subf -> fpAddSubResult,
+      OpCode.Mulf -> fpMulResult,
+      OpCode.Recip -> recipResult3
     ) ++
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }

@@ -31,27 +31,27 @@ class ShaderBuilder {
     instructions += instruction
   }
 
-  def rrrInst(opcode: Int, rd: Int, rs1: Int, rs2: Int): this.type = {
-    val instruction = opcode | (rd << 7) | (rs1 << 14) | (rs2 << 21)
+  def rrrInst(opcode: OpCode.Type, rd: Int, rs1: Int, rs2: Int): this.type = {
+    val instruction = opcode.litValue.toLong | (rd << 7) | (rs1 << 14) | (rs2 << 21)
     addInstruction(instruction)
     this
   }
 
-  def rrInst(opcode: Int, rd: Int, rs1: Int): this.type = {
-    val instruction = opcode | (rd << 7) | (rs1 << 14)
+  def rrInst(opcode: OpCode.Type, rd: Int, rs1: Int): this.type = {
+    val instruction = opcode.litValue.toLong | (rd << 7) | (rs1 << 14)
     addInstruction(instruction)
     this
   }
 
-  def bInst(opcode: Int, rs1: Int, label: String): this.type = {
+  def bInst(opcode: OpCode.Type, rs1: Int, label: String): this.type = {
     fixups += ((label, instructions.length))
-    val instruction = opcode | (rs1 << 14)
+    val instruction = opcode.litValue.toLong | (rs1 << 14)
     addInstruction(instruction)
     this
   }
 
-  def kInst(opcode: Int, rd: Int, imm: Int): this.type = {
-    val instruction = opcode | (rd << 7) | (imm << 16)
+  def kInst(opcode: OpCode.Type, rd: Int, imm: Int): this.type = {
+    val instruction = opcode.litValue.toLong | (rd << 7) | (imm << 16)
     addInstruction(instruction)
     this
   }

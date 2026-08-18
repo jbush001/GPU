@@ -24,12 +24,12 @@ import org.scalatest.funsuite.AnyFunSuite
 class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  def rInst(opcode: Int, rd: Int, rs1: Int, rs2: Int): Long = {
-    opcode | (rd << 7) | (rs1 << 14) | (rs2 << 21)
+  def rInst(opcode: OpCode.Type, rd: Int, rs1: Int, rs2: Int): Long = {
+    opcode.litValue.toLong | (rd << 7) | (rs1 << 14) | (rs2 << 21)
   }
 
-  def kInst(opcode: Int, rd: Int, imm: Int): Long = {
-    (opcode | (rd << 7) | (imm << 16)) & 0xffffffffL
+  def kInst(opcode: OpCode.Type, rd: Int, imm: Int): Long = {
+    (opcode.litValue.toLong | (rd << 7) | (imm << 16)) & 0xffffffffL
   }
 
   def writeVector(dut: InstructionDecodeStage, thread: Int, regId: Int, values: Seq[Int]): Unit = {
@@ -63,13 +63,13 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       val address = 0x1000
       dut.io.input.bits.pc.poke(address.U)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 64, 65).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
 
       dut.io.output.valid.expect(true.B)
       dut.io.output.bits.meta.pc.expect(address.U)
       dut.io.output.bits.meta.thread.expect(1.U)
-      dut.io.output.bits.meta.opcode.expect(12.U)
+      dut.io.output.bits.meta.opcode.expect(OpCode.Subf)
       dut.io.output.bits.meta.destReg.expect(0x0B.U)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -91,7 +91,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       writeVector(dut, 1, 64, (0 until cfg.shaderVectorLanes).map(i => i + 100))
 
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 64, 65).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -122,7 +122,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       writeVector(dut, 1, 64, (0 until cfg.shaderVectorLanes).map(i => i + 100))
 
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 64, 65).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
 
       // Ensure it wrote to all lanes
@@ -138,7 +138,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       writeScalar(dut, 1, 32, "b01010101".U.litValue.toInt)
 
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 32, 65).U) // read exec mask
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 32, 65).U) // read exec mask
       dut.clock.step(1)
 
       dut.io.output.bits.operand1(0).expect("b01010101".U)
@@ -155,7 +155,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       val address = 0x1000
       dut.io.input.bits.pc.poke(address.U)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0x0B, 2, 3).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 2, 3).U)
       dut.clock.step(1)
 
       dut.io.output.valid.expect(true.B)
@@ -174,7 +174,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(kInst(28, 5, 0).U) // loadhi
+      dut.io.input.bits.instruction.poke(kInst(OpCode.LoadHi, 5, 0).U) // loadhi
       dut.clock.step(1)
 
       dut.io.output.valid.expect(true.B)
@@ -209,7 +209,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       // Test as first operand
       for ((regId, value) <- constants) {
-        dut.io.input.bits.instruction.poke(rInst(12, 0, regId, 0).U)
+        dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, regId, 0).U)
         dut.clock.step(1)
 
         for (i <- 0 until cfg.shaderVectorLanes) {
@@ -219,7 +219,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       // Test as second operand
       for ((regId, value) <- constants) {
-        dut.io.input.bits.instruction.poke(rInst(12, 0, 0, regId).U)
+        dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 0, regId).U)
         dut.clock.step(1)
 
         for (i <- 0 until cfg.shaderVectorLanes) {
@@ -234,7 +234,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(1.U)
 
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 111, 0).U) // lane id
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 111, 0).U) // lane id
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -250,7 +250,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(0.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 2, 0).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 2, 0).U)
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -258,7 +258,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       }
 
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 2, 0).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 2, 0).U)
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -274,13 +274,13 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(0.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 32, 0).U) // read exec mask
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 32, 0).U) // read exec mask
       dut.clock.step(1)
 
       dut.io.output.bits.operand1(0).expect("b01010101".U)
 
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 32, 0).U) // read exec mask
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 32, 0).U) // read exec mask
       dut.clock.step(1)
 
       dut.io.output.bits.operand1(0).expect("b10101010".U)
@@ -303,7 +303,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 2, 0).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 2, 0).U)
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -327,7 +327,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 64, 0).U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 64, 0).U)
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -344,7 +344,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.writeback.bits.value(0).poke("b01010101".U)
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, 32, 0).U) // read exec mask
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 32, 0).U) // read exec mask
       dut.clock.step(1)
 
       dut.io.output.bits.operand1(0).expect("b01010101".U)
@@ -363,7 +363,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.valid.poke(true.B)
       dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(12, 0, regIndex, 0).U) // read lane id
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, regIndex, 0).U) // read lane id
       dut.clock.step(1)
 
       for (i <- 0 until cfg.shaderVectorLanes) {

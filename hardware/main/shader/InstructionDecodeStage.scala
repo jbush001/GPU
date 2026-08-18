@@ -19,6 +19,7 @@ package gpu.shader
 import chisel3._
 import chisel3.util._
 import gpu._
+import scala.annotation.nowarn
 
 class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
@@ -26,10 +27,46 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
 }
 
+object OpCode extends ChiselEnum {
+  val Halt = Value(0.U)
+  val And = Value(1.U)
+  val Or = Value(2.U)
+  val Xor = Value(3.U)
+  val Addi = Value(4.U)
+  val Subi = Value(5.U)
+  val Muli = Value(6.U)
+  val Mulih = Value(7.U)
+  val Lsl = Value(8.U)
+  val Asr = Value(9.U)
+  val Lsr = Value(10.U)
+  val Addf = Value(11.U)
+  val Subf = Value(12.U)
+  val Mulf = Value(13.U)
+  val Recip = Value(14.U)
+  val Ftoi = Value(15.U)
+  val Itof = Value(16.U)
+  val Setgtf = Value(17.U)
+  val Setgei = Value(19.U)
+  val Setlti = Value(20.U)
+  val Setgeu = Value(21.U)
+  val Setltu = Value(22.U)
+  val Seteq = Value(23.U)
+  val Setne = Value(24.U)
+  val Bnz = Value(25.U)
+  val Bz = Value(26.U)
+  val Jump = Value(27.U)
+  val LoadLo = Value(28.U)
+  val LoadHi = Value(29.U)
+
+  // Force width to 7 bits to match instruction encoding.
+  @nowarn("msg=never used")
+  private val _reserveWidth = Value(127.U)
+}
+
 class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val pc = UInt(cfg.busAddressBits.W)
   val thread = UInt(log2Up(cfg.shaderThreads).W)
-  val opcode = UInt(7.W)
+  val opcode = OpCode()
   val destReg = UInt(7.W)
 }
 
@@ -191,7 +228,10 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   }
 
   io.output.valid := RegNext(io.input.valid)
-  io.output.bits.meta.opcode := RegNext(io.input.bits.instruction(6, 0))
+
+  // @todo the second parameter indicates if this maps cleanly to a known opcode.
+  val (decodedOpcode, _) = OpCode.safe(io.input.bits.instruction(6, 0))
+  io.output.bits.meta.opcode := RegNext(decodedOpcode)
   io.output.bits.meta.pc := RegNext(io.input.bits.pc)
   io.output.bits.meta.thread := RegNext(io.input.bits.thread)
   io.output.bits.meta.destReg := RegNext(io.input.bits.instruction(13, 7))
