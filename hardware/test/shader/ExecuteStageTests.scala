@@ -173,6 +173,28 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
+  test("ExecuteStage loadconst") {
+    simulate(new ExecuteStage) { dut =>
+      dut.io.in.valid.poke(true.B)
+      dut.io.in.bits.meta.opcode.poke(OpCode.LoadLo)
+      dut.io.in.bits.meta.thread.poke(1.U)
+      dut.io.in.bits.meta.destReg.poke(7.U)
+      dut.io.in.bits.meta.hasWriteback.poke(true.B)
+      dut.io.in.bits.meta.immediateValue.poke(0x1234.U)
+      dut.io.in.bits.operand1(0).poke(0x56780000.U)
+      dut.clock.step(3)
+      dut.io.writeback.valid.expect(true.B)
+      dut.io.writeback.bits.value(0).expect(0x56781234.U)
+
+      dut.io.in.bits.meta.opcode.poke(OpCode.LoadHi)
+      dut.io.in.bits.meta.immediateValue.poke(0x1234.U)
+      dut.io.in.bits.operand1(0).poke(0x00005678.U)
+      dut.clock.step(3)
+      dut.io.writeback.valid.expect(true.B)
+      dut.io.writeback.bits.value(0).expect(0x12345678.U)
+    }
+  }
+
   test("ExecuteStage setxxx") {
     simulate(new ExecuteStage) { dut =>
       // opcode, operand1, operand2, expected result

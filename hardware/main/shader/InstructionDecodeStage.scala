@@ -69,6 +69,7 @@ class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val opcode = OpCode()
   val hasWriteback = Bool()
   val destReg = UInt(7.W)
+  val immediateValue = UInt(16.W)
 }
 
 /**
@@ -268,6 +269,8 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       OpCode.LoadHi -> true.B
     )
   )
+
+  decodedMetadata.immediateValue := io.input.bits.instruction(31, 16)
 
   io.output.bits.meta := RegNext(decodedMetadata)
 }
