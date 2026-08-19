@@ -248,4 +248,17 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
       }
     }
   }
+
+  test("ExecuteStage halt") {
+    simulate(new ExecuteStage) { dut =>
+      dut.io.in.valid.poke(true.B)
+      dut.io.in.bits.meta.opcode.poke(OpCode.Halt)
+      dut.io.in.bits.meta.thread.poke(1.U)
+      dut.io.in.bits.meta.hasWriteback.poke(true.B)
+      dut.io.haltRequest.valid.expect(false.B)
+      dut.clock.step(3)
+      dut.io.haltRequest.valid.expect(true.B)
+      dut.io.haltRequest.bits.expect(1.U)
+    }
+  }
 }

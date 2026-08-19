@@ -31,6 +31,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     }))
 
     val writeback = Valid(new WritebackRequest)
+    val squashThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
+    val haltRequest = Valid(UInt(log2Up(cfg.shaderThreads).W))
   })
 
   // Shadow instruction pipeline to align with results.
@@ -133,6 +135,18 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     ) ++
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
+
+  when (inst3.valid && inst3.bits.opcode === OpCode.Halt) {
+    io.haltRequest.valid := true.B
+    io.haltRequest.bits := inst3.bits.thread
+    io.squashThread.valid := true.B
+    io.squashThread.bits := inst3.bits.thread
+  }.otherwise {
+    io.haltRequest.valid := false.B
+    io.haltRequest.bits := DontCare
+    io.squashThread.valid := false.B
+    io.squashThread.bits := DontCare
+  }
 
   val result = MuxLookup(inst3.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
 

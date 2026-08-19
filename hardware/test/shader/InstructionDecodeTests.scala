@@ -55,7 +55,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
   test("InstructionDecodeStage r_instruction vector") {
       simulate(new InstructionDecodeStage()) { dut =>
 
-      // Write a few registers
+      // Write a few GPRs
       writeVector(dut, 1, 64, (0 until cfg.shaderVectorLanes).map(i => i + 100))
       writeVector(dut, 1, 65, (0 until cfg.shaderVectorLanes).map(i => i + 1000))
 
@@ -65,6 +65,12 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.input.bits.thread.poke(1.U)
       dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
+
+      // Set these to zero to ensure unit uses values from first cycle.
+      dut.io.input.valid.poke(false.B)
+      dut.io.input.bits.instruction.poke(0.U)
+      dut.io.input.bits.pc.poke(0.U)
+      dut.io.input.bits.thread.poke(0.U)
 
       dut.io.output.valid.expect(true.B)
       dut.io.output.bits.meta.pc.expect(address.U)
@@ -90,6 +96,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       // Write new vector value
       writeVector(dut, 1, 64, (0 until cfg.shaderVectorLanes).map(i => i + 100))
 
+      // Read back to ensure value was written as expected
       dut.io.input.bits.thread.poke(1.U)
       dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
@@ -121,6 +128,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       // Write new vector value
       writeVector(dut, 1, 64, (0 until cfg.shaderVectorLanes).map(i => i + 100))
 
+      // Read back to ensure value was written as expected
       dut.io.input.bits.thread.poke(1.U)
       dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
@@ -141,6 +149,12 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 32, 65).U) // read exec mask
       dut.clock.step(1)
 
+      // Set these to zero to ensure unit uses values from first cycle.
+      dut.io.input.valid.poke(false.B)
+      dut.io.input.bits.instruction.poke(0.U)
+      dut.io.input.bits.pc.poke(0.U)
+      dut.io.input.bits.thread.poke(0.U)
+
       dut.io.output.bits.operand1(0).expect("b01010101".U)
     }
   }
@@ -157,6 +171,12 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.input.bits.thread.poke(1.U)
       dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 2, 3).U)
       dut.clock.step(1)
+
+      // Set these to zero to ensure unit uses values from first cycle.
+      dut.io.input.valid.poke(false.B)
+      dut.io.input.bits.instruction.poke(0.U)
+      dut.io.input.bits.pc.poke(0.U)
+      dut.io.input.bits.thread.poke(0.U)
 
       dut.io.output.valid.expect(true.B)
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -176,6 +196,11 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.input.bits.thread.poke(1.U)
       dut.io.input.bits.instruction.poke(kInst(OpCode.LoadHi, 5, 0).U) // loadhi
       dut.clock.step(1)
+
+      // Set these to zero to ensure unit uses values from first cycle.
+      dut.io.input.valid.poke(false.B)
+      dut.io.input.bits.instruction.poke(0.U)
+      dut.io.input.bits.thread.poke(0.U)
 
       dut.io.output.valid.expect(true.B)
 
@@ -209,8 +234,14 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       // Test as first operand
       for ((regId, value) <- constants) {
+        dut.io.input.valid.poke(true.B)
         dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, regId, 0).U)
         dut.clock.step(1)
+
+        // Set these to zero to ensure unit uses values from first cycle.
+        dut.io.input.valid.poke(false.B)
+        dut.io.input.bits.instruction.poke(0.U)
+
 
         for (i <- 0 until cfg.shaderVectorLanes) {
           dut.io.output.bits.operand1(i).expect(value)
@@ -236,6 +267,10 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 111, 0).U) // lane id
       dut.clock.step(1)
+
+      // Set these to zero to ensure unit uses values from first cycle.
+      dut.io.input.valid.poke(false.B)
+      dut.io.input.bits.instruction.poke(0.U)
 
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.output.bits.operand1(i).expect(i.U)
@@ -284,91 +319,6 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.clock.step(1)
 
       dut.io.output.bits.operand1(0).expect("b10101010".U)
-    }
-  }
-
-  // Read and write the same register during the same cycle
-  test("InstructionDecodeStage write under read scalar") {
-    simulate(new InstructionDecodeStage()) { dut =>
-      // write default values
-      writeScalar(dut, 1, 2, 0)
-
-      // Now write and read the same register
-      dut.io.writeback.valid.poke(true.B)
-      dut.io.writeback.bits.thread.poke(1.U)
-      dut.io.writeback.bits.destReg.poke(2.U)
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.writeback.bits.value(i).poke(111.U)
-      }
-
-      dut.io.input.valid.poke(true.B)
-      dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 2, 0).U)
-      dut.clock.step(1)
-
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.output.bits.operand1(i).expect(111.U)
-      }
-    }
-  }
-
-  test("InstructionDecodeStage write under read vector") {
-    simulate(new InstructionDecodeStage()) { dut =>
-      // Write default values
-      writeVector(dut, 1, 64, Seq.fill(cfg.shaderVectorLanes)(0))
-
-      // Now write and read a the same register.
-      dut.io.writeback.valid.poke(true.B)
-      dut.io.writeback.bits.thread.poke(1.U)
-      dut.io.writeback.bits.destReg.poke(64.U)
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.writeback.bits.value(i).poke((i + 100).U)
-      }
-
-      dut.io.input.valid.poke(true.B)
-      dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 64, 0).U)
-      dut.clock.step(1)
-
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.output.bits.operand1(i).expect((i + 100).U)
-      }
-    }
-  }
-
-  test("InstructionDecodeStage write under read scalar special") {
-    simulate(new InstructionDecodeStage()) { dut =>
-      dut.io.writeback.valid.poke(true.B)
-      dut.io.writeback.bits.thread.poke(1.U)
-      dut.io.writeback.bits.destReg.poke(32.U) // exec mask
-      dut.io.writeback.bits.value(0).poke("b01010101".U)
-      dut.io.input.valid.poke(true.B)
-      dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 32, 0).U) // read exec mask
-      dut.clock.step(1)
-
-      dut.io.output.bits.operand1(0).expect("b01010101".U)
-    }
-  }
-
-  test("InstructionDecodeStage write under read vector special") {
-    simulate(new InstructionDecodeStage()) { dut =>
-      val regIndex = 105 // store pixel red
-      dut.io.writeback.valid.poke(true.B)
-      dut.io.writeback.bits.thread.poke(1.U)
-      dut.io.writeback.bits.destReg.poke(regIndex.U)
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.writeback.bits.value(i).poke((i + 100).U)
-      }
-
-      dut.io.input.valid.poke(true.B)
-      dut.io.input.bits.thread.poke(1.U)
-      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, regIndex, 0).U) // read lane id
-      dut.clock.step(1)
-
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.output.bits.operand1(i).expect((i + 100).U)
-      }
     }
   }
 

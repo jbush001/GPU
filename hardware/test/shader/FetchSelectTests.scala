@@ -38,7 +38,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
   }
 
   // Should equal rawLatency in FetchSelectStage.scala.
-  val backToBackLatency = 2
+  val backToBackLatency = 4
 
   test("FetchSelectStage single thread") {
     simulate(new FetchSelectStage()) { dut =>
@@ -59,6 +59,17 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         assert(dut.io.fetchRequest.valid.peek().litToBoolean, "Fetch request should be valid")
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
         dut.io.fetchRequest.bits.pc.raw.expect((0x1000 + (i * 4)).U)
+      }
+    }
+  }
+
+  // Ensure everything works properly when the unit is entirely idle.
+  test("FetchSelectStage no threads ready") {
+    simulate(new FetchSelectStage()) { dut =>
+      dut.io.startJob.valid.poke(false.B)
+      for (_ <- 0 until 5) {
+        dut.io.fetchRequest.valid.expect(false.B)
+        dut.clock.step()
       }
     }
   }
@@ -248,10 +259,8 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
   test("FetchSelectStage multiple thread") {
     simulate(new FetchSelectStage()) { dut =>
       // Start jobs on 4 threads
-      val numThreads = 4
-      val startPcs = Seq(0x1000.U, 0x2000.U, 0x3000.U, 0x4000.U)
-
-      startPcs.map(pc => startJob(dut, pc))
+      val numThreads = 8
+      (0 until numThreads).map(i => startJob(dut, ((i + 1) * 0x1000).U))
 
       // Collect the sequence of issuing thread IDs over consecutive cycles
       val issuedSequence = (0 until numThreads).map { _ =>
@@ -261,12 +270,12 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         tId
       }
 
-      // Verify all 4 threads issued exactly once without repeating
+      // Verify all threads issued exactly once without repeating
       assert(issuedSequence.distinct.length == numThreads,
              "Did not see all threads")
 
       // Verify the round-robin cycle repeats in the same order for a few more cycles
-      for (_ <- 0 until 3) {
+      for (_ <- 0 until numThreads * 2) {
         for (expectedThread <- issuedSequence) {
           dut.io.fetchRequest.valid.expect(true.B)
           dut.io.fetchRequest.bits.thread.expect(expectedThread.U)
@@ -278,7 +287,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage halt does not affect other threads") {
     simulate(new FetchSelectStage()) { dut =>
-      val allocatedThreads = (0 until 4).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
+      val allocatedThreads = (0 until 8).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
 
       // Issue a few cycles to ensure all threads are active
       for (_ <- 0 until 4) {
@@ -305,7 +314,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage one thread stalled does not block others") {
     simulate(new FetchSelectStage()) { dut =>
-      val allocatedThreads = (0 until 4).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
+      val allocatedThreads = (0 until 8).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
 
       // Issue a few cycles
       for (_ <- 0 until 4) {

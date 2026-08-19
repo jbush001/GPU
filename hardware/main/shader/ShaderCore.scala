@@ -26,6 +26,9 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
     }))
+
+    // A bit of a debug hack for now
+    val outputResult = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
   })
 
   val icacheFillUnit = Module(new ICacheFillUnit)
@@ -38,22 +41,22 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   fetchSelectStage.io.startJob <> io.startJob
   fetchSelectStage.io.resetThread <> instructionDecodeStage.io.resetThread
   fetchSelectStage.io.fetchRequest <> instructionFetchStage.io.fetchRequest
-  fetchSelectStage.io.haltRequest.valid := false.B
-  fetchSelectStage.io.haltRequest.bits := DontCare
   fetchSelectStage.io.wakeThreadBitmap := icacheFillUnit.io.wakeThreadBitmap
   fetchSelectStage.io.icacheMiss := instructionFetchStage.io.miss
   fetchSelectStage.io.icacheNearMiss := instructionFetchStage.io.nearMiss
   fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.missThread
+  fetchSelectStage.io.haltRequest <> executeStage.io.haltRequest
+
   fetchSelectStage.io.rollback.valid := false.B
   fetchSelectStage.io.rollback.bits := DontCare
 
   instructionFetchStage.io.fillRequest <> icacheFillUnit.io.fillRequest
   instructionFetchStage.io.updateCache <> icacheFillUnit.io.updateCache
   instructionFetchStage.io.output <> instructionDecodeStage.io.input
+  instructionFetchStage.io.squashThread <> executeStage.io.squashThread
 
-  instructionDecodeStage.io.writeback.valid := false.B
-  instructionDecodeStage.io.writeback.bits := DontCare
   instructionDecodeStage.io.output <> executeStage.io.in
+  io.outputResult := instructionDecodeStage.io.outputResult
 
   executeStage.io.writeback <> instructionDecodeStage.io.writeback
 

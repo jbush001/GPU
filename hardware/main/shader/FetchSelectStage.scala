@@ -112,7 +112,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // The second instruction reads r1 before the first instruction writes it.
   // Not every instruction will have this hazard, but we enforce a 3-cycle delay
   // to simplify the pipeline.
-  val rawLatency = 2 // Will issue every nth cycle, where n = rawLatency + 1
+  val rawLatency = 4 // Will issue every nth cycle, where n = rawLatency + 1
   val issueRawDelay = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(3.W))))
   val inRawWait = Wire(Vec(cfg.shaderThreads, Bool()))
   for (i <- 0 until cfg.shaderThreads) {
@@ -142,7 +142,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
   threadIssueArbiter.io.out.ready := true.B
 
-  io.fetchRequest.valid := threadIssueArbiter.io.out.valid
+  io.fetchRequest.valid := threadIssueArbiter.io.out.valid && !(io.haltRequest.valid && io.haltRequest.bits === threadIssueArbiter.io.chosen)
   io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
   io.fetchRequest.bits.pc.raw := programCounters(threadIssueArbiter.io.chosen)
 
