@@ -30,7 +30,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
       val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
-    val result = Valid(VectorResult())
+    val writeback = Valid(new WritebackRequest)
   })
 
   // Shadow instruction pipeline to align with results.
@@ -132,7 +132,10 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
 
-  io.result.bits := MuxLookup(inst3.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
+  val result = MuxLookup(inst3.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
 
-  io.result.valid := inst3.valid
+  io.writeback.valid := inst3.valid && inst3.bits.hasWriteback
+  io.writeback.bits.thread := inst3.bits.thread
+  io.writeback.bits.value := result
+  io.writeback.bits.destReg := inst3.bits.destReg
 }

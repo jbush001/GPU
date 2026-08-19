@@ -33,6 +33,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val fetchSelectStage = Module(new FetchSelectStage)
   val instructionFetchStage = Module(new InstructionFetchStage)
   val instructionDecodeStage = Module(new InstructionDecodeStage)
+  val executeStage = Module(new ExecuteStage)
 
   fetchSelectStage.io.startJob <> io.startJob
   fetchSelectStage.io.resetThread <> instructionDecodeStage.io.resetThread
@@ -52,6 +53,9 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
 
   instructionDecodeStage.io.writeback.valid := false.B
   instructionDecodeStage.io.writeback.bits := DontCare
+  instructionDecodeStage.io.output <> executeStage.io.in
+
+  executeStage.io.writeback <> instructionDecodeStage.io.writeback
 
   icacheFillUnit.io.readPort <> io.icacheReadPort
 }

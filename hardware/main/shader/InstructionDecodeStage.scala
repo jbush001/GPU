@@ -23,7 +23,7 @@ import scala.annotation.nowarn
 
 class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
-  val regId = UInt(7.W)
+  val destReg = UInt(7.W)
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
 }
 
@@ -67,6 +67,7 @@ class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val pc = UInt(cfg.busAddressBits.W)
   val thread = UInt(log2Up(cfg.shaderThreads).W)
   val opcode = OpCode()
+  val hasWriteback = Bool()
   val destReg = UInt(7.W)
 }
 
@@ -155,7 +156,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
     val gprIndex = Cat(io.input.bits.thread, regId(4, 0))
 
-    when (io.writeback.valid && regId === io.writeback.bits.regId) {
+    when (io.writeback.valid && regId === io.writeback.bits.destReg) {
       // Bypass if reading the same register that is being written.
       result := io.writeback.bits.value
     }.elsewhen (regId(6, 5) === 0.U) {
@@ -198,18 +199,18 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.output.bits.operand2 := readOperand(operand2Reg)
 
   when (io.writeback.valid) {
-    val regId = io.writeback.bits.regId
-    val gprIndex = Cat(io.writeback.bits.thread, regId(4, 0))
+    val destReg = io.writeback.bits.destReg
+    val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))
 
-    when (regId(6, 5) === 0.U) {
+    when (destReg(6, 5) === 0.U) {
       // 0-31: scalar general purpose registers
       scalarRegisters.write(gprIndex, io.writeback.bits.value(0))
-    }.elsewhen (regId(6, 5) === 2.U) {
+    }.elsewhen (destReg(6, 5) === 2.U) {
       // 64-95: vector general purpose registers
       vectorRegisters.write(gprIndex,
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
     } .otherwise {
-      switch (regId) {
+      switch (destReg) {
         is(SpecialReg.ExecMask) {
           execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
         }
@@ -229,10 +230,44 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   io.output.valid := RegNext(io.input.valid)
 
+  val decodedMetadata = Wire(new InstructionMetadata)
+
   // @todo the second parameter indicates if this maps cleanly to a known opcode.
   val (decodedOpcode, _) = OpCode.safe(io.input.bits.instruction(6, 0))
-  io.output.bits.meta.opcode := RegNext(decodedOpcode)
-  io.output.bits.meta.pc := RegNext(io.input.bits.pc)
-  io.output.bits.meta.thread := RegNext(io.input.bits.thread)
-  io.output.bits.meta.destReg := RegNext(io.input.bits.instruction(13, 7))
+  decodedMetadata.opcode := decodedOpcode
+  decodedMetadata.pc := io.input.bits.pc
+  decodedMetadata.thread := io.input.bits.thread
+  decodedMetadata.destReg := io.input.bits.instruction(13, 7)
+
+  decodedMetadata.hasWriteback := MuxLookup(decodedOpcode, false.B)(
+    Seq(
+      OpCode.And -> true.B,
+      OpCode.Or -> true.B,
+      OpCode.Xor -> true.B,
+      OpCode.Addi -> true.B,
+      OpCode.Subi -> true.B,
+      OpCode.Muli -> true.B,
+      OpCode.Mulih -> true.B,
+      OpCode.Lsl -> true.B,
+      OpCode.Asr -> true.B,
+      OpCode.Lsr -> true.B,
+      OpCode.Addf -> true.B,
+      OpCode.Subf -> true.B,
+      OpCode.Mulf -> true.B,
+      OpCode.Recip -> true.B,
+      OpCode.Ftoi -> true.B,
+      OpCode.Itof -> true.B,
+      OpCode.Setgtf -> true.B,
+      OpCode.Setgei -> true.B,
+      OpCode.Setlti -> true.B,
+      OpCode.Setgeu -> true.B,
+      OpCode.Setltu -> true.B,
+      OpCode.Seteq -> true.B,
+      OpCode.Setne -> true.B,
+      OpCode.LoadLo -> true.B,
+      OpCode.LoadHi -> true.B
+    )
+  )
+
+  io.output.bits.meta := RegNext(decodedMetadata)
 }
