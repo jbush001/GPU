@@ -33,6 +33,10 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val writeback = Valid(new WritebackRequest)
     val squashThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
     val haltRequest = Valid(UInt(log2Up(cfg.shaderThreads).W))
+    val rollback = Valid(new Bundle{
+      val thread = UInt(log2Up(cfg.shaderThreads).W)
+      val target = UInt(cfg.busDataBits.W)
+    })
   })
 
   // Shadow instruction pipeline to align with results.
@@ -75,8 +79,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Lsl -> ((a, b) => (a << b(4, 0))(31, 0)),
     OpCode.Asr -> ((a, b) => (a.asSInt >> b(4, 0)).asUInt),
     OpCode.Lsr -> ((a, b) => a >> b(4, 0)),
-    OpCode.LoadLo -> ((a, _) => Cat(a(31, 16), io.in.bits.meta.immediateValue)),
-    OpCode.LoadHi -> ((a, _) => Cat(io.in.bits.meta.immediateValue, a(15, 0)))
+    OpCode.LoadLo -> ((a, _) => Cat(a(31, 16), io.in.bits.meta.immediateValue(15, 0))),
+    OpCode.LoadHi -> ((a, _) => Cat(io.in.bits.meta.immediateValue(15, 0), a(15, 0)))
   )
 
   val singleCycleResult = MuxLookup(io.in.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
@@ -125,6 +129,21 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val compareAsVec = WireInit(VecInit(Seq.fill(cfg.shaderVectorLanes)(0.U(32.W))))
   compareAsVec(0) := comparisonResult3
 
+  // Branch check
+  val branchTaken0 = Wire(Bool())
+  branchTaken0 := false.B
+  when (io.in.valid) {
+    switch (io.in.bits.meta.opcode) {
+      is (OpCode.Bnz) { branchTaken0 := io.in.bits.operand1(0) =/= 0.U }
+      is (OpCode.Bz) { branchTaken0 := io.in.bits.operand1(0) === 0.U }
+      is (OpCode.Jump) { branchTaken0 := true.B }
+    }
+  }
+
+  val branchTaken1 = RegNext(branchTaken0, init = false.B)
+  val branchTaken2 = RegNext(branchTaken1, init = false.B)
+  val branchTaken3 = RegNext(branchTaken2, init = false.B)
+
   // result
   val resultTable: Seq[(OpCode.Type, Vec[UInt])] =
     Seq(
@@ -154,4 +173,15 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   io.writeback.bits.thread := inst3.bits.thread
   io.writeback.bits.value := result
   io.writeback.bits.destReg := inst3.bits.destReg
+
+  // Branch handling
+  when (branchTaken3) {
+    io.rollback.valid := true.B
+    io.rollback.bits.thread := inst3.bits.thread
+    io.rollback.bits.target := (inst3.bits.pc.asSInt + inst3.bits.immediateValue.asSInt).asUInt.tail(1)
+  }.otherwise {
+    io.rollback.valid := false.B
+    io.rollback.bits.thread := DontCare
+    io.rollback.bits.target := DontCare
+  }
 }

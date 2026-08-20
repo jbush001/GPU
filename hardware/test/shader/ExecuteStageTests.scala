@@ -261,4 +261,36 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
       dut.io.haltRequest.bits.expect(1.U)
     }
   }
+
+  def testBranch(dut: ExecuteStage, opcode: OpCode.Type, operand1: Long, offset: Long, shouldBranch: Boolean): Unit = {
+    dut.io.in.valid.poke(true.B)
+    dut.io.in.bits.meta.opcode.poke(opcode)
+    dut.io.in.bits.meta.thread.poke(1.U)
+    dut.io.in.bits.meta.pc.poke(0x100.U)
+    dut.io.in.bits.meta.immediateValue.poke((offset & 0x7ffff).U)
+    dut.io.in.bits.meta.hasWriteback.poke(false.B)
+    dut.io.in.bits.operand1(0).poke(operand1.U)
+    dut.clock.step()
+    dut.io.in.valid.poke(false.B)
+    dut.clock.step(2)
+
+    if (shouldBranch) {
+      dut.io.rollback.valid.expect(true.B)
+      dut.io.rollback.bits.thread.expect(1.U)
+      dut.io.rollback.bits.target.expect((0x100 + offset).U)
+    } else {
+      dut.io.rollback.valid.expect(false.B)
+    }
+  }
+
+  test("ExecuteStage branch") {
+    simulate(new ExecuteStage) { dut =>
+      testBranch(dut, OpCode.Bnz, 1, 0x20, true)
+      testBranch(dut, OpCode.Bnz, 0, 0x20, false)
+      testBranch(dut, OpCode.Bz, 0, 0x20, true)
+      testBranch(dut, OpCode.Bz, 1, 0x20, false)
+      testBranch(dut, OpCode.Jump, 0, 0x20, true)
+      testBranch(dut, OpCode.Jump, 0, -20, true)
+    }
+  }
 }

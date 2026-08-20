@@ -76,7 +76,7 @@ class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val opcode = OpCode()
   val hasWriteback = Bool()
   val destReg = UInt(7.W)
-  val immediateValue = UInt(16.W)
+  val immediateValue = UInt(19.W)
 }
 
 class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
@@ -160,7 +160,12 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     )
   )
 
-  decodedMetadata.immediateValue := io.input.bits.instruction(31, 16)
+  when (decodedOpcode === OpCode.Bnz || decodedOpcode === OpCode.Bz || decodedOpcode === OpCode.Jump) {
+    decodedMetadata.immediateValue := Cat(io.input.bits.instruction(31, 20),
+      io.input.bits.instruction(13, 7))
+  }.otherwise {
+    decodedMetadata.immediateValue := io.input.bits.instruction(31, 16).pad(19)
+  }
 
   object SpecialReg {
     val ExecMask        = 32.U
