@@ -53,7 +53,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     println(f"  actual   = $actual%.6f  (0x${this.floatToRawBits(actual)}%08x)")
   }
 
-  test("fp adder") {
+  test("Float32 add/sub") {
    simulate(new FpAddSub()) { dut =>
       type TestVector = (Boolean, Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
@@ -128,7 +128,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("fp multiplier") {
+  test("Float32 multiply") {
     simulate(new FpMul()) { dut =>
       type TestVector = (Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
@@ -182,7 +182,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("fp recip") {
+  test("Float32 reciprocal") {
     simulate(new FpReciprocalEstimate()) { dut =>
       type TestVector = (Float, Float)
       val testVectors: Seq[TestVector] = Seq(
@@ -222,7 +222,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("fp to int") {
+  test("Float32 toSInt") {
     simulate(new Module {
       val io = IO(new Bundle {
         val a = Input(UInt(32.W))
@@ -262,7 +262,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("int to fp") {
+  test("Float32 fromSInt") {
     simulate(new Module {
       val io = IO(new Bundle {
         val a = Input(SInt(32.W))

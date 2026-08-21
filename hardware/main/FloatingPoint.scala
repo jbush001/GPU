@@ -218,7 +218,7 @@ class FpAddSub extends Module with FloatingPointBlock {
 
     val resultNegative = stage2.resultNegative && !isZeroResult
 
-    io.result := RegNext(resultNegative ## resultExponent ## resultFraction, 0.U).asTypeOf(Float32())
+    io.result := RegNext(Float32(resultNegative, resultExponent, resultFraction))
   }
 }
 
