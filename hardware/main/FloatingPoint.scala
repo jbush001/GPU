@@ -63,6 +63,29 @@ class Float32 extends Bundle {
 
     result
   }
+
+  def toSInt(): SInt = {
+    val result = Wire(SInt(32.W))
+    when (this.exponent < Float32.exponentBias || this.isNaN) {
+      // Number is less than zero
+      result := 0.S
+    }.elsewhen (this.exponent > Float32.exponentBias + 30.U || this.isInf) {
+      // Number is too large to fit, saturate.
+      when (this.negative) {
+        result := -0x80000000.S
+      }.otherwise {
+        result := 0x7fffffff.S
+      }
+    }.otherwise {
+      // Shift to align whole portion
+      val shiftAmount = Float32.exponentBias - this.exponent + 32.U
+      val shifted = ((this.fullFraction ## 0.U((32 - Float32.fractionWidth).W)) >>
+        shiftAmount).tail(1).asSInt
+      result := Mux(this.negative, -shifted, shifted)
+    }
+
+    result
+  }
 }
 
 object Float32 {
@@ -75,6 +98,30 @@ object Float32 {
     val f = Wire(new Float32)
     f.raw := raw
     f
+  }
+
+  def apply(negative: Bool, exponent: UInt, fraction: UInt) = {
+    require(exponent.getWidth == 8)
+    require(fraction.getWidth == 23)
+
+    val f = Wire(new Float32)
+    f.raw := negative ## exponent ## fraction
+    f
+  }
+
+  def fromSInt(value: SInt): Float32 = {
+    val result = Wire(new Float32)
+    when (value === 0.S) {
+      result.raw := 0.U
+    }.otherwise {
+      val absValue = value.abs.asUInt
+      val leadingZeros = PriorityEncoder(Reverse(absValue))
+      val exponent = (31.U(8.W) - leadingZeros) + exponentBias
+      val fraction = (absValue << leadingZeros)(30, 8)
+      result := Float32(value(31), exponent, fraction)
+    }
+
+    result
   }
 }
 
@@ -297,34 +344,5 @@ class FpReciprocalEstimate extends Module with FloatingPointBlock {
   }
 
   io.result := Float32(RegNext(resultNext, 0.U))
-}
-
-// This has one cycle of latency
-class FpToInt extends Module with FloatingPointBlock {
-  val io = IO(new Bundle {
-    val result = Output(UInt(32.W))
-    val operand = Input(Float32())
-  })
-
-  val resultNext = Wire(UInt(32.W))
-  when (io.operand.exponent < Float32.exponentBias || io.operand.isNaN) {
-    // Number is less than zero
-    resultNext := 0.U
-  }.elsewhen (io.operand.exponent > Float32.exponentBias + 30.U || io.operand.isInf) {
-    // Number is too large to fit, set to infinity
-    when (io.operand.negative) {
-      resultNext := 0x80000000L.U
-    }.otherwise {
-      resultNext := 0x7fffffff.U
-    }
-  }.otherwise {
-    // Shift to align whole portion
-    val shiftAmount = Float32.exponentBias - io.operand.exponent + 32.U
-    val shifted = ((io.operand.fullFraction ## 0.U((32 - Float32.fractionWidth).W)) >>
-      shiftAmount).asUInt.pad(32)
-    resultNext := Mux(io.operand.negative, -shifted, shifted).tail(1)
-  }
-
-  io.result := RegNext(resultNext, 0.U)
 }
 

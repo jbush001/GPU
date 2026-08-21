@@ -80,7 +80,9 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Asr -> ((a, b) => (a.asSInt >> b(4, 0)).asUInt),
     OpCode.Lsr -> ((a, b) => a >> b(4, 0)),
     OpCode.LoadLo -> ((a, _) => Cat(a(31, 16), io.in.bits.meta.immediateValue(15, 0))),
-    OpCode.LoadHi -> ((a, _) => Cat(io.in.bits.meta.immediateValue(15, 0), a(15, 0)))
+    OpCode.LoadHi -> ((a, _) => Cat(io.in.bits.meta.immediateValue(15, 0), a(15, 0))),
+    OpCode.Ftoi -> ((a, _) => Float32(a).toSInt().asUInt),
+    OpCode.Itof -> ((a, _) => Float32.fromSInt(a.asSInt).raw)
   )
 
   val singleCycleResult = MuxLookup(io.in.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {

@@ -223,9 +223,15 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
   }
 
   test("fp to int") {
-    simulate(new FpToInt()) { dut =>
-      type TestVector = (Float, Int)
-      val testVectors: Seq[TestVector] = Seq(
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val a = Input(UInt(32.W))
+        val result = Output(SInt(32.W))
+      })
+
+      io.result := io.a.asTypeOf(Float32()).toSInt()
+    }) { dut =>
+      val testVectors = Seq(
         (1.0f, 1),
         (-1.0f, -1),
         (0.0f, 0),
@@ -244,27 +250,48 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (1E-30f, 0),
         (-1E-30f, 0),
       )
-      dut.io.operand.raw.poke(0.U)
-      dut.clock.step() // Wait for reset to complete
 
-      runFpPipelineTest(
-        dut,
-        1,
-        testVectors,
-        (dut: FpToInt, test: TestVector) => {
-          dut.io.operand.raw.poke(this.floatToRawBits(test._1))
-        },
-        (dut: FpToInt, test: TestVector, index: Int) => {
-          val expectedBits = test._2 & 0xffffffffL
-          val actualBits: Long = dut.io.result.peek().litValue.toLong & 0xffffffffL
-          if (expectedBits != actualBits) {
-            println(f"mismatch at test entry $index: ${test._1}%.3f")
-            println(f"  expected = (0x${expectedBits}%08x)")
-            println(f"  actual   = (0x${actualBits}%08x)")
-            fail()
-          }
+      for ((a, expected) <- testVectors) {
+        dut.io.a.poke(floatToRawBits(a).U)
+        dut.clock.step()
+        if (dut.io.result.peek().litValue.toInt != expected) {
+          println(f"mismatch: $a%.3f to int, expected $expected actual ${dut.io.result.peek().litValue.toInt}")
+          fail()
         }
+      }
+    }
+  }
+
+  test("int to fp") {
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val a = Input(SInt(32.W))
+        val result = Output(UInt(32.W))
+      })
+
+      io.result := Float32.fromSInt(io.a).raw
+    }) { dut =>
+      val testVectors = Seq(
+        (1, 1.0f),
+        (2, 2.0f),
+        (-1, -1.0f),
+        (-2, -2.0f),
+        (1000, 1000.0f),
+        (-1000, -1000.0f),
+        (0, 0.0f),
+        (Int.MaxValue, Int.MaxValue.toFloat),
+        (Int.MinValue, Int.MinValue.toFloat)
       )
+
+      for ((a, expected) <- testVectors) {
+        dut.io.a.poke(a.S)
+        dut.clock.step()
+        val actual = dut.io.result.peek().litValue.toLong & 0xffffffffL
+        if (math.abs(floatToRawBits(expected) - actual) > 1) {
+          println(f"mismatch: int to fp, expected $expected actual ${java.lang.Float.intBitsToFloat(dut.io.result.peek().litValue.toInt)} (0x${dut.io.result.peek().litValue.toInt}%08x)")
+          fail()
+        }
+      }
     }
   }
 
