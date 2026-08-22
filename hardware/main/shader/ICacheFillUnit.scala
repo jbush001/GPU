@@ -49,13 +49,13 @@ class CacheUpdateRequest (implicit cfg: GpuConfig) extends Bundle {
   */
 class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // To memory arbiter
+    // To memory arbiter, request data for a cache line fill.
     val readPort = new MemReadPort
 
-    // From instruction fetch. Enqueue a new miss request.
+    // From InstructionFetchStage. Enqueue a new miss request.
     val fillRequest = Flipped(Valid(new CacheFillRequest))
 
-    // To instruction fetch. Write data back to the cache.
+    // To InstructionFetchStage. Write data back to the cache.
     val updateCache = Output(Valid(new CacheUpdateRequest))
 
     // Each bit corresponds to a hardware thread that should

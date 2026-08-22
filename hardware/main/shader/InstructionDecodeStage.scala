@@ -91,14 +91,17 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   */
 class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
+    // From InstructionFetchStage. Input instruction and PC.
     val input = Flipped(Valid(new FetchResponse))
 
+    // To ExecuteStage. Output instruction metadata and operands.
     val output = Valid(new Bundle{
       val meta = new InstructionMetadata
       val operand1 = Vec(cfg.shaderVectorLanes, UInt(32.W))
       val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
     })
 
+    // From ExecuteStage. Write results back to registers.
     val writeback = Flipped(Valid(new WritebackRequest))
 
     // From FetchSelectStage, data for newly started threads.

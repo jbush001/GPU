@@ -20,11 +20,19 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
+/**
+  * Parameters are available to shader program by reading special registers.
+  * These registers are initialized when a thread is started and can be used to
+  * pass data from fixed function units to the shader program.
+  */
 class ShaderParams(implicit val cfg: GpuConfig) extends Bundle {
   val numParams = 2
   val params = Vec(numParams, Vec(cfg.shaderVectorLanes, UInt(32.W)))
 }
 
+/**
+  * Top level shader core, which can run multiple shader program threads.
+  */
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val icacheReadPort = new MemReadPort
@@ -39,6 +47,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
 
   val icacheFillUnit = Module(new ICacheFillUnit)
 
+  // Core execution pipeline
   val fetchSelectStage = Module(new FetchSelectStage)
   val instructionFetchStage = Module(new InstructionFetchStage)
   val instructionDecodeStage = Module(new InstructionDecodeStage)

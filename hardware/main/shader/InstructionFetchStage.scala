@@ -44,22 +44,26 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   val instructionWidth = 32
 
   val io = IO(new Bundle {
-    // From thread select
+    // From ThreadSelectStage, set for each instruction fetch.
     val fetchRequest = Input(Valid(new FetchRequest))
 
-    // To ICacheFillUnit
+    // To ThreadDecodeStage. Return instruction if it is a hit.
+    val output = Valid(new FetchResponse)
+
+    // To ICacheFillUnit, request a cache line fill when a miss occurs.
     val fillRequest = Valid(new CacheFillRequest)
 
     // From ICacheFillUnit. Update cache data
     val updateCache = Flipped(Valid(new CacheUpdateRequest))
 
-    // Output
-    val output = Valid(new FetchResponse)
-
+    // To FetchSelectStage. Indicate that a thread is stalled on an instruction
+    // (or needs a retry)
     val miss = Output(Bool())
     val nearMiss = Output(Bool())
     val missThread = Output(UInt(log2Up(cfg.shaderThreads).W))
 
+    // From ExecuteStage. Indicate that a thread should be squashed due to a branch or
+    // other control flow change.
     val squashThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
   })
 

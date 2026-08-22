@@ -30,28 +30,34 @@ import gpu._
   */
 class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   val io  = IO(new Bundle {
-    // From external fixed function units.
+    // From external fixed function units. Request to start a new shader job.
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
       val params = new ShaderParams
     }))
 
-    // To decode stage. Clear state when a new thread starts.
+    // To InstructionDecodeStage. Initialize state when a new job starts.
     val resetThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
     val startParams = Output(new ShaderParams)
 
-    // Output to the instruction cache.
+    // To InstructionFetchStage. Request an instruction fetch for a thread.
     val fetchRequest = Valid(new FetchRequest)
 
+    // From ExecuteStage.
     val haltRequest = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+
+    // From ICacheFillUnit. Wake up threads that were stalled on an
+    // instruction cache miss.
     val wakeThreadBitmap = Input(UInt(cfg.shaderThreads.W))
 
+    // From InstructionFetchStage. Indicate that a thread is stalled on an
+    // instruction cache miss.
     val icacheMiss = Input(Bool())
     val icacheNearMiss = Input(Bool())
     val icacheMissThread = Input(UInt(log2Up(cfg.shaderThreads).W))
 
-    // We an rollback a thread in response to a branch instruction or if
-    // it stalls for some reason.
+    // From ExecuteStage. Rollback a thread in response to a branch
+    // instruction.
     val rollback = Flipped(Valid(new Bundle {
       val thread = UInt(log2Ceil(cfg.shaderThreads).W)
       val pc = UInt(cfg.busAddressBits.W)

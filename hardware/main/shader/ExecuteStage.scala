@@ -20,17 +20,30 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
+/**
+  * Final stage in the instruction pipeline, responsible for:
+  * - Performing arithmetic and logical operations.
+  * - Handling branches.
+  * - Writing results back to the register file.
+  * - Handling halt instruction.
+  */
 class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   def VectorResult(): Vec[UInt] = Vec(cfg.shaderVectorLanes, UInt(32.W))
 
   val io = IO(new Bundle {
+
+    // From InstructionDecodeStage. Input instruction and operands.
     val in = Flipped(Valid(new Bundle{
       val meta = new InstructionMetadata
       val operand1 = Vec(cfg.shaderVectorLanes, UInt(32.W))
       val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
+    // To InstructionDecodeStage. Write results back to registers.
     val writeback = Valid(new WritebackRequest)
+
+    // To multiple stages. These handle control flow changes, such as
+    // branches or halts.
     val squashThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
     val haltRequest = Valid(UInt(log2Up(cfg.shaderThreads).W))
     val rollback = Valid(new Bundle{
@@ -146,7 +159,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val branchTaken2 = RegNext(branchTaken1, init = false.B)
   val branchTaken3 = RegNext(branchTaken2, init = false.B)
 
-  // result
+  // Final result multiplexer
   val resultTable: Seq[(OpCode.Type, Vec[UInt])] =
     Seq(
       OpCode.Addf -> fpAddSubResult,
