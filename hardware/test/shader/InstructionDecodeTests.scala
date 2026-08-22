@@ -337,4 +337,28 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.output.bits.meta.hasWriteback.expect(false.B)
     }
   }
+
+  test("InstructionDecodeStage read shader params") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.startParams.params(0)(i).poke((i + 1).U)
+        dut.io.startParams.params(1)(i).poke((i + 10).U)
+      }
+
+      dut.io.resetThread.valid.poke(true.B)
+      dut.io.resetThread.bits.poke(1.U)
+      dut.clock.step(1)
+      dut.io.resetThread.valid.poke(false.B)
+
+      dut.io.input.valid.poke(true.B)
+      dut.io.input.bits.thread.poke(1.U)
+      dut.io.input.bits.instruction.poke(rInst(OpCode.Subf, 0, 96, 97).U) // read params
+      dut.clock.step(1)
+
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.output.bits.operand1(i).expect((i + 1).U)
+        dut.io.output.bits.operand2(i).expect((i + 10).U)
+      }
+    }
+  }
 }

@@ -33,10 +33,12 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     // From external fixed function units.
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
+      val params = new ShaderParams
     }))
 
     // To decode stage. Clear state when a new thread starts.
     val resetThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
+    val startParams = Output(new ShaderParams)
 
     // Output to the instruction cache.
     val fetchRequest = Valid(new FetchRequest)
@@ -70,11 +72,12 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     threadHalted(nextFreeThread) := false.B
     programCounters(nextFreeThread) := io.startJob.bits.startPc
     io.resetThread.valid := true.B
-    io.resetThread.bits := nextFreeThread
   } .otherwise {
     io.resetThread.valid := false.B
-    io.resetThread.bits := 0.U
   }
+
+  io.startParams := io.startJob.bits.params
+  io.resetThread.bits := nextFreeThread
 
   when (io.haltRequest.valid) {
     assert(!threadHalted(io.haltRequest.bits), "Cannot halt a thread that is already halted")

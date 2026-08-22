@@ -100,7 +100,10 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     })
 
     val writeback = Flipped(Valid(new WritebackRequest))
+
+    // From FetchSelectStage, data for newly started threads.
     val resetThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val startParams = Input(new ShaderParams)
 
     // A bit of a debug hack for now
     val outputResult = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
@@ -113,6 +116,17 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
   val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
+  val params = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U.asTypeOf(new ShaderParams))))
+
+  when (io.resetThread.valid) {
+    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
+    params(io.resetThread.bits) := io.startParams
+  }
+
+  when (io.resetThread.valid) {
+    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
+    params(io.resetThread.bits) := io.startParams
+  }
 
   def isLoadConst(inst: UInt): Bool = {
     val opcode = inst(6, 0)
@@ -186,6 +200,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val Const2_0f       = 62.U
     val ConstNeg2_0f    = 63.U
 
+    val Param0          = 96.U
+    val Param1          = 97.U
+
     val StorePixelRed   = 105.U
     val StorePixelGreen = 106.U
     val StorePixelBlue  = 107.U
@@ -242,6 +259,8 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
         // Special registers
         is(SpecialReg.ExecMask)     { result := broadcast(execMask(threadStage2)) }
         is(SpecialReg.LaneId)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
+        is(SpecialReg.Param0)       { result := params(threadStage2).params(0) }
+        is(SpecialReg.Param1)       { result := params(threadStage2).params(1) }
         is(SpecialReg.Const0)       { result := broadcast(0.U(32.W)) }
         is(SpecialReg.Const1)       { result := broadcast(1.U(32.W)) }
         is(SpecialReg.ConstNeg1)    { result := broadcast((-1).S(32.W).asUInt) }
@@ -291,10 +310,6 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
         is(SpecialReg.LpmWriteValue)   { /* TODO... */ }
       }
     }
-  }
-
-  when (io.resetThread.valid) {
-    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
   }
 
   io.output.valid := validCycle2

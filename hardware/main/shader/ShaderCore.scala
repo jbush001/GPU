@@ -20,11 +20,17 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
+class ShaderParams(implicit val cfg: GpuConfig) extends Bundle {
+  val numParams = 2
+  val params = Vec(numParams, Vec(cfg.shaderVectorLanes, UInt(32.W)))
+}
+
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val icacheReadPort = new MemReadPort
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
+      val params = new ShaderParams
     }))
 
     // A bit of a debug hack for now
@@ -56,6 +62,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   instructionFetchStage.io.squashThread <> executeStage.io.squashThread
 
   instructionDecodeStage.io.output <> executeStage.io.in
+  instructionDecodeStage.io.startParams := fetchSelectStage.io.startParams
   io.outputResult := instructionDecodeStage.io.outputResult
 
   executeStage.io.writeback <> instructionDecodeStage.io.writeback

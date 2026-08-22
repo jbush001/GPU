@@ -42,7 +42,17 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage single thread") {
     simulate(new FetchSelectStage()) { dut =>
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.startJob.bits.params.params(0)(i).poke((i + 1).U)
+        dut.io.startJob.bits.params.params(1)(i).poke((i + 10).U)
+      }
+
       val allocatedThread = startJob(dut, 0x1000.U)
+      // This is just a pass-through
+      for (j <- 0 until cfg.shaderVectorLanes) {
+        dut.io.startParams.params(0)(j).expect((j + 1).U)
+        dut.io.startParams.params(1)(j).expect((j + 10).U)
+      }
 
       // Issue a few more fetch requests
       for (i <- 1 until 5) {

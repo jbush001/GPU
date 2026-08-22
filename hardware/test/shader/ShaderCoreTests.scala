@@ -92,6 +92,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       val dap = new DirectAccessPort
       val startJob = Flipped(Decoupled(new Bundle {
         val startPc = UInt(cfg.busAddressBits.W)
+        val params = new ShaderParams
       }))
 
       val outputResult = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
@@ -117,11 +118,19 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
   def runShaderTest(
     programBytes: Seq[Long],
-    startAddr: Long = 0
+    startAddr: Long,
+    params: Seq[Seq[UInt]] = Seq.fill(2)(Seq.fill(cfg.shaderVectorLanes)(0.U))
   )(testBody: ShaderTestHarness => Unit)(implicit cfg: GpuConfig): Unit = {
     simulate(new ShaderTestHarness) { dut =>
       // Common Setup / Initialization
       SimMemAccess.write(dut.clock, dut.io.dap, startAddr, programBytes)
+
+      dut.io.startJob.bits.startPc.poke(startAddr.U)
+      for (param <- 0 until 2) {
+        for (lane <- 0 until cfg.shaderVectorLanes) {
+          dut.io.startJob.bits.params.params(param)(lane).poke(params(param)(lane))
+        }
+      }
 
       // Execute test-specific assertions or stimulus
       testBody(dut)
@@ -137,7 +146,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       .rrrInst(OpCode.Addi, 105, 1, 65) // output = r1 + v2
       .rrInst(OpCode.Halt, 0, 0)
 
-    runShaderTest(asm.finish()) { dut =>
+    runShaderTest(asm.finish(), 0) { dut =>
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0.U)
       dut.clock.step(1)
