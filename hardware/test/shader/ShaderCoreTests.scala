@@ -22,7 +22,7 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-class ShaderBuilder {
+class ShaderAssembler {
   private val instructions = scala.collection.mutable.ArrayBuffer[Int]()
   private val labels = scala.collection.mutable.Map[String, Int]()
   private val fixups = scala.collection.mutable.ArrayBuffer[(String, Int)]()
@@ -140,8 +140,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ShaderCore execution") {
-    val asm = new ShaderBuilder()
+  test("ShaderCore basic arithmetic") {
+    val asm = new ShaderAssembler()
     asm
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .kInst(OpCode.LoadLo, 1, 0x5678)
@@ -174,26 +174,31 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   test("ShaderCore gcd") {
     val DEBUG = false
 
-    val program = new ShaderBuilder()
+    // Euclidean algorithm to compute GCD of two numbers. This has
+    // nested conditionals, and a loop.
+    val program = new ShaderAssembler()
       .move(64, 96) // v0 = a
       .move(65, 97) // v1 = b
       .emitLabel("loop")
-      .rInst(OpCode.Setne, 0, 64, 65)
+      .rInst(OpCode.Setne, 0, 64, 65)   // if (a != b) {
       .bInst(OpCode.Bz, 0, "done")
-      .rInst(OpCode.Setlti, 1, 64, 65)
-      .rInst(OpCode.And, 32, 1, 0) // Exec mask
-      .rInst(OpCode.Subi, 65, 65, 64)
-      .rInst(OpCode.Xor, 1, 1, 55) // Invert exec mask ( xor 0xffffffff)
-      .rInst(OpCode.And, 32, 1, 0) // Exec mask
-      .rInst(OpCode.Subi, 64, 64, 65)
-      .bInst(OpCode.Jump, 0, "loop")
-      .emitLabel("done")
-      .move(32, 55) // Restore exec mask
-      .move(105, 64) // Store result in output
+      .rInst(OpCode.Setlti, 1, 64, 65)  //   if (a < b) {
+      .rInst(OpCode.And, 32, 1, 0)      //     exec mask = exec mask & (a < b)
+      .rInst(OpCode.Subi, 65, 65, 64)   //     b = b - a
+      .rInst(OpCode.Xor, 1, 1, 55)      //   } else {
+      .rInst(OpCode.And, 32, 1, 0)      //     exec mask = exec mask & (a >= b)
+      .rInst(OpCode.Subi, 64, 64, 65)   //     a = a - b
+      .bInst(OpCode.Jump, 0, "loop")    //   }
+      .emitLabel("done")                // }
+      .move(32, 55)                     // (Restore exec mask)
+      .move(105, 64)                    // result = a
       .halt()
       .finish()
+
     val rng = new scala.util.Random(42)
 
+    // We keep all threads active with jobs. When one completes, we start the
+    // next one. The Job structure tracks the state of active threads.
     class Job {
       var active = false
       var a = Seq.fill(cfg.shaderVectorLanes)(0)
@@ -295,7 +300,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       for (index <- 0 until cfg.shaderThreads) {
         val job = jobs(index)
         if (job.active) {
-          fail(s"Job $index did not complete, hung for ${maxCycles - job.startCycle} cycles a= ${job.a} b=${job.b} expected=${job.expectedVector}")
+          fail(s"Job $index did not complete, hung for ${maxCycles - job.startCycle} cycles expected=${job.expectedVector}")
         }
       }
     }
