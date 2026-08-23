@@ -48,7 +48,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val haltRequest = Valid(UInt(log2Up(cfg.shaderThreads).W))
     val rollback = Valid(new Bundle{
       val thread = UInt(log2Up(cfg.shaderThreads).W)
-      val target = UInt(cfg.busDataBits.W)
+      val pc = UInt(cfg.busAddressBits.W)
     })
   })
 
@@ -170,18 +170,6 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
 
-  when (inst3.valid && inst3.bits.opcode === OpCode.Halt) {
-    io.haltRequest.valid := true.B
-    io.haltRequest.bits := inst3.bits.thread
-    io.squashThread.valid := true.B
-    io.squashThread.bits := inst3.bits.thread
-  }.otherwise {
-    io.haltRequest.valid := false.B
-    io.haltRequest.bits := DontCare
-    io.squashThread.valid := false.B
-    io.squashThread.bits := DontCare
-  }
-
   val result = MuxLookup(inst3.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
 
   io.writeback.valid := inst3.valid && inst3.bits.hasWriteback
@@ -189,14 +177,29 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   io.writeback.bits.value := result
   io.writeback.bits.destReg := inst3.bits.destReg
 
+  io.squashThread.valid := false.B
+  io.squashThread.bits := inst3.bits.thread
+  io.haltRequest.valid := false.B
+  io.haltRequest.bits := inst3.bits.thread
+  io.rollback.valid := false.B
+  io.rollback.bits.thread := DontCare
+  io.rollback.bits.pc := DontCare
+
+  // Halt handling
+  when (inst3.valid && inst3.bits.opcode === OpCode.Halt) {
+    io.haltRequest.valid := true.B
+    io.squashThread.valid := true.B
+  }
+
   // Branch handling
   when (branchTaken3) {
     io.rollback.valid := true.B
     io.rollback.bits.thread := inst3.bits.thread
-    io.rollback.bits.target := (inst3.bits.pc.asSInt + inst3.bits.immediateValue.asSInt).asUInt.tail(1)
-  }.otherwise {
-    io.rollback.valid := false.B
-    io.rollback.bits.thread := DontCare
-    io.rollback.bits.target := DontCare
+    io.rollback.bits.pc := (inst3.bits.pc.asSInt + 4.S + (inst3.bits.immediateValue.asSInt << 2)).asUInt(cfg.busAddressBits - 1, 0)
+    if (cfg.traceEnable) {
+      printf(cf"branch taken: thread ${inst3.bits.thread}%0d, pc = ${inst3.bits.pc}%0x, target = ${io.rollback.bits.pc}%0x\n")
+    }
+
+    io.squashThread.valid := true.B
   }
 }

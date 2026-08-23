@@ -61,9 +61,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   fetchSelectStage.io.icacheNearMiss := instructionFetchStage.io.nearMiss
   fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.missThread
   fetchSelectStage.io.haltRequest <> executeStage.io.haltRequest
-
-  fetchSelectStage.io.rollback.valid := false.B
-  fetchSelectStage.io.rollback.bits := DontCare
+  fetchSelectStage.io.rollback <> executeStage.io.rollback
 
   instructionFetchStage.io.fillRequest <> icacheFillUnit.io.fillRequest
   instructionFetchStage.io.updateCache <> icacheFillUnit.io.updateCache

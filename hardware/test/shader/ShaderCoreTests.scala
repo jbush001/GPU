@@ -22,7 +22,6 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-
 class ShaderBuilder {
   private val instructions = scala.collection.mutable.ArrayBuffer[Int]()
   private val labels = scala.collection.mutable.Map[String, Int]()
@@ -32,14 +31,8 @@ class ShaderBuilder {
     instructions += instruction
   }
 
-  def rrrInst(opcode: OpCode.Type, rd: Int, rs1: Int, rs2: Int): this.type = {
+  def rInst(opcode: OpCode.Type, rd: Int, rs1: Int, rs2: Int): this.type = {
     val instruction = opcode.litValue.toInt | (rd << 7) | (rs1 << 14) | (rs2 << 21)
-    addInstruction(instruction)
-    this
-  }
-
-  def rrInst(opcode: OpCode.Type, rd: Int, rs1: Int): this.type = {
-    val instruction = opcode.litValue.toInt | (rd << 7) | (rs1 << 14)
     addInstruction(instruction)
     this
   }
@@ -54,6 +47,16 @@ class ShaderBuilder {
   def kInst(opcode: OpCode.Type, rd: Int, imm: Int): this.type = {
     val instruction = opcode.litValue.toInt | (rd << 7) | (imm << 16)
     addInstruction(instruction)
+    this
+  }
+
+  def move(rd: Int, rs: Int): this.type = {
+    rInst(OpCode.Or, rd, rs, 53) // Const zero
+    this
+  }
+
+  def halt(): this.type = {
+    rInst(OpCode.Halt, 0, 0, 0)
     this
   }
 
@@ -142,9 +145,9 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     asm
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .kInst(OpCode.LoadLo, 1, 0x5678)
-      .rrrInst(OpCode.And, 65, 111, 111) // v2 = lane ID
-      .rrrInst(OpCode.Addi, 105, 1, 65) // output = r1 + v2
-      .rrInst(OpCode.Halt, 0, 0)
+      .move(65, 111) // v2 = lane ID
+      .rInst(OpCode.Addi, 105, 1, 65) // output = r1 + v2
+      .halt()
 
     runShaderTest(asm.finish(), 0) { dut =>
       dut.io.startJob.valid.poke(true.B)
@@ -164,6 +167,137 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       }
 
       assert(gotResult, "ShaderCore did not produce any output result")
+    }
+  }
+
+  // Stress test, tests multiple threads, branching, exec mask.
+  test("ShaderCore gcd") {
+    val DEBUG = false
+
+    val program = new ShaderBuilder()
+      .move(64, 96) // v0 = a
+      .move(65, 97) // v1 = b
+      .emitLabel("loop")
+      .rInst(OpCode.Setne, 0, 64, 65)
+      .bInst(OpCode.Bz, 0, "done")
+      .rInst(OpCode.Setlti, 1, 64, 65)
+      .rInst(OpCode.And, 32, 1, 0) // Exec mask
+      .rInst(OpCode.Subi, 65, 65, 64)
+      .rInst(OpCode.Xor, 1, 1, 55) // Invert exec mask ( xor 0xffffffff)
+      .rInst(OpCode.And, 32, 1, 0) // Exec mask
+      .rInst(OpCode.Subi, 64, 64, 65)
+      .bInst(OpCode.Jump, 0, "loop")
+      .emitLabel("done")
+      .move(32, 55) // Restore exec mask
+      .move(105, 64) // Store result in output
+      .halt()
+      .finish()
+    val rng = new scala.util.Random(42)
+
+    class Job {
+      var active = false
+      var a = Seq.fill(cfg.shaderVectorLanes)(0)
+      var b = Seq.fill(cfg.shaderVectorLanes)(0)
+      var expectedVector = Seq.fill(cfg.shaderVectorLanes)(0)
+      var startCycle: Int = 0
+    }
+
+    val jobs = Seq.fill(cfg.shaderThreads)(new Job)
+
+    def gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
+
+    def findFreeJob(): Option[Int] = {
+      for (i <- 0 until cfg.shaderThreads) {
+        if (!jobs(i).active) {
+          return Some(i)
+        }
+      }
+
+      None
+    }
+
+    val primes = Array(3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47)
+
+    def initNewJob(index: Int): Job = {
+      val job = jobs(index)
+
+      // We're a bit clever here picking the numbers to avoid degenerate
+      // cases.
+      val base = Seq.fill(cfg.shaderVectorLanes)(rng.between(5, 30))
+      job.a = base.map(x => x * primes(rng.nextInt(primes.length)))
+      job.b = base.map(x => x * primes(rng.nextInt(primes.length)))
+      job.active = true
+      job.expectedVector = job.a.zip(job.b).map { case (x, y) => gcd(x, y) }
+      job
+    }
+
+    def resultToVector(dut: ShaderTestHarness): Seq[Int] = {
+      (0 until cfg.shaderVectorLanes).map { lane =>
+        dut.io.outputResult.bits(lane).peek().litValue.toInt
+      }
+    }
+
+    def findJobByResult(result: Seq[Int]): Int = {
+      for (i <- 0 until cfg.shaderThreads) {
+        if (jobs(i).active && jobs(i).expectedVector == result) {
+          return i
+        }
+      }
+
+      fail("No matching job found for result")
+    }
+
+    simulate(new ShaderTestHarness) { dut =>
+      SimMemAccess.write(dut.clock, dut.io.dap, 0, program)
+      dut.io.startJob.bits.startPc.poke(0.U)
+
+      val maxJobs = 8 // Useful for debugging
+      var activeJobs = 0
+      val maxCycles = 40000
+      val flushCycles = 2000
+      for (cycle <- 0 until maxCycles) {
+        if (dut.io.outputResult.valid.peek().litToBoolean) {
+          val result = resultToVector(dut)
+          val jobIndex = findJobByResult(result)
+          if (DEBUG) {
+            println(s"Job $jobIndex completed at cycle $cycle result = $result totalCycles ${cycle - jobs(jobIndex).startCycle}")
+          }
+          jobs(jobIndex).active = false
+          activeJobs -= 1
+        }
+
+        // Start a new job. We stop creating new jobs near the end of the simulation to
+        // allow all jobs to finish.
+        if (dut.io.startJob.ready.peek().litToBoolean && cycle < (maxCycles - flushCycles) && activeJobs < maxJobs) {
+          val jobIndex = findFreeJob()
+          jobIndex match {
+            case Some(index) =>
+              val job = initNewJob(index)
+              if (DEBUG) {
+                println(s"Starting new job $index at cycle $cycle a=${job.a} b=${job.b} expected=${job.expectedVector}")
+              }
+              job.startCycle = cycle
+              activeJobs += 1
+              dut.io.startJob.valid.poke(true.B)
+              for (lane <- 0 until cfg.shaderVectorLanes) {
+                dut.io.startJob.bits.params.params(0)(lane).poke(job.a(lane))
+                dut.io.startJob.bits.params.params(1)(lane).poke(job.b(lane))
+              }
+            case None => fail("DUT indicated ready, but all jobs are active")
+          }
+        } else {
+          dut.io.startJob.valid.poke(false.B)
+        }
+
+        dut.clock.step(1)
+      }
+
+      for (index <- 0 until cfg.shaderThreads) {
+        val job = jobs(index)
+        if (job.active) {
+          fail(s"Job $index did not complete, hung for ${maxCycles - job.startCycle} cycles a= ${job.a} b=${job.b} expected=${job.expectedVector}")
+        }
+      }
     }
   }
 }

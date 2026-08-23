@@ -290,6 +290,14 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val destReg = io.writeback.bits.destReg
     val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))
 
+    if (cfg.traceEnable) {
+      when (destReg < 64.U) {
+        printf(cf"r$destReg%0d[th${io.writeback.bits.thread}%0d] = ${io.writeback.bits.value(0)}%0x\n")
+      }.otherwise {
+        printf(cf"v${destReg - 64.U}%0d[th${io.writeback.bits.thread}%0d](${execMask(io.writeback.bits.thread)}%b) = ${io.writeback.bits.value}\n")
+      }
+    }
+
     when (destReg(6, 5) === 0.U) {
       // 0-31: scalar general purpose registers
       scalarRegisters.write(gprIndex, io.writeback.bits.value(0))

@@ -279,9 +279,12 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     if (shouldBranch) {
       dut.io.rollback.valid.expect(true.B)
       dut.io.rollback.bits.thread.expect(1.U)
-      dut.io.rollback.bits.target.expect((0x100 + offset).U)
+      dut.io.rollback.bits.pc.expect((0x100 + 4 + (offset * 4)).U)
+      dut.io.squashThread.valid.expect(true.B)
+      dut.io.squashThread.bits.expect(1.U)
     } else {
       dut.io.rollback.valid.expect(false.B)
+      dut.io.squashThread.valid.expect(false.B)
     }
   }
 
