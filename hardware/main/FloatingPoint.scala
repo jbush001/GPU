@@ -39,6 +39,8 @@ class Float32 extends Bundle {
   // This adds the leading hidden bit
   def fullFraction = (!this.isZero ## this.fraction).asUInt
 
+  def abs() = Float32(false.B, this.exponent, this.fraction)
+
   def absGreaterThan(that: Float32): Bool = {
     ((this.exponent > that.exponent)
       || ((this.exponent === that.exponent)

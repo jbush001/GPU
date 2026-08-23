@@ -87,6 +87,10 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 |   27    | j target                 | Unconditional jump          |   B    |
 |   28    | loadlo rd, index         | Load constant low           |   K    |
 |   29    | loadhi rd, index         | Load constant high          |   K    |
+|   30    | fmin                     | Floating point minimum val  |   R    |
+|   31    | fmax                     | Floating point max value    |   R    |
+|   32    | fabs                     | Floating point absolute val |   R    |
+
 
 * `branch offset` relative signed offset to jump based on stack operation.
   When the branch is taken, this is multiplied by four and added to the

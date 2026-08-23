@@ -309,6 +309,21 @@ class TestEmulator(unittest.TestCase):
             init_regs={64 + 3: [0x11111111, 0x22222222, 0x33333333, 0x44444444, 0x55555555, 0x66666666, 0x77777777, 0x88888888]},
             final_regs={64 + 3: [0xabcd1111, 0xabcd2222, 0xabcd3333, 0xabcd4444, 0xabcd5555, 0xabcd6666, 0xabcd7777, 0xabcd8888]})
 
+    def test_fmin(self):
+        self.run_test([make_r(30, 2, 3, 4)],
+                      init_regs={3: 0x402df8a1, 4: 0x40490e56}, # 2.7183, 3.1415
+                      final_regs={2: 0x402df8a1})  # 2.7183
+
+    def test_fmax(self):
+        self.run_test([make_r(31, 2, 3, 4)],
+                      init_regs={3: 0x402df8a1, 4: 0x40490e56}, # 2.7183, 3.1415
+                      final_regs={2: 0x40490e56})  # 3.1415
+
+    def test_fabs(self):
+        self.run_test([make_r(32, 2, 3, 0)],
+                      init_regs={3: 0xc02df8a1}, # -2.7183
+                      final_regs={2: 0x402df8a1})  # 2.7183
+
     def test_uniform_read(self):
         cpu = emulate.Emulator()
         cpu.uniforms[:] = [11, 22, 33, 44, 55, 66, 77, 88]

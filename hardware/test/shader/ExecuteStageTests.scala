@@ -135,7 +135,14 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
         (OpCode.Asr, 0x8000_0000L, 1, 0xC000_0000L),
         (OpCode.Lsr, 0x8000_0000L, 1, 0x4000_0000L),
         (OpCode.Ftoi, floatToRawBits(3.5f), 0, 3),
-        (OpCode.Itof, 3, 0, floatToRawBits(3.0f))
+        (OpCode.Itof, 3, 0, floatToRawBits(3.0f)),
+        (OpCode.Fmin, floatToRawBits(3.5f), floatToRawBits(2.5f), floatToRawBits(2.5f)),
+        (OpCode.Fmin, floatToRawBits(2.5f), floatToRawBits(3.5f), floatToRawBits(2.5f)),
+        (OpCode.Fmin, floatToRawBits(-3.5f), floatToRawBits(2.5f), floatToRawBits(-3.5f)),
+        (OpCode.Fmax, floatToRawBits(3.5f), floatToRawBits(2.5f), floatToRawBits(3.5f)),
+        (OpCode.Fmax, floatToRawBits(2.5f), floatToRawBits(3.5f), floatToRawBits(3.5f)),
+        (OpCode.Fmax, floatToRawBits(-3.5f), floatToRawBits(2.5f), floatToRawBits(2.5f)),
+        (OpCode.Fabs, floatToRawBits(-3.5f), 0, floatToRawBits(3.5f))
       )
 
       for (cycle <- 0 until testVectors.length + execLatency) {

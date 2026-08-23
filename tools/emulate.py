@@ -104,6 +104,9 @@ INSTR_TABLE = {
     27: (FMT_BRANCH, lambda _: True), # j
     28: (FMT_K,      lambda a, b: (a & 0xffff0000) | b), # loadlo
     29: (FMT_K,      lambda a, b: (a & 0x0000ffff) | (b << 16)), # loadhi
+    30: (FMT_RRR,    lambda a, b: reinterp_f2u(min(reinterp_u2f(a), reinterp_u2f(b)))), # fmin
+    31: (FMT_RRR,    lambda a, b: reinterp_f2u(max(reinterp_u2f(a), reinterp_u2f(b)))), # fmax
+    32: (FMT_RR,     lambda a: reinterp_f2u(abs(reinterp_u2f(a)))), # fabs
 }
 
 CONST_REGS = {

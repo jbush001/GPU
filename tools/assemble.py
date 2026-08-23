@@ -59,6 +59,9 @@ INSTRS = {
     'bnz':    (25, FMT_COND_BRANCH,   False),
     'bz':     (26, FMT_COND_BRANCH,   False),
     'j':      (27, FMT_UNCOND_BRANCH, False),
+    'fmin':   (30, FMT_RRR,           False),
+    'fmax':   (31, FMT_RRR,           False),
+    'fabs':   (32, FMT_RR,            False),
 }
 
 BUILTIN_REGISTERS = {

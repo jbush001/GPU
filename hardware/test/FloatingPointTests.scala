@@ -337,4 +337,37 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
       }
     }
   }
+
+  test("Float32 abs") {
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val a = Input(UInt(32.W))
+        val result = Output(UInt(32.W))
+      })
+
+      io.result := io.a.asTypeOf(Float32()).abs().raw
+    }) { dut =>
+      val testVectors = Seq(
+        (-1.0f, 1.0f),
+        (1.0f, 1.0f),
+        (-1234.56f, 1234.56f),
+        (1234.56f, 1234.56f),
+        (-0.0f, 0.0f),
+        (0.0f, 0.0f),
+        (Float.NaN, Float.NaN),
+        (Float.PositiveInfinity, Float.PositiveInfinity),
+        (Float.NegativeInfinity, Float.PositiveInfinity)
+      )
+
+      for ((a, expected) <- testVectors) {
+        dut.io.a.poke(floatToRawBits(a).U)
+        dut.clock.step()
+        val actual = dut.io.result.peek().litValue.toLong & 0xffffffffL
+        if (math.abs(floatToRawBits(expected) - actual) > 1) {
+          println(f"mismatch: abs($a%.3f), expected $expected actual ${java.lang.Float.intBitsToFloat(dut.io.result.peek().litValue.toInt)} (0x${dut.io.result.peek().litValue.toInt}%08x)")
+          fail()
+        }
+      }
+    }
+  }
 }

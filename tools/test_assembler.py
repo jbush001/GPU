@@ -106,6 +106,8 @@ class TestAssemblerConstants(unittest.TestCase):
             addf r28, r29, r30
             subf r31, r32, r33
             mulf r34, r35, r36
+            fmin r37, r38, r39
+            fmax r40, r41, r42
         ''')
         self.assertEqual(asm.code, [
             make_r(1, 1, 2, 3),
@@ -121,6 +123,8 @@ class TestAssemblerConstants(unittest.TestCase):
             make_r(11, 28, 29, 30),
             make_r(12, 31, 32, 33),
             make_r(13, 34, 35, 36),
+            make_r(30, 37, 38, 39),
+            make_r(31, 40, 41, 42)
         ])
 
     def test_rr(self):
@@ -129,11 +133,13 @@ class TestAssemblerConstants(unittest.TestCase):
             recip r2, r3
             ftoi r4, r5
             itof r6, r7
+            fabs r8, r9
         ''')
         self.assertEqual(asm.code, [
             make_r(14, 2, 3, 0),
             make_r(15, 4, 5, 0),
             make_r(16, 6, 7, 0),
+            make_r(32, 8, 9, 0)
         ])
 
     def test_branch(self):

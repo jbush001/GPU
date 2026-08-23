@@ -64,6 +64,9 @@ object OpCode extends ChiselEnum {
   val Jump = Value(27.U)
   val LoadLo = Value(28.U)
   val LoadHi = Value(29.U)
+  val Fmin = Value(30.U)
+  val Fmax = Value(31.U)
+  val Fabs = Value(32.U)
 
   // Force width to 7 bits to match instruction encoding.
   @nowarn("msg=never used")
@@ -173,7 +176,10 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       OpCode.Seteq -> true.B,
       OpCode.Setne -> true.B,
       OpCode.LoadLo -> true.B,
-      OpCode.LoadHi -> true.B
+      OpCode.LoadHi -> true.B,
+      OpCode.Fmin -> true.B,
+      OpCode.Fmax -> true.B,
+      OpCode.Fabs -> true.B
     )
   )
 
