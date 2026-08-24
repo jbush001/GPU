@@ -60,7 +60,7 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
 
     // Each bit corresponds to a hardware thread that should
     // be woken up because its cache miss has been filled.
-    val wakeThreadBitmap = Output(UInt(cfg.shaderThreads.W))
+    val wakeThreads = Output(UInt(cfg.shaderThreads.W))
   })
 
   // There is one pending miss entry per hardware thread, but if a thread misses
@@ -114,14 +114,14 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   io.readPort.burst.bits.length := cacheLineBeats.U
   io.readPort.data.ready := true.B
 
-  io.wakeThreadBitmap := 0.U
+  io.wakeThreads := 0.U
   io.updateCache.valid := false.B
   when (burstActive && io.readPort.data.valid) {
     io.updateCache.valid := true.B
     when (burstCounter === (cacheLineBeats - 1).U) {
       // Burst complete
       burstActive := false.B
-      io.wakeThreadBitmap := pendingMisses(burstThread).waitingThreadBitmap
+      io.wakeThreads := pendingMisses(burstThread).waitingThreadBitmap
       pendingMisses(burstThread).valid := false.B
     }.otherwise {
       burstCounter := burstCounter + 1.U
@@ -141,9 +141,9 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     io.readPort.burst.valid := true.B
   }
 
-  // Invariant 1: if a cache line update is complete, wakeThreadBitmap must be non-zero.
-  assert(!(io.updateCache.valid && io.updateCache.bits.last) || io.wakeThreadBitmap.orR,
-    "updateCache is valid but wakeThreadBitmap is zero")
+  // Invariant 1: if a cache line update is complete, wakeThreads must be non-zero.
+  assert(!(io.updateCache.valid && io.updateCache.bits.last) || io.wakeThreads.orR,
+    "updateCache is valid but wakeThreads is zero")
 
   // Invariant 2: if updateCache.valid is true, then burstActive must also be true
   assert(!io.updateCache.valid || burstActive,

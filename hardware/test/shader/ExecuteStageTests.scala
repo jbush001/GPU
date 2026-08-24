@@ -33,17 +33,17 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   // result only shows up in the proper cycle.
   test("ExecuteStage fp multiply") {
     simulate(new ExecuteStage) { dut =>
-      dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.meta.opcode.poke(OpCode.Mulf)
-      dut.io.in.bits.meta.thread.poke(1.U)
-      dut.io.in.bits.meta.destReg.poke(7.U)
-      dut.io.in.bits.meta.hasWriteback.poke(true.B)
-      dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
-      dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
+      dut.io.decodedInstruction.valid.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Mulf)
+      dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+      dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
+      dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+      dut.io.decodedInstruction.bits.operand1(0).poke(floatToRawBits(6.0f).U)
+      dut.io.decodedInstruction.bits.operand2(0).poke(floatToRawBits(2.5f).U)
       dut.clock.step()
-      dut.io.in.bits.operand1(0).poke(0.U)
-      dut.io.in.bits.operand2(0).poke(0.U)
-      dut.io.in.valid.poke(false.B)
+      dut.io.decodedInstruction.bits.operand1(0).poke(0.U)
+      dut.io.decodedInstruction.bits.operand2(0).poke(0.U)
+      dut.io.decodedInstruction.valid.poke(false.B)
       dut.io.writeback.valid.expect(false.B)
       dut.clock.step()
       dut.io.writeback.valid.expect(false.B)
@@ -59,17 +59,17 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
   test("ExecuteStage fp add") {
     simulate(new ExecuteStage) { dut =>
-      dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.meta.opcode.poke(OpCode.Addf)
-      dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
-      dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
-      dut.io.in.bits.meta.thread.poke(1.U)
-      dut.io.in.bits.meta.destReg.poke(7.U)
-      dut.io.in.bits.meta.hasWriteback.poke(true.B)
+      dut.io.decodedInstruction.valid.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Addf)
+      dut.io.decodedInstruction.bits.operand1(0).poke(floatToRawBits(6.0f).U)
+      dut.io.decodedInstruction.bits.operand2(0).poke(floatToRawBits(2.5f).U)
+      dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+      dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
+      dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
       dut.clock.step()
-      dut.io.in.bits.operand1(0).poke(0.U)
-      dut.io.in.bits.operand2(0).poke(0.U)
-      dut.io.in.valid.poke(false.B)
+      dut.io.decodedInstruction.bits.operand1(0).poke(0.U)
+      dut.io.decodedInstruction.bits.operand2(0).poke(0.U)
+      dut.io.decodedInstruction.valid.poke(false.B)
       dut.io.writeback.valid.expect(false.B)
       dut.clock.step()
       dut.io.writeback.valid.expect(false.B)
@@ -86,13 +86,13 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   // Subtract just sets a flag on the add pipeline. Ensure this is handled properly.
   test("ExecuteStage fp subtract") {
     simulate(new ExecuteStage) { dut =>
-      dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.meta.opcode.poke(OpCode.Subf)
-      dut.io.in.bits.meta.thread.poke(1.U)
-      dut.io.in.bits.meta.destReg.poke(7.U)
-      dut.io.in.bits.meta.hasWriteback.poke(true.B)
-      dut.io.in.bits.operand1(0).poke(floatToRawBits(6.0f).U)
-      dut.io.in.bits.operand2(0).poke(floatToRawBits(2.5f).U)
+      dut.io.decodedInstruction.valid.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Subf)
+      dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+      dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
+      dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+      dut.io.decodedInstruction.bits.operand1(0).poke(floatToRawBits(6.0f).U)
+      dut.io.decodedInstruction.bits.operand2(0).poke(floatToRawBits(2.5f).U)
       dut.clock.step(3)
       dut.io.writeback.valid.expect(true.B)
       dut.io.writeback.bits.value(0).expect(floatToRawBits(3.5f).U) // 6.0 - 2.5
@@ -103,13 +103,13 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
   test("ExecuteStage reciprocal") {
     simulate(new ExecuteStage) { dut =>
-      dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.meta.opcode.poke(OpCode.Recip)
-      dut.io.in.bits.meta.thread.poke(1.U)
-      dut.io.in.bits.meta.destReg.poke(7.U)
-      dut.io.in.bits.meta.hasWriteback.poke(true.B)
-      dut.io.in.bits.operand1(0).poke(floatToRawBits(8.0f).U)
-      dut.io.in.bits.operand1(7).poke(floatToRawBits(0.25f).U)
+      dut.io.decodedInstruction.valid.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Recip)
+      dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+      dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
+      dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+      dut.io.decodedInstruction.bits.operand1(0).poke(floatToRawBits(8.0f).U)
+      dut.io.decodedInstruction.bits.operand1(7).poke(floatToRawBits(0.25f).U)
       dut.clock.step(3)
       dut.io.writeback.valid.expect(true.B)
       dut.io.writeback.bits.value(0).expect(floatToRawBits(0.125f).U)
@@ -149,17 +149,17 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
       for (cycle <- 0 until testVectors.length + execLatency) {
         if (cycle < testVectors.length) {
           val (opcode, op1, op2, expected) = testVectors(cycle)
-          dut.io.in.valid.poke(true.B)
-          dut.io.in.bits.meta.thread.poke(1.U)
-          dut.io.in.bits.meta.destReg.poke(7.U)
-          dut.io.in.bits.meta.hasWriteback.poke(true.B)
-          dut.io.in.bits.meta.opcode.poke(opcode)
+          dut.io.decodedInstruction.valid.poke(true.B)
+          dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+          dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
+          dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+          dut.io.decodedInstruction.bits.meta.opcode.poke(opcode)
           for (lane <- 0 until dut.cfg.shaderVectorLanes) {
-            dut.io.in.bits.operand1(lane).poke((op1 & 0xffffffffL).U)
-            dut.io.in.bits.operand2(lane).poke((op2 & 0xffffffffL).U)
+            dut.io.decodedInstruction.bits.operand1(lane).poke((op1 & 0xffffffffL).U)
+            dut.io.decodedInstruction.bits.operand2(lane).poke((op2 & 0xffffffffL).U)
           }
         } else {
-          dut.io.in.valid.poke(false.B)
+          dut.io.decodedInstruction.valid.poke(false.B)
         }
 
         if (cycle >= execLatency) {
@@ -185,20 +185,20 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
   test("ExecuteStage loadconst") {
     simulate(new ExecuteStage) { dut =>
-      dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.meta.opcode.poke(OpCode.LoadLo)
-      dut.io.in.bits.meta.thread.poke(1.U)
-      dut.io.in.bits.meta.destReg.poke(7.U)
-      dut.io.in.bits.meta.hasWriteback.poke(true.B)
-      dut.io.in.bits.meta.immediateValue.poke(0x1234.U)
-      dut.io.in.bits.operand1(0).poke(0x56780000.U)
+      dut.io.decodedInstruction.valid.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.LoadLo)
+      dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+      dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
+      dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.immediateValue.poke(0x1234.U)
+      dut.io.decodedInstruction.bits.operand1(0).poke(0x56780000.U)
       dut.clock.step(3)
       dut.io.writeback.valid.expect(true.B)
       dut.io.writeback.bits.value(0).expect(0x56781234.U)
 
-      dut.io.in.bits.meta.opcode.poke(OpCode.LoadHi)
-      dut.io.in.bits.meta.immediateValue.poke(0x1234.U)
-      dut.io.in.bits.operand1(0).poke(0x00005678.U)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.LoadHi)
+      dut.io.decodedInstruction.bits.meta.immediateValue.poke(0x1234.U)
+      dut.io.decodedInstruction.bits.operand1(0).poke(0x00005678.U)
       dut.clock.step(3)
       dut.io.writeback.valid.expect(true.B)
       dut.io.writeback.bits.value(0).expect(0x12345678.U)
@@ -227,17 +227,17 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
       for (cycle <- 0 until testVectors.length + execLatency) {
         if (cycle < testVectors.length) {
           val (opcode, op1, op2, expected) = testVectors(cycle)
-          dut.io.in.valid.poke(true.B)
-          dut.io.in.bits.meta.opcode.poke(opcode)
-          dut.io.in.bits.meta.hasWriteback.poke(true.B)
-          dut.io.in.bits.meta.thread.poke(1.U)
-          dut.io.in.bits.meta.destReg.poke(7.U)
+          dut.io.decodedInstruction.valid.poke(true.B)
+          dut.io.decodedInstruction.bits.meta.opcode.poke(opcode)
+          dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+          dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+          dut.io.decodedInstruction.bits.meta.destReg.poke(7.U)
           for (lane <- 0 until dut.cfg.shaderVectorLanes) {
-            dut.io.in.bits.operand1(lane).poke((op1 & 0xffffffffL).U)
-            dut.io.in.bits.operand2(lane).poke((op2 & 0xffffffffL).U)
+            dut.io.decodedInstruction.bits.operand1(lane).poke((op1 & 0xffffffffL).U)
+            dut.io.decodedInstruction.bits.operand2(lane).poke((op2 & 0xffffffffL).U)
           }
         } else {
-          dut.io.in.valid.poke(false.B)
+          dut.io.decodedInstruction.valid.poke(false.B)
         }
 
         if (cycle >= execLatency) {
@@ -261,38 +261,38 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
   test("ExecuteStage halt") {
     simulate(new ExecuteStage) { dut =>
-      dut.io.in.valid.poke(true.B)
-      dut.io.in.bits.meta.opcode.poke(OpCode.Halt)
-      dut.io.in.bits.meta.thread.poke(1.U)
-      dut.io.in.bits.meta.hasWriteback.poke(true.B)
-      dut.io.haltRequest.valid.expect(false.B)
+      dut.io.decodedInstruction.valid.poke(true.B)
+      dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Halt)
+      dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+      dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
+      dut.io.halt.valid.expect(false.B)
       dut.clock.step(3)
-      dut.io.haltRequest.valid.expect(true.B)
-      dut.io.haltRequest.bits.expect(1.U)
+      dut.io.halt.valid.expect(true.B)
+      dut.io.halt.bits.expect(1.U)
     }
   }
 
   def testBranch(dut: ExecuteStage, opcode: OpCode.Type, operand1: Long, offset: Long, shouldBranch: Boolean): Unit = {
-    dut.io.in.valid.poke(true.B)
-    dut.io.in.bits.meta.opcode.poke(opcode)
-    dut.io.in.bits.meta.thread.poke(1.U)
-    dut.io.in.bits.meta.pc.poke(0x100.U)
-    dut.io.in.bits.meta.immediateValue.poke((offset & 0x7ffff).U)
-    dut.io.in.bits.meta.hasWriteback.poke(false.B)
-    dut.io.in.bits.operand1(0).poke(operand1.U)
+    dut.io.decodedInstruction.valid.poke(true.B)
+    dut.io.decodedInstruction.bits.meta.opcode.poke(opcode)
+    dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
+    dut.io.decodedInstruction.bits.meta.pc.poke(0x100.U)
+    dut.io.decodedInstruction.bits.meta.immediateValue.poke((offset & 0x7ffff).U)
+    dut.io.decodedInstruction.bits.meta.hasWriteback.poke(false.B)
+    dut.io.decodedInstruction.bits.operand1(0).poke(operand1.U)
     dut.clock.step()
-    dut.io.in.valid.poke(false.B)
+    dut.io.decodedInstruction.valid.poke(false.B)
     dut.clock.step(2)
 
     if (shouldBranch) {
       dut.io.rollback.valid.expect(true.B)
       dut.io.rollback.bits.thread.expect(1.U)
       dut.io.rollback.bits.pc.expect((0x100 + 4 + (offset * 4)).U)
-      dut.io.squashThread.valid.expect(true.B)
-      dut.io.squashThread.bits.expect(1.U)
+      dut.io.squash.valid.expect(true.B)
+      dut.io.squash.bits.expect(1.U)
     } else {
       dut.io.rollback.valid.expect(false.B)
-      dut.io.squashThread.valid.expect(false.B)
+      dut.io.squash.valid.expect(false.B)
     }
   }
 

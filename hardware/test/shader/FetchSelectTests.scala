@@ -172,9 +172,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Resume Thread
-      dut.io.wakeThreadBitmap.poke((1 << allocatedThread.toInt).U)
+      dut.io.wakeThreads.poke((1 << allocatedThread.toInt).U)
       dut.clock.step()
-      dut.io.wakeThreadBitmap.poke(0.U)
+      dut.io.wakeThreads.poke(0.U)
 
       // Should resume issuing from the prior location.
       for (i <- 7 until 12) {
@@ -253,10 +253,10 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Halt Thread
-      dut.io.haltRequest.valid.poke(true.B)
-      dut.io.haltRequest.bits.poke(allocatedThread.U)
+      dut.io.halt.valid.poke(true.B)
+      dut.io.halt.bits.poke(allocatedThread.U)
       dut.clock.step()
-      dut.io.haltRequest.valid.poke(false.B)
+      dut.io.halt.valid.poke(false.B)
 
       // Thread should no longer issue
       for (_ <- 0 until 3) {
@@ -307,10 +307,10 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Halt one of the threads
       val threadToHalt = allocatedThreads.head
-      dut.io.haltRequest.valid.poke(true.B)
-      dut.io.haltRequest.bits.poke(threadToHalt.U)
+      dut.io.halt.valid.poke(true.B)
+      dut.io.halt.bits.poke(threadToHalt.U)
       dut.clock.step()
-      dut.io.haltRequest.valid.poke(false.B)
+      dut.io.halt.valid.poke(false.B)
 
       // Ensure the halted thread does not issue anymore, but others continue
       for (_ <- 0 until 8) {
@@ -348,9 +348,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Resume the stalled thread
-      dut.io.wakeThreadBitmap.poke((1 << stalledThread).U)
+      dut.io.wakeThreads.poke((1 << stalledThread).U)
       dut.clock.step()
-      dut.io.wakeThreadBitmap.poke(0.U)
+      dut.io.wakeThreads.poke(0.U)
 
       // Ensure the previously stalled thread can now issue again
       var foundStalledThread = false

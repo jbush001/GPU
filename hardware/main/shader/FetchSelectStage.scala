@@ -44,11 +44,11 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     val fetchRequest = Valid(new FetchRequest)
 
     // From ExecuteStage.
-    val haltRequest = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val halt = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
     // From ICacheFillUnit. Wake up threads that were stalled on an
     // instruction cache miss.
-    val wakeThreadBitmap = Input(UInt(cfg.shaderThreads.W))
+    val wakeThreads = Input(UInt(cfg.shaderThreads.W))
 
     // From InstructionFetchStage. Indicate that a thread is stalled on an
     // instruction cache miss.
@@ -85,24 +85,24 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   io.startParams := io.startJob.bits.params
   io.resetThread.bits := nextFreeThread
 
-  when (io.haltRequest.valid) {
-    assert(!threadHalted(io.haltRequest.bits), "Cannot halt a thread that is already halted")
-    threadHalted(io.haltRequest.bits) := true.B
+  when (io.halt.valid) {
+    assert(!threadHalted(io.halt.bits), "Cannot halt a thread that is already halted")
+    threadHalted(io.halt.bits) := true.B
   }
 
   // This handles stalling threads that are waiting on instruction cache misses.
   for (thid <- 0 until cfg.shaderThreads) {
-    assert(!(io.wakeThreadBitmap(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot wake and stall a thread at the same time")
+    assert(!(io.wakeThreads(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot wake and stall a thread at the same time")
     assert(!(threadStalled(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot stall a thread that is already stalled")
-    assert(threadStalled(thid) || !io.wakeThreadBitmap(thid), "Cannot wake a thread that is not stalled")
+    assert(threadStalled(thid) || !io.wakeThreads(thid), "Cannot wake a thread that is not stalled")
     assert(!threadHalted(thid) || !(io.icacheMiss && io.icacheMissThread === thid.U), "Cannot stall a thread that is halted")
 
     // TODO There is actually an edge case where this can happen: if an instruction cache miss occurs
     // while fetching the next instruction and a previously fetched instruction is HALT, the
     // wakeup can occur later. Need to handle this case explicitly.
-    assert(!threadHalted(thid) || !io.wakeThreadBitmap(thid), "Cannot wake a thread that is halted")
+    assert(!threadHalted(thid) || !io.wakeThreads(thid), "Cannot wake a thread that is halted")
 
-    when (io.wakeThreadBitmap(thid)) {
+    when (io.wakeThreads(thid)) {
       threadStalled(thid) := false.B
     }
 
@@ -151,7 +151,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
   threadIssueArbiter.io.out.ready := true.B
 
-  io.fetchRequest.valid := threadIssueArbiter.io.out.valid && !(io.haltRequest.valid && io.haltRequest.bits === threadIssueArbiter.io.chosen)
+  io.fetchRequest.valid := threadIssueArbiter.io.out.valid && !(io.halt.valid && io.halt.bits === threadIssueArbiter.io.chosen)
   io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
   io.fetchRequest.bits.pc.raw := programCounters(threadIssueArbiter.io.chosen)
 

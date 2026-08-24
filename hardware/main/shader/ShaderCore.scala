@@ -42,7 +42,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
     }))
 
     // A bit of a debug hack for now
-    val outputResult = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
   })
 
   val icacheFillUnit = Module(new ICacheFillUnit)
@@ -56,21 +56,21 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   fetchSelectStage.io.startJob <> io.startJob
   fetchSelectStage.io.resetThread <> instructionDecodeStage.io.resetThread
   fetchSelectStage.io.fetchRequest <> instructionFetchStage.io.fetchRequest
-  fetchSelectStage.io.wakeThreadBitmap := icacheFillUnit.io.wakeThreadBitmap
-  fetchSelectStage.io.icacheMiss := instructionFetchStage.io.miss
-  fetchSelectStage.io.icacheNearMiss := instructionFetchStage.io.nearMiss
-  fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.missThread
-  fetchSelectStage.io.haltRequest <> executeStage.io.haltRequest
+  fetchSelectStage.io.wakeThreads := icacheFillUnit.io.wakeThreads
+  fetchSelectStage.io.icacheMiss := instructionFetchStage.io.icacheMiss
+  fetchSelectStage.io.icacheNearMiss := instructionFetchStage.io.icacheNearMiss
+  fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.icacheMissThread
+  fetchSelectStage.io.halt <> executeStage.io.halt
   fetchSelectStage.io.rollback <> executeStage.io.rollback
 
   instructionFetchStage.io.fillRequest <> icacheFillUnit.io.fillRequest
   instructionFetchStage.io.updateCache <> icacheFillUnit.io.updateCache
-  instructionFetchStage.io.output <> instructionDecodeStage.io.input
-  instructionFetchStage.io.squashThread <> executeStage.io.squashThread
+  instructionFetchStage.io.fetchedInstruction <> instructionDecodeStage.io.fetchedInstruction
+  instructionFetchStage.io.squash <> executeStage.io.squash
 
-  instructionDecodeStage.io.output <> executeStage.io.in
+  instructionDecodeStage.io.decodedInstruction <> executeStage.io.decodedInstruction
   instructionDecodeStage.io.startParams := fetchSelectStage.io.startParams
-  io.outputResult := instructionDecodeStage.io.outputResult
+  io.result := instructionDecodeStage.io.result
 
   executeStage.io.writeback <> instructionDecodeStage.io.writeback
 

@@ -56,7 +56,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
             if (offset == cfg.cacheLineSizeBytes / (cfg.busDataBits / 8) - 1) {
               dut.io.updateCache.bits.last.expect(true.B,
                 "Cache update done should be asserted when the last beat is received")
-              dut.io.wakeThreadBitmap.expect(4.U,
+              dut.io.wakeThreads.expect(4.U,
                 "Wake thread bitmap should indicate the waiting thread")
             } else {
               dut.io.updateCache.bits.last.expect(false.B,
@@ -73,7 +73,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
       for (_ <- 0 until 5) {
         dut.clock.step(1)
-        dut.io.wakeThreadBitmap.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
+        dut.io.wakeThreads.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
         dut.io.updateCache.valid.expect(false.B, "Cache update should be deasserted after one cycle")
         dut.io.readPort.burst.valid.expect(false.B, "Should not request burst from memory")
       }
@@ -115,7 +115,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
             if (offset == cfg.cacheLineSizeBytes / (cfg.busDataBits / 8) - 1) {
               dut.io.updateCache.bits.last.expect(true.B,
                 "Cache update done should be asserted when the last beat is received")
-              dut.io.wakeThreadBitmap.expect(6.U,
+              dut.io.wakeThreads.expect(6.U,
                 "Wake thread bitmap should indicate the waiting thread")
             } else {
               dut.io.updateCache.bits.last.expect(false.B,
@@ -132,7 +132,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
       for (_ <- 0 until 5) {
         dut.clock.step(1)
-        dut.io.wakeThreadBitmap.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
+        dut.io.wakeThreads.expect(0.U, "Wake thread bitmap should be cleared after waking threads")
         dut.io.updateCache.valid.expect(false.B, "Cache update should be deasserted after one cycle")
         dut.io.readPort.burst.valid.expect(false.B, "Should not request burst from memory")
       }
@@ -148,14 +148,14 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
         val dap = new DirectAccessPort
         val fillRequest = Flipped(Valid(new CacheFillRequest))
         val updateCache = Output(Valid(new CacheUpdateRequest))
-        val wakeThreadBitmap = Output(UInt(cfg.shaderThreads.W))
+        val wakeThreads = Output(UInt(cfg.shaderThreads.W))
       })
 
       val icacheFill = Module(new ICacheFillUnit())
       icacheFill.io.fillRequest := io.fillRequest
 
       io.updateCache := icacheFill.io.updateCache
-      io.wakeThreadBitmap := icacheFill.io.wakeThreadBitmap
+      io.wakeThreads := icacheFill.io.wakeThreads
 
       val arbiter = Module(new MemoryArbiter(numReadPorts = 1, numWritePorts = 1))
       arbiter.io.readPorts(0) <> icacheFill.io.readPort
@@ -218,7 +218,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
           assert(data == expectedData, s"Data mismatch at address $address: expected $expectedData, got $data")
         }
 
-        val wakeBitmap = dut.io.wakeThreadBitmap.peek().litValue.toInt
+        val wakeBitmap = dut.io.wakeThreads.peek().litValue.toInt
         if (wakeBitmap != 0) {
           for (thread <- 0 until cfg.shaderThreads) {
             if ((wakeBitmap & (1 << thread)) != 0) {

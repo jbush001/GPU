@@ -27,8 +27,11 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
   def simulateCacheMiss(dut: InstructionFetchStage, address: Long): Unit = {
     dut.io.fetchRequest.valid.poke(true.B)
     dut.io.fetchRequest.bits.pc.raw.poke(address.U)
-    dut.io.fetchRequest.bits.thread.poke(0.U)
+    dut.io.fetchRequest.bits.thread.poke(1.U)
     dut.clock.step(2)
+    dut.io.icacheMiss.expect(true.B)
+    dut.io.icacheNearMiss.expect(false.B)
+    dut.io.icacheMissThread.expect(1.U)
     dut.io.fillRequest.valid.expect(true.B)
     dut.io.fillRequest.bits.address.raw.expect(address.U)
     dut.io.fetchRequest.valid.poke(false.B)
@@ -68,15 +71,17 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
         }
 
         if (cycle >= latency) {
-          dut.io.nearMiss.expect(false.B)
-          dut.io.output.valid.expect(true.B)
-          dut.io.output.bits.pc.expect((address + ((cycle - latency) * 4)).U)
-          dut.io.output.bits.thread.expect(1.U)
+          dut.io.icacheMiss.expect(false.B)
+          dut.io.icacheNearMiss.expect(false.B)
+          dut.io.icacheMissThread.expect(1.U)
+          dut.io.fetchedInstruction.valid.expect(true.B)
+          dut.io.fetchedInstruction.bits.pc.expect((address + ((cycle - latency) * 4)).U)
+          dut.io.fetchedInstruction.bits.thread.expect(1.U)
 
           // We're using a little endian convention, so this is the low 32 bits of the 64 bit bus value.
-          dut.io.output.bits.instruction.expect((1000 + (cycle - latency)).U(32.W))
+          dut.io.fetchedInstruction.bits.instruction.expect((1000 + (cycle - latency)).U(32.W))
         } else {
-          dut.io.output.valid.expect(false.B)
+          dut.io.fetchedInstruction.valid.expect(false.B)
         }
 
         dut.clock.step()
@@ -100,7 +105,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       // Cycle 7: fetch request enters pipeline, fill penultimate beat.
       dut.io.fetchRequest.valid.poke(true.B)
       dut.io.fetchRequest.bits.pc.raw.poke(address.U)
-      dut.io.fetchRequest.bits.thread.poke(0.U)
+      dut.io.fetchRequest.bits.thread.poke(1.U)
       dut.io.updateCache.bits.address.raw.poke((address + (6 * 8)).U)
       dut.clock.step()
 
@@ -111,8 +116,9 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       dut.io.updateCache.bits.last.poke(true.B)
       dut.clock.step()
 
-      dut.io.nearMiss.expect(true.B)
-      dut.io.output.valid.expect(false.B)
+      dut.io.icacheNearMiss.expect(true.B)
+      dut.io.icacheMissThread.expect(1.U)
+      dut.io.fetchedInstruction.valid.expect(false.B)
     }
   }
 
@@ -134,7 +140,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       // so we need a bypass to check this condition explicitly.
       dut.io.fetchRequest.valid.poke(true.B)
       dut.io.fetchRequest.bits.pc.raw.poke(address.U)
-      dut.io.fetchRequest.bits.thread.poke(0.U)
+      dut.io.fetchRequest.bits.thread.poke(1.U)
       dut.io.updateCache.bits.address.raw.poke((address + (7 * 8)).U)
       dut.io.updateCache.bits.data.poke(((7 + 1) * 0x100000002L).U)
       dut.io.updateCache.bits.last.poke(true.B)
@@ -143,11 +149,11 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       dut.io.updateCache.valid.poke(false.B)
       dut.clock.step()
 
-      dut.io.nearMiss.expect(false.B)
-      dut.io.output.valid.expect(true.B)
-      dut.io.output.bits.pc.expect(address.U)
-      dut.io.output.bits.instruction.expect(2.U)
-      dut.io.output.bits.thread.expect(0.U)
+      dut.io.icacheNearMiss.expect(false.B)
+      dut.io.fetchedInstruction.valid.expect(true.B)
+      dut.io.fetchedInstruction.bits.pc.expect(address.U)
+      dut.io.fetchedInstruction.bits.instruction.expect(2.U)
+      dut.io.fetchedInstruction.bits.thread.expect(1.U)
     }
   }
 
@@ -161,13 +167,12 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       // This maps to the same cache line, but the tag is different, so it should be a miss.
       dut.io.fetchRequest.valid.poke(true.B)
       dut.io.fetchRequest.bits.pc.raw.poke((address + cfg.cacheLineSizeBytes * cfg.icacheLines).U)
-      dut.io.fetchRequest.bits.thread.poke(0.U)
+      dut.io.fetchRequest.bits.thread.poke(1.U)
       dut.clock.step(2)
-      dut.io.nearMiss.expect(false.B)
-      dut.io.output.valid.expect(false.B)
+      dut.io.icacheNearMiss.expect(false.B)
+      dut.io.fetchedInstruction.valid.expect(false.B)
       dut.io.fillRequest.valid.expect(true.B)
       dut.io.fillRequest.bits.address.raw.expect((address + cfg.cacheLineSizeBytes * cfg.icacheLines).U)
     }
   }
 }
-

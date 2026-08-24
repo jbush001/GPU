@@ -96,10 +96,10 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
 class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // From InstructionFetchStage. Input instruction and PC.
-    val input = Flipped(Valid(new FetchResponse))
+    val fetchedInstruction = Flipped(Valid(new FetchedInstruction))
 
     // To ExecuteStage. Output instruction metadata and operands.
-    val output = Valid(new Bundle{
+    val decodedInstruction = Valid(new Bundle{
       val meta = new InstructionMetadata
       val operand1 = Vec(cfg.shaderVectorLanes, UInt(32.W))
       val operand2 = Vec(cfg.shaderVectorLanes, UInt(32.W))
@@ -113,7 +113,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val startParams = Input(new ShaderParams)
 
     // A bit of a debug hack for now
-    val outputResult = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
   })
 
   val numRegisters = 32
@@ -145,11 +145,11 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val decodedMetadata = Wire(new InstructionMetadata)
 
   // @todo the second parameter indicates if this maps cleanly to a known opcode.
-  val (decodedOpcode, _) = OpCode.safe(io.input.bits.instruction(6, 0))
+  val (decodedOpcode, _) = OpCode.safe(io.fetchedInstruction.bits.instruction(6, 0))
   decodedMetadata.opcode := decodedOpcode
-  decodedMetadata.pc := io.input.bits.pc
-  decodedMetadata.thread := io.input.bits.thread
-  decodedMetadata.destReg := io.input.bits.instruction(13, 7)
+  decodedMetadata.pc := io.fetchedInstruction.bits.pc
+  decodedMetadata.thread := io.fetchedInstruction.bits.thread
+  decodedMetadata.destReg := io.fetchedInstruction.bits.instruction(13, 7)
 
   decodedMetadata.hasWriteback := MuxLookup(decodedOpcode, false.B)(
     Seq(
@@ -185,10 +185,10 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   )
 
   when (decodedOpcode === OpCode.Bnz || decodedOpcode === OpCode.Bz || decodedOpcode === OpCode.Jump) {
-    decodedMetadata.immediateValue := Cat(io.input.bits.instruction(31, 20),
-      io.input.bits.instruction(13, 7))
+      decodedMetadata.immediateValue := Cat(io.fetchedInstruction.bits.instruction(31, 20),
+        io.fetchedInstruction.bits.instruction(13, 7))
   }.otherwise {
-    decodedMetadata.immediateValue := io.input.bits.instruction(31, 16).pad(19)
+    decodedMetadata.immediateValue := io.fetchedInstruction.bits.instruction(31, 16).pad(19)
   }
 
   object SpecialReg {
@@ -229,30 +229,30 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   def broadcast(v: UInt): Vec[UInt] = VecInit(Seq.fill(cfg.shaderVectorLanes)(v))
 
-  val operand1Reg = Mux(isLoadConst(io.input.bits.instruction),
-    io.input.bits.instruction(13, 7), // Dest reg is first operand for load const.
-    io.input.bits.instruction(20, 14)
+  val operand1Reg = Mux(isLoadConst(io.fetchedInstruction.bits.instruction),
+    io.fetchedInstruction.bits.instruction(13, 7), // Dest reg is first operand for load const.
+    io.fetchedInstruction.bits.instruction(20, 14)
   )
 
-  val operand2Reg = io.input.bits.instruction(27, 21)
+  val operand2Reg = io.fetchedInstruction.bits.instruction(27, 21)
 
-  val scalarRead1 = scalarRegisters.read(Cat(io.input.bits.thread, operand1Reg(4, 0)))
-  val scalarRead2 = scalarRegisters.read(Cat(io.input.bits.thread, operand2Reg(4, 0)))
-  val vectorRead1 = vectorRegisters.read(Cat(io.input.bits.thread, operand1Reg(4, 0)))
-  val vectorRead2 = vectorRegisters.read(Cat(io.input.bits.thread, operand2Reg(4, 0)))
+  val scalarRead1 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand1Reg(4, 0)))
+  val scalarRead2 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand2Reg(4, 0)))
+  val vectorRead1 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand1Reg(4, 0)))
+  val vectorRead2 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand2Reg(4, 0)))
 
   // Should not write and read the same register at the same time
   // (fetch select prevents this)
-  assert(!(io.writeback.valid && io.input.valid
+  assert(!(io.writeback.valid && io.fetchedInstruction.valid
     && (io.writeback.bits.destReg === operand1Reg
     || io.writeback.bits.destReg === operand2Reg)
-    && io.writeback.bits.thread === io.input.bits.thread),
+    && io.writeback.bits.thread === io.fetchedInstruction.bits.thread),
     "Cannot read and write the same register at the same time")
 
   val operand1RegCycle2 = RegNext(operand1Reg)
   val operand2RegCycle2 = RegNext(operand2Reg)
-  val validCycle2 = RegNext(io.input.valid, init = false.B)
-  val threadStage2 = RegNext(io.input.bits.thread)
+  val validCycle2 = RegNext(io.fetchedInstruction.valid, init = false.B)
+  val threadStage2 = RegNext(io.fetchedInstruction.bits.thread)
 
   def resolveOperand(regId: UInt, scalarData: UInt, vectorData: Vec[UInt]): Vec[UInt] = {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
@@ -288,11 +288,11 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     result
   }
 
-  io.output.bits.operand1 := resolveOperand(operand1RegCycle2, scalarRead1, vectorRead1)
-  io.output.bits.operand2 := resolveOperand(operand2RegCycle2, scalarRead2, vectorRead2)
+  io.decodedInstruction.bits.operand1 := resolveOperand(operand1RegCycle2, scalarRead1, vectorRead1)
+  io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegCycle2, scalarRead2, vectorRead2)
 
-  io.outputResult.valid := false.B
-  io.outputResult.bits := DontCare
+  io.result.valid := false.B
+  io.result.bits := DontCare
   when (io.writeback.valid) {
     val destReg = io.writeback.bits.destReg
     val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))
@@ -319,8 +319,8 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
         }
 
         is(SpecialReg.StorePixelRed) {
-          io.outputResult.bits := io.writeback.bits.value
-          io.outputResult.valid := true.B
+          io.result.bits := io.writeback.bits.value
+          io.result.valid := true.B
         }
         is(SpecialReg.StorePixelGreen) { /* TODO... */ }
         is(SpecialReg.StorePixelBlue)  { /* TODO... */ }
@@ -330,6 +330,6 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     }
   }
 
-  io.output.valid := validCycle2
-  io.output.bits.meta := RegNext(decodedMetadata)
+  io.decodedInstruction.valid := validCycle2
+  io.decodedInstruction.bits.meta := RegNext(decodedMetadata)
 }

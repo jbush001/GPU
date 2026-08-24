@@ -25,7 +25,7 @@ class FetchRequest(implicit val cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
 }
 
-class FetchResponse(implicit val cfg: GpuConfig) extends Bundle {
+class FetchedInstruction(implicit val cfg: GpuConfig) extends Bundle {
   val instruction = UInt(32.W)
   val pc = UInt(cfg.busAddressBits.W)
   val thread = UInt(log2Up(cfg.shaderThreads).W)
@@ -48,7 +48,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     val fetchRequest = Input(Valid(new FetchRequest))
 
     // To ThreadDecodeStage. Return instruction if it is a hit.
-    val output = Valid(new FetchResponse)
+    val fetchedInstruction = Valid(new FetchedInstruction)
 
     // To ICacheFillUnit, request a cache line fill when a miss occurs.
     val fillRequest = Valid(new CacheFillRequest)
@@ -58,13 +58,13 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
 
     // To FetchSelectStage. Indicate that a thread is stalled on an instruction
     // (or needs a retry)
-    val miss = Output(Bool())
-    val nearMiss = Output(Bool())
-    val missThread = Output(UInt(log2Up(cfg.shaderThreads).W))
+    val icacheMiss = Output(Bool())
+    val icacheNearMiss = Output(Bool())
+    val icacheMissThread = Output(UInt(log2Up(cfg.shaderThreads).W)) // Set for miss and near miss
 
     // From ExecuteStage. Indicate that a thread should be squashed due to a branch or
     // other control flow change.
-    val squashThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val squash = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
   })
 
   ///////////////////////////////////////////////////////////
@@ -85,7 +85,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////
   val instructionMemory = SyncReadMem(cfg.icacheLines * (cfg.cacheLineSizeBytes / 8),
     UInt(cfg.busDataBits.W))
-  val squashThisThread = io.squashThread.valid && io.squashThread.bits === stage1.fetchRequest.bits.thread
+  val squashThisThread = io.squash.valid && io.squash.bits === stage1.fetchRequest.bits.thread
 
   val stage2 = new {
     // A near miss occurs when a cache line is filled the same cycle that a thread tries
@@ -104,21 +104,21 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     io.fillRequest.bits.address := stage1.fetchRequest.bits.pc.cacheLineAligned
     io.fillRequest.bits.thread := stage1.fetchRequest.bits.thread
 
-    io.output.bits.pc := RegNext(stage1.fetchRequest.bits.pc.raw)
+    io.fetchedInstruction.bits.pc := RegNext(stage1.fetchRequest.bits.pc.raw)
     val readValue = instructionMemory.read(Cat(stage1.fetchRequest.bits.pc.index,
       stage1.fetchRequest.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3)))
 
-    io.output.valid := RegNext(stage1.fetchRequest.valid && (cacheHit && !nearMiss) && !squashThisThread, init = false.B)
-    io.miss := RegNext(cacheMiss && !nearMiss, init = false.B)
-    io.nearMiss := RegNext(nearMiss, init = false.B)
-    io.missThread := RegNext(stage1.fetchRequest.bits.thread)
-    io.output.bits.thread := RegNext(stage1.fetchRequest.bits.thread)
+    io.fetchedInstruction.valid := RegNext(stage1.fetchRequest.valid && (cacheHit && !nearMiss) && !squashThisThread, init = false.B)
+    io.icacheMiss := RegNext(cacheMiss && !nearMiss, init = false.B)
+    io.icacheNearMiss := RegNext(nearMiss, init = false.B)
+    io.icacheMissThread := RegNext(stage1.fetchRequest.bits.thread)
+    io.fetchedInstruction.bits.thread := RegNext(stage1.fetchRequest.bits.thread)
   }
 
   // Cache memory is 64 bits, but instructions are 32, so need to select correct
   // half of returned data
   val instWords = stage2.readValue.asTypeOf(Vec(2, UInt(32.W)))
-  io.output.bits.instruction := Mux(io.output.bits.pc(2), instWords(1), instWords(0))
+  io.fetchedInstruction.bits.instruction := Mux(io.fetchedInstruction.bits.pc(2), instWords(1), instWords(0))
 
   // Update cache on fill
   when (io.updateCache.valid) {

@@ -98,7 +98,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
         val params = new ShaderParams
       }))
 
-      val outputResult = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+      val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
     })
 
     val arbiter = Module(new MemoryArbiter(1, 1))
@@ -110,7 +110,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     core.io.icacheReadPort <> arbiter.io.readPorts(0)
     arbiter.io.axiBus <> memory.io
     memory.dap <> io.dap
-    io.outputResult <> core.io.outputResult
+    io.result <> core.io.result
 
     arbiter.io.writePorts(0).burst.valid := false.B
     arbiter.io.writePorts(0).data.valid := false.B
@@ -158,9 +158,9 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       var gotResult = false
       for (_ <- 0 until 50) {
         dut.clock.step(1)
-        if (dut.io.outputResult.valid.peek().litToBoolean) {
+        if (dut.io.result.valid.peek().litToBoolean) {
           for (lane <- 0 until cfg.shaderVectorLanes) {
-            dut.io.outputResult.bits(lane).expect((0x12345678 + lane).U)
+            dut.io.result.bits(lane).expect((0x12345678 + lane).U)
             gotResult = true
           }
         }
@@ -238,7 +238,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
     def resultToVector(dut: ShaderTestHarness): Seq[Int] = {
       (0 until cfg.shaderVectorLanes).map { lane =>
-        dut.io.outputResult.bits(lane).peek().litValue.toInt
+        dut.io.result.bits(lane).peek().litValue.toInt
       }
     }
 
@@ -261,7 +261,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       val maxCycles = 40000
       val flushCycles = 2000
       for (cycle <- 0 until maxCycles) {
-        if (dut.io.outputResult.valid.peek().litToBoolean) {
+        if (dut.io.result.valid.peek().litToBoolean) {
           val result = resultToVector(dut)
           val jobIndex = findJobByResult(result)
           if (DEBUG) {
