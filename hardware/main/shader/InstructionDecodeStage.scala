@@ -67,6 +67,7 @@ object OpCode extends ChiselEnum {
   val Fmin = Value(30.U)
   val Fmax = Value(31.U)
   val Fabs = Value(32.U)
+  val Mulihu = Value(33.U)
 
   // Force width to 7 bits to match instruction encoding.
   @nowarn("msg=never used")

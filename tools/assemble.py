@@ -62,6 +62,7 @@ INSTRS = {
     'fmin':   (30, FMT_RRR,           False),
     'fmax':   (31, FMT_RRR,           False),
     'fabs':   (32, FMT_RR,            False),
+    'mulihu': (33, FMT_RRR,           False),
 }
 
 BUILTIN_REGISTERS = {

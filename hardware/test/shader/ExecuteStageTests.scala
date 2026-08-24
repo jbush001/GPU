@@ -130,7 +130,8 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
         (OpCode.Subi, 5, 3, 2),
         (OpCode.Muli, 5, 3, 15),
         (OpCode.Mulih, 0x0000_0001L, 0x0000_0002L, 0x0000_0000L),
-        //(OpCode.Mulih, 0x0000_0001L, 0x8000_0000L, 0x0000_0001L), fixme
+        (OpCode.Mulih, 0x8000_0000L, 0x0000_0002L, 0xffff_ffffL),
+        (OpCode.Mulihu, 0x8000_0000L, 0x0000_0002L, 0x0000_0001L),
         (OpCode.Lsl, 5, 1, 10),
         (OpCode.Asr, 0x8000_0000L, 1, 0xC000_0000L),
         (OpCode.Lsr, 0x8000_0000L, 1, 0x4000_0000L),

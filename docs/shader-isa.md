@@ -90,7 +90,9 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 |   30    | fmin                     | Floating point minimum val  |   R    |
 |   31    | fmax                     | Floating point max value    |   R    |
 |   32    | fabs                     | Floating point absolute val |   R    |
+|   33    | mulihu                   | Unsigned multiply upper     |   R    |
 
+*These probably need a renumbering*
 
 * `branch offset` relative signed offset to jump based on stack operation.
   When the branch is taken, this is multiplied by four and added to the

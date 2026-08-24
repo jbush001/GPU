@@ -133,9 +133,13 @@ class TestEmulator(unittest.TestCase):
 
     def test_mulih(self):
         self.run_test([make_r(7, 2, 3, 4)],
-                      init_regs={3: 0x12345678, 4: 0x10000000},
-                      final_regs={2: 0x1234567})
+                      init_regs={3: 0x2, 4: 0x80000000},
+                      final_regs={2: 0xffffffff})
 
+    def test_mulihu(self):
+        self.run_test([make_r(33, 2, 3, 4)],
+                      init_regs={3: 0x2, 4: 0x80000000},
+                      final_regs={2: 0x1})
 
     def test_lsl(self):
         self.run_test([make_r(8, 2, 3, 4)],

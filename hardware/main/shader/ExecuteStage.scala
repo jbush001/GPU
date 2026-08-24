@@ -85,14 +85,20 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   // instructions, so hoist it explicitly.
   val fpGreater = vecOp(io.in.bits.operand1, io.in.bits.operand2)((_, a, b) => Float32(a).greaterThan(Float32(b)))
 
+  // This multiplier is shared between Muli and Mulih.
+  val isUnsignedMul = io.in.bits.meta.opcode === OpCode.Mulihu
+  def extendMultiplier(x: UInt): SInt = Cat(Mux(isUnsignedMul, 0.U(1.W), x(31)), x).asSInt
+  val product = vecOp(io.in.bits.operand1, io.in.bits.operand2)((_, a, b) => (extendMultiplier(a) * extendMultiplier(b)).asUInt)
+
   val binOps = Seq[(OpCode.Type, (Int, UInt, UInt) => UInt)](
     OpCode.And -> ((_, a, b) => a & b),
     OpCode.Or -> ((_, a, b) => a | b),
     OpCode.Xor -> ((_, a, b) => a ^ b),
     OpCode.Addi -> ((_, a, b) => a + b),
     OpCode.Subi -> ((_, a, b) => a - b),
-    OpCode.Muli -> ((_, a, b) => (a * b)(31, 0)),
-    OpCode.Mulih -> ((_, a, b) => (a.asSInt * b.asSInt)(63, 32).asUInt),
+    OpCode.Muli -> ((i, _, _) => (product(i)(31, 0))),
+    OpCode.Mulih -> ((i, _, _) => (product(i)(63, 32).asUInt)),
+    OpCode.Mulihu -> ((i, _, _) => (product(i)(63, 32).asUInt)),
     OpCode.Lsl -> ((_, a, b) => (a << b(4, 0))(31, 0)),
     OpCode.Asr -> ((_, a, b) => (a.asSInt >> b(4, 0)).asUInt),
     OpCode.Lsr -> ((_, a, b) => a >> b(4, 0)),

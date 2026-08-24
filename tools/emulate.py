@@ -82,7 +82,7 @@ INSTR_TABLE = {
     4:  (FMT_RRR,    lambda a, b: a + b), # addi
     5:  (FMT_RRR,    lambda a, b: a - b), # subi
     6:  (FMT_RRR,    lambda a, b: a * b), # muli
-    7:  (FMT_RRR,    lambda a, b: (a * b) >> 32), # mulih
+    7:  (FMT_RRR,    lambda a, b: (reinterp_u2i(a) * reinterp_u2i(b)) >> 32), # mulih
     8:  (FMT_RRR,    lambda a, b: a << b), # lsl
     9:  (FMT_RRR,    lambda a, b: reinterp_u2i(a) >> b), # asr
     10: (FMT_RRR,    lambda a, b: a >> b), # lsr
@@ -107,6 +107,7 @@ INSTR_TABLE = {
     30: (FMT_RRR,    lambda a, b: reinterp_f2u(min(reinterp_u2f(a), reinterp_u2f(b)))), # fmin
     31: (FMT_RRR,    lambda a, b: reinterp_f2u(max(reinterp_u2f(a), reinterp_u2f(b)))), # fmax
     32: (FMT_RR,     lambda a: reinterp_f2u(abs(reinterp_u2f(a)))), # fabs
+    33: (FMT_RRR,    lambda a, b: ((a * b) >> 32) & 0xffffffff), # mulihu
 }
 
 CONST_REGS = {

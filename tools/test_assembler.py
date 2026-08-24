@@ -108,6 +108,7 @@ class TestAssemblerConstants(unittest.TestCase):
             mulf r34, r35, r36
             fmin r37, r38, r39
             fmax r40, r41, r42
+            mulihu r43, r44, r45
         ''')
         self.assertEqual(asm.code, [
             make_r(1, 1, 2, 3),
@@ -124,7 +125,8 @@ class TestAssemblerConstants(unittest.TestCase):
             make_r(12, 31, 32, 33),
             make_r(13, 34, 35, 36),
             make_r(30, 37, 38, 39),
-            make_r(31, 40, 41, 42)
+            make_r(31, 40, 41, 42),
+            make_r(33, 43, 44, 45)
         ])
 
     def test_rr(self):
