@@ -28,20 +28,14 @@ import gpu._
 // in a real configuration, but demonstrates things working end-to-end.
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val inputTriangle = Flipped(Decoupled(new BoundingBox))
+    val inputTriangle = Flipped(Decoupled(new RasterizerSetupParams))
     val startFlush = Input(Bool())
     val flushData = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
-    val vpi = new VertexParameterInterface()
   })
 
-  val setup = Module(new TriangleSetup)
   val rasterizer = Module(new Rasterizer)
   val tileBuffer = Module(new TileBuffer)
-  setup.io.output <> rasterizer.io.input
-  io.vpi.readEn := setup.io.vpi.readEn
-  io.vpi.readAddress := setup.io.vpi.readAddress
-  setup.io.vpi.readData := io.vpi.readData
 
   val fillColors = Wire(Vec(4, new Color))
   val normFactor = rasterizer.io.output.bits.lambda(0)(0) + rasterizer.io.output.bits.lambda(0)(1) + rasterizer.io.output.bits.lambda(0)(2)
@@ -72,7 +66,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.enableDepthWrite := true.B
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
-  setup.io.input <> io.inputTriangle
+  rasterizer.io.input <> io.inputTriangle
 }
 
 object Simulation extends App {
@@ -86,9 +80,6 @@ object Simulation extends App {
     dut.reset.poke(false.B)
     dut.clock.step(1)
 
-    // Simulate vertex parameter memory
-    val vpmData = Array(5, 7, 118, 49, 23, 110)
-
     // Run a flush to clear out the buffer initially
     flushBuffer(dut, None, 0, 0)
 
@@ -99,25 +90,39 @@ object Simulation extends App {
       val tileColumn = tile % 2
 
       // Set up a triangle
-      dut.io.inputTriangle.bits.left.poke(tileColumn * cfg.tileSizePixels)
-      dut.io.inputTriangle.bits.top.poke(tileRow * cfg.tileSizePixels)
-      dut.io.inputTriangle.bits.right.poke((tileColumn + 1) * cfg.tileSizePixels - 2)
-      dut.io.inputTriangle.bits.bottom.poke((tileRow + 1) * cfg.tileSizePixels - 2)
+      val x0 = 5
+      val y0 = 7
+      val x1 = 118
+      val y1 = 49
+      val x2 = 23
+      val y2 = 110
 
+      val tileLeft = tileColumn * cfg.tileSizePixels
+      val tileTop = tileRow * cfg.tileSizePixels
       dut.io.inputTriangle.valid.poke(true)
+      dut.io.inputTriangle.bits.boundingBox.left.poke(tileLeft)
+      dut.io.inputTriangle.bits.boundingBox.top.poke(tileTop)
+      dut.io.inputTriangle.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+      dut.io.inputTriangle.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+      dut.io.inputTriangle.bits.xStep(0).poke((y1 - y0).S)
+      dut.io.inputTriangle.bits.yStep(0).poke((x0 - x1).S)
+      dut.io.inputTriangle.bits.initialValue(0).poke(((tileLeft - x0) * (y1 - y0) - (tileTop - y0) * (x1 - x0)).S)
+      dut.io.inputTriangle.bits.xStep(1).poke((y2 - y1).S)
+      dut.io.inputTriangle.bits.yStep(1).poke((x1 - x2).S)
+      dut.io.inputTriangle.bits.initialValue(1).poke(((tileLeft - x1) * (y2 - y1) - (tileTop - y1) * (x2 - x1)).S)
+      dut.io.inputTriangle.bits.xStep(2).poke((y0 - y2).S)
+      dut.io.inputTriangle.bits.yStep(2).poke((x2 - x0).S)
+      dut.io.inputTriangle.bits.initialValue(2).poke(((tileLeft - x2) * (y0 - y2) - (tileTop - y2) * (x0 - x2)).S)
+      while (dut.io.inputTriangle.ready.peek().litValue.toLong == 0) {
+        dut.clock.step()
+      }
       dut.clock.step()
       dut.io.inputTriangle.valid.poke(false)
 
       // Render stuff. Note that we don't check for completion, just run for
       // enough cycles we know it should finish.
       for (_ <- 0 until 1500) {
-        if (dut.io.vpi.readEn.peek().litValue.toInt != 0) {
-          val readData = vpmData(dut.io.vpi.readAddress.peek().litValue.toInt)
-          dut.clock.step()
-          dut.io.vpi.readData.poke(readData)
-        } else {
-          dut.clock.step()
-        }
+        dut.clock.step()
       }
 
       // Read out the final data
