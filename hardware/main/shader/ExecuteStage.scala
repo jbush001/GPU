@@ -78,27 +78,31 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   }
 
   // Short latency operations (1 cycle)
-  def vecOp(a: Vec[UInt], b: Vec[UInt])(f: (UInt, UInt) => UInt): Vec[UInt] =
-    VecInit((0 until a.length).map(i => f(a(i), b(i))))
+  def vecOp(a: Vec[UInt], b: Vec[UInt])(f: (Int, UInt, UInt) => UInt): Vec[UInt] =
+    VecInit((0 until a.length).map(i => f(i, a(i), b(i))))
 
-  val binOps = Seq[(OpCode.Type, (UInt, UInt) => UInt)](
-    OpCode.And -> ((a, b) => a & b),
-    OpCode.Or -> ((a, b) => a | b),
-    OpCode.Xor -> ((a, b) => a ^ b),
-    OpCode.Addi -> ((a, b) => a + b),
-    OpCode.Subi -> ((a, b) => a - b),
-    OpCode.Muli -> ((a, b) => (a * b)(31, 0)),
-    OpCode.Mulih -> ((a, b) => (a.asSInt * b.asSInt)(63, 32).asUInt),
-    OpCode.Lsl -> ((a, b) => (a << b(4, 0))(31, 0)),
-    OpCode.Asr -> ((a, b) => (a.asSInt >> b(4, 0)).asUInt),
-    OpCode.Lsr -> ((a, b) => a >> b(4, 0)),
-    OpCode.LoadLo -> ((a, _) => Cat(a(31, 16), io.in.bits.meta.immediateValue(15, 0))),
-    OpCode.LoadHi -> ((a, _) => Cat(io.in.bits.meta.immediateValue(15, 0), a(15, 0))),
-    OpCode.Ftoi -> ((a, _) => Float32(a).toSInt().asUInt),
-    OpCode.Itof -> ((a, _) => Float32.fromSInt(a.asSInt).raw),
-    OpCode.Fmin -> ((a, b) => Mux(Float32(b).greaterThan(Float32(a)), a, b)),
-    OpCode.Fmax -> ((a, b) => Mux(Float32(a).greaterThan(Float32(b)), a, b)),
-    OpCode.Fabs -> ((a, _) => Float32(a).abs().raw)
+  // Floating point comparison. This is used for Fmin/Fmax and Setgtf
+  // instructions, so hoist it explicitly.
+  val fpGreater = vecOp(io.in.bits.operand1, io.in.bits.operand2)((_, a, b) => Float32(a).greaterThan(Float32(b)))
+
+  val binOps = Seq[(OpCode.Type, (Int, UInt, UInt) => UInt)](
+    OpCode.And -> ((_, a, b) => a & b),
+    OpCode.Or -> ((_, a, b) => a | b),
+    OpCode.Xor -> ((_, a, b) => a ^ b),
+    OpCode.Addi -> ((_, a, b) => a + b),
+    OpCode.Subi -> ((_, a, b) => a - b),
+    OpCode.Muli -> ((_, a, b) => (a * b)(31, 0)),
+    OpCode.Mulih -> ((_, a, b) => (a.asSInt * b.asSInt)(63, 32).asUInt),
+    OpCode.Lsl -> ((_, a, b) => (a << b(4, 0))(31, 0)),
+    OpCode.Asr -> ((_, a, b) => (a.asSInt >> b(4, 0)).asUInt),
+    OpCode.Lsr -> ((_, a, b) => a >> b(4, 0)),
+    OpCode.LoadLo -> ((_, a, _) => Cat(a(31, 16), io.in.bits.meta.immediateValue(15, 0))),
+    OpCode.LoadHi -> ((_, a, _) => Cat(io.in.bits.meta.immediateValue(15, 0), a(15, 0))),
+    OpCode.Ftoi -> ((_, a, _) => Float32(a).toSInt().asUInt),
+    OpCode.Itof -> ((_, a, _) => Float32.fromSInt(a.asSInt).raw),
+    OpCode.Fabs -> ((_, a, _) => Float32(a).abs().raw),
+    OpCode.Fmin -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
+    OpCode.Fmax -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b))
   )
 
   val singleCycleResult = MuxLookup(io.in.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
@@ -123,17 +127,17 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val recipResult3 = RegNext(recipResult2)
 
   // Comparison operations
-  def vecCompare(a: Vec[UInt], b: Vec[UInt])(f: (UInt, UInt) => Bool): UInt =
-    Cat((0 until cfg.shaderVectorLanes).reverse.map(i => f(a(i), b(i))))
+  def vecCompare(a: Vec[UInt], b: Vec[UInt])(f: (Int, UInt, UInt) => Bool): UInt =
+    Cat((0 until cfg.shaderVectorLanes).reverse.map(i => f(i, a(i), b(i))))
 
-  val cmpOps: Seq[(OpCode.Type, (UInt, UInt) => Bool)] = Seq(
-    OpCode.Setgtf -> ((a, b) => Float32(a).greaterThan(Float32(b))),
-    OpCode.Setgei -> ((a, b) => a.asSInt >= b.asSInt),
-    OpCode.Setlti -> ((a, b) => a.asSInt < b.asSInt),
-    OpCode.Setgeu -> ((a, b) => a >= b),
-    OpCode.Setltu -> ((a, b) => a < b),
-    OpCode.Seteq  -> ((a, b) => a === b),
-    OpCode.Setne  -> ((a, b) => a =/= b),
+  val cmpOps: Seq[(OpCode.Type, (Int, UInt, UInt) => Bool)] = Seq(
+    OpCode.Setgtf -> ((i, _, _) => fpGreater(i).asBool),
+    OpCode.Setgei -> ((_, a, b) => a.asSInt >= b.asSInt),
+    OpCode.Setlti -> ((_, a, b) => a.asSInt < b.asSInt),
+    OpCode.Setgeu -> ((_, a, b) => a >= b),
+    OpCode.Setltu -> ((_, a, b) => a < b),
+    OpCode.Seteq  -> ((_, a, b) => a === b),
+    OpCode.Setne  -> ((_, a, b) => a =/= b),
   )
 
   val comparisonResult = MuxLookup(io.in.bits.meta.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
