@@ -90,18 +90,14 @@ object Simulation extends App {
 
     val fbSize = 128
     val fbData = new Array[Int](fbSize * fbSize)
+
+    val vertices = Array((5, 7), (23, 110), (118, 49))
+
     for (tile <- 0 until 4) {
       val tileRow = tile / 2
       val tileColumn = tile % 2
 
       // Set up a triangle
-      val x0 = 5
-      val y0 = 7
-      val x1 = 23
-      val y1 = 110
-      val x2 = 118
-      val y2 = 49
-
       val tileLeft = tileColumn * cfg.tileSizePixels
       val tileTop = tileRow * cfg.tileSizePixels
       dut.io.setupParams.valid.poke(true)
@@ -109,40 +105,31 @@ object Simulation extends App {
       dut.io.setupParams.bits.boundingBox.top.poke(tileTop)
       dut.io.setupParams.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
       dut.io.setupParams.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
-      var xs0 = y1 - y0
-      var ys0 = x0 - x1
-      var iv0 = ((tileLeft - x0) * xs0 - (tileTop - y0) * -ys0)
-      var xs1 = y2 - y1
-      var ys1 = x1 - x2
-      var iv1 = ((tileLeft - x1) * xs1 - (tileTop - y1) * -ys1)
-      var xs2 = y0 - y2
-      var ys2 = x2 - x0
-      var iv2 = ((tileLeft - x2) * xs2 - (tileTop - y2) * -ys2)
+      val rawParams = (0 until 3).map { i =>
+        val (startX, startY) = vertices(i)
+        val (endX, endY) = vertices((i + 1) % 3)
+        val xs = endY - startY
+        val ys = endX - startX
+        val iv = ((tileLeft - startX) * xs - (tileTop - startY) * ys)
+        (xs, -ys, iv)
+      }
 
-      // Normalize
-      val det = math.abs(iv0 + iv1 + iv2)
-      xs0 = (xs0 * 0x10000L / det).toInt
-      ys0 = (ys0 * 0x10000L / det).toInt
-      iv0 = (iv0 * 0x10000L / det).toInt
-      xs1 = (xs1 * 0x10000L / det).toInt
-      ys1 = (ys1 * 0x10000L / det).toInt
-      iv1 = (iv1 * 0x10000L / det).toInt
-      xs2 = (xs2 * 0x10000L / det).toInt
-      ys2 = (ys2 * 0x10000L / det).toInt
-      iv2 = (iv2 * 0x10000L / det).toInt
+      val det = math.abs(rawParams.map(_._3).sum)
 
-      dut.io.setupParams.bits.xStep(0).poke(xs0.S)
-      dut.io.setupParams.bits.yStep(0).poke(ys0.S)
-      dut.io.setupParams.bits.initialValue(0).poke(iv0.S)
-      dut.io.setupParams.bits.xStep(1).poke(xs1.S)
-      dut.io.setupParams.bits.yStep(1).poke(ys1.S)
-      dut.io.setupParams.bits.initialValue(1).poke(iv1.S)
-      dut.io.setupParams.bits.xStep(2).poke(xs2.S)
-      dut.io.setupParams.bits.yStep(2).poke(ys2.S)
-      dut.io.setupParams.bits.initialValue(2).poke(iv2.S)
+      rawParams.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
+        val normXs = (xs * 0x10000L / det).toInt
+        val normYs = (ys * 0x10000L / det).toInt
+        val normIv = (iv * 0x10000L / det).toInt
+
+        dut.io.setupParams.bits.xStep(i).poke(normXs.S)
+        dut.io.setupParams.bits.yStep(i).poke(normYs.S)
+        dut.io.setupParams.bits.initialValue(i).poke(normIv.S)
+      }
+
       while (dut.io.setupParams.ready.peek().litValue.toLong == 0) {
         dut.clock.step()
       }
+
       dut.clock.step()
       dut.io.setupParams.valid.poke(false)
 
