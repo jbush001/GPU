@@ -42,10 +42,11 @@ class QuadOutput(implicit cfg: GpuConfig) extends Bundle {
   val mask = Bits(Consts.pixelsPerQuad.W)
 
   /** Unnormalized barycentric coordindates of the pixels relative to
-    * the triangle vertices.
+    * the triangle vertices. The third coordinate is omitted as it can be
+    * derived from the first two.
     * [[https://en.wikipedia.org/wiki/Barycentric_coordinate_system]]
     */
-  val lambda = Vec(Consts.pixelsPerQuad, Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W)))
+  val lambda = Vec(Consts.pixelsPerQuad, Vec(2, SInt(cfg.edgeFunctionBits.W)))
 }
 
 /** Determines pixel coverage for a triangle.
@@ -82,7 +83,9 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       // is on the inside of all three triangle edges, then it is inside the triangle.
       val edgeValue = Reg(SInt(cfg.edgeFunctionBits.W))
 
-      io.output.bits.lambda(pixel)(edge) := edgeValue
+      if (edge > 0) {
+        io.output.bits.lambda(pixel)(edge - 1) := edgeValue
+      }
 
       switch(stepCommand) {
         is(StepCommand.Reset) {

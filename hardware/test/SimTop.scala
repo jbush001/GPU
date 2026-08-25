@@ -39,10 +39,15 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 
   val fillColors = Wire(Vec(4, new Color))
   for (pixel <- 0 until 4) {
-    for (component <- 0 until 3) {
-      fillColors(pixel).channels(component) := ((rasterizer.io.output.bits.lambda(pixel)(component) >> 6)
-        .asUInt(Color.channelBits - 1, 0))
-    }
+    val lambda0 = rasterizer.io.output.bits.lambda(pixel)(0)
+    fillColors(pixel).channels(0) := ((rasterizer.io.output.bits.lambda(pixel)(0) >> 6)
+      .asUInt(Color.channelBits - 1, 0))
+    val lambda1 = rasterizer.io.output.bits.lambda(pixel)(1)
+    fillColors(pixel).channels(1) := ((lambda1 >> 6)
+      .asUInt(Color.channelBits - 1, 0))
+    val lambda2 = 0x10000.S - (lambda0 + lambda1)
+    fillColors(pixel).channels(2) := ((lambda2 >> 6)
+      .asUInt(Color.channelBits - 1, 0))
 
     fillColors(pixel).channels(3) := 0x3ff.U
   }
