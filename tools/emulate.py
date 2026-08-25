@@ -22,13 +22,7 @@ NUM_SCALAR_REGS = 64
 NUM_VECTOR_REGS = 64
 EXEC_MASK_REG = 32
 
-LPM_READ_ADDR = 33
-LPM_READ_DATA = 109
-LPM_WRITE_ADDR = 34
-LPM_WRITE_DATA = 110
-UNIFORM_ADDR = 35
-UNIFORM_DATA = 36
-LANE_ID = 111
+LANE_ID = 112
 CONST_ZERO = 53
 
 # The default register type is stored as u32, these functions cast to other types
@@ -142,11 +136,6 @@ class Emulator:
         self.instructions = []
         self.registers[EXEC_MASK_REG] = 0xff
         self.halted = False
-        self.uniforms = [0] * 1024
-        self.uniform_addr = 0
-        self.local_parameter_memory = [0] * 1024
-        self.lpm_read_addr = 0
-        self.lpm_write_addr = 0
 
         # Set this flag to see all register writes.
         self.trace = False
@@ -164,59 +153,23 @@ class Emulator:
             if self.trace:
                 print(f'{(self.pc - 1) * 4:04x}: r{rd} <= {value:08x}')
 
-            if rd == LPM_READ_ADDR:
-                self.lpm_read_addr = value
-            elif rd == LPM_WRITE_ADDR:
-                self.lpm_write_addr = value
-            elif rd == UNIFORM_ADDR:
-                self.uniform_addr = value
-            else:
-                self.registers[rd] = value
+            self.registers[rd] = value
         else:
             exec_mask = self.registers[EXEC_MASK_REG]
             if self.trace:
                 newval = " ".join(f"{x:08x}" if (exec_mask >> i) & 1 else "--------" for i, x in enumerate(value))
                 print(f'{(self.pc - 1) * 4:04x}: v{rd - NUM_SCALAR_REGS} <= {newval}')
 
-            if rd == LPM_WRITE_DATA:
-                for i in range(VECTOR_WIDTH):
-                    if (exec_mask >> i) & 1:
-                        self.local_parameter_memory[self.lpm_write_addr] = value[i]
-
-                    self.lpm_write_addr += 1
-            else:
-                for i in range(VECTOR_WIDTH):
-                    if (exec_mask >> i) & 1:
-                        self.registers[rd][i] = value[i]
+            for i in range(VECTOR_WIDTH):
+                if (exec_mask >> i) & 1:
+                    self.registers[rd][i] = value[i]
 
     def get_register(self, reg_num):
         if reg_num in CONST_REGS:
             return CONST_REGS[reg_num]
 
-        if reg_num == LPM_READ_DATA:
-            result = []
-            for i in range(VECTOR_WIDTH):
-                result.append(self.local_parameter_memory[self.lpm_read_addr + i])
-
-            self.lpm_read_addr = self.lpm_read_addr + VECTOR_WIDTH
-            return result
-
-        if reg_num == UNIFORM_DATA:
-            result = self.uniforms[self.uniform_addr]
-            self.uniform_addr += 1
-            return result
-
         if reg_num == LANE_ID:
             return [i for i in range(VECTOR_WIDTH)]
-
-        if reg_num == UNIFORM_ADDR:
-            return self.uniform_addr
-
-        if reg_num == LPM_READ_ADDR:
-            return self.lpm_read_addr
-
-        if reg_num == LPM_WRITE_ADDR:
-            return self.lpm_write_addr
 
         return self.registers[reg_num]
 

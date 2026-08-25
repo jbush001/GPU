@@ -95,10 +95,21 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       val dap = new DirectAccessPort
       val startJob = Flipped(Decoupled(new Bundle {
         val startPc = UInt(cfg.busAddressBits.W)
-        val params = new ShaderParams
+        val tag = UInt(cfg.shaderTagBits.W)
       }))
 
-      val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+      val regRead = Valid(new Bundle {
+        val tag = UInt(cfg.shaderTagBits.W)
+        val addr = UInt(3.W)
+      })
+
+      val regReadData = Input(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+
+      val regWrite = Valid(new Bundle {
+        val tag = UInt(cfg.shaderTagBits.W)
+        val addr = UInt(3.W)
+        val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
+      })
     })
 
     val arbiter = Module(new MemoryArbiter(1, 1))
@@ -110,7 +121,10 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     core.io.icacheReadPort <> arbiter.io.readPorts(0)
     arbiter.io.axiBus <> memory.io
     memory.dap <> io.dap
-    io.result <> core.io.result
+
+    core.io.regRead <> io.regRead
+    core.io.regReadData := io.regReadData
+    core.io.regWrite <> io.regWrite
 
     arbiter.io.writePorts(0).burst.valid := false.B
     arbiter.io.writePorts(0).data.valid := false.B
@@ -122,18 +136,14 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   def runShaderTest(
     programBytes: Seq[Long],
     startAddr: Long,
-    params: Seq[Seq[UInt]] = Seq.fill(2)(Seq.fill(cfg.shaderVectorLanes)(0.U))
+    tag: UInt = 0.U
   )(testBody: ShaderTestHarness => Unit)(implicit cfg: GpuConfig): Unit = {
     simulate(new ShaderTestHarness) { dut =>
       // Common Setup / Initialization
       SimMemAccess.write(dut.clock, dut.io.dap, startAddr, programBytes)
 
       dut.io.startJob.bits.startPc.poke(startAddr.U)
-      for (param <- 0 until 2) {
-        for (lane <- 0 until cfg.shaderVectorLanes) {
-          dut.io.startJob.bits.params.params(param)(lane).poke(params(param)(lane))
-        }
-      }
+      dut.io.startJob.bits.tag.poke(tag)
 
       // Execute test-specific assertions or stimulus
       testBody(dut)
@@ -145,7 +155,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     asm
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .kInst(OpCode.LoadLo, 1, 0x5678)
-      .move(65, 111) // v2 = lane ID
+      .move(65, 112) // v2 = lane ID
       .rInst(OpCode.Addi, 105, 1, 65) // output = r1 + v2
       .halt()
 
@@ -158,9 +168,9 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       var gotResult = false
       for (_ <- 0 until 50) {
         dut.clock.step(1)
-        if (dut.io.result.valid.peek().litToBoolean) {
+        if (dut.io.regWrite.valid.peek().litToBoolean) {
           for (lane <- 0 until cfg.shaderVectorLanes) {
-            dut.io.result.bits(lane).expect((0x12345678 + lane).U)
+            dut.io.regWrite.bits.data(lane).expect((0x12345678 + lane).U)
             gotResult = true
           }
         }
@@ -201,6 +211,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     // next one. The Job structure tracks the state of active threads.
     class Job {
       var active = false
+      var tag: Int = 0
       var a = Seq.fill(cfg.shaderVectorLanes)(0)
       var b = Seq.fill(cfg.shaderVectorLanes)(0)
       var expectedVector = Seq.fill(cfg.shaderVectorLanes)(0)
@@ -211,14 +222,14 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
     def gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
 
-    def findFreeJob(): Option[Int] = {
+    def findFreeJob(): Int = {
       for (i <- 0 until cfg.shaderThreads) {
         if (!jobs(i).active) {
-          return Some(i)
+          return i
         }
       }
 
-      None
+      fail("No free job found")
     }
 
     val primes = Array(3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47)
@@ -238,18 +249,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
     def resultToVector(dut: ShaderTestHarness): Seq[Int] = {
       (0 until cfg.shaderVectorLanes).map { lane =>
-        dut.io.result.bits(lane).peek().litValue.toInt
+        dut.io.regWrite.bits.data(lane).peek().litValue.toInt
       }
-    }
-
-    def findJobByResult(result: Seq[Int]): Int = {
-      for (i <- 0 until cfg.shaderThreads) {
-        if (jobs(i).active && jobs(i).expectedVector == result) {
-          return i
-        }
-      }
-
-      fail("No matching job found for result")
     }
 
     simulate(new ShaderTestHarness) { dut =>
@@ -260,13 +261,28 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       var activeJobs = 0
       val maxCycles = 40000
       val flushCycles = 2000
+      var regReadResult = Seq.fill(cfg.shaderVectorLanes)(0)
       for (cycle <- 0 until maxCycles) {
-        if (dut.io.result.valid.peek().litToBoolean) {
+        for (lane <- 0 until cfg.shaderVectorLanes) {
+          dut.io.regReadData(lane).poke(regReadResult(lane).U)
+        }
+
+        if (dut.io.regRead.valid.peek().litToBoolean) {
+          val readTag = dut.io.regRead.bits.tag.peek().litValue.toInt
+          val job = jobs(readTag)
+          val addr = dut.io.regRead.bits.addr.peek().litValue.toInt
+          regReadResult = if (addr == 0) job.a else if (addr == 1) job.b else Seq.fill(cfg.shaderVectorLanes)(0)
+        }
+
+        if (dut.io.regWrite.valid.peek().litToBoolean) {
           val result = resultToVector(dut)
-          val jobIndex = findJobByResult(result)
+          val jobIndex = dut.io.regWrite.bits.tag.peek().litValue.toInt
           if (DEBUG) {
             println(s"Job $jobIndex completed at cycle $cycle result = $result totalCycles ${cycle - jobs(jobIndex).startCycle}")
           }
+
+          assert(jobs(jobIndex).active, s"Job $jobIndex was not active when result was received")
+          assert(result == jobs(jobIndex).expectedVector, s"Job $jobIndex failed: got $result, expected ${jobs(jobIndex).expectedVector}")
           jobs(jobIndex).active = false
           activeJobs -= 1
         }
@@ -275,21 +291,15 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
         // allow all jobs to finish.
         if (dut.io.startJob.ready.peek().litToBoolean && cycle < (maxCycles - flushCycles) && activeJobs < maxJobs) {
           val jobIndex = findFreeJob()
-          jobIndex match {
-            case Some(index) =>
-              val job = initNewJob(index)
-              if (DEBUG) {
-                println(s"Starting new job $index at cycle $cycle a=${job.a} b=${job.b} expected=${job.expectedVector}")
-              }
-              job.startCycle = cycle
-              activeJobs += 1
-              dut.io.startJob.valid.poke(true.B)
-              for (lane <- 0 until cfg.shaderVectorLanes) {
-                dut.io.startJob.bits.params.params(0)(lane).poke(job.a(lane))
-                dut.io.startJob.bits.params.params(1)(lane).poke(job.b(lane))
-              }
-            case None => fail("DUT indicated ready, but all jobs are active")
+          val job = initNewJob(jobIndex)
+          if (DEBUG) {
+            println(s"Starting new job $jobIndex at cycle $cycle a=${job.a} b=${job.b} expected=${job.expectedVector}")
           }
+
+          job.startCycle = cycle
+          activeJobs += 1
+          dut.io.startJob.valid.poke(true.B)
+          dut.io.startJob.bits.tag.poke(jobIndex.U)
         } else {
           dut.io.startJob.valid.poke(false.B)
         }

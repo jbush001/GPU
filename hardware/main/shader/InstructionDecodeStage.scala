@@ -109,11 +109,23 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val writeback = Flipped(Valid(new WritebackRequest))
 
     // From FetchSelectStage, data for newly started threads.
-    val resetThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
-    val startParams = Input(new ShaderParams)
+    val resetThread = Flipped(Valid(new Bundle {
+      val thread = UInt(log2Up(cfg.shaderThreads).W)
+      val tag = UInt(cfg.shaderTagBits.W)
+    }))
 
-    // A bit of a debug hack for now
-    val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val regRead = Valid(new Bundle {
+      val tag = UInt(cfg.shaderTagBits.W)
+      val addr = UInt(3.W)
+    })
+
+    val regReadData = Input(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+
+    val regWrite = Valid(new Bundle {
+      val tag = UInt(cfg.shaderTagBits.W)
+      val addr = UInt(3.W)
+      val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
+    })
   })
 
   val numRegisters = 32
@@ -123,16 +135,16 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
   val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
-  val params = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U.asTypeOf(new ShaderParams))))
+  val tags = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.shaderTagBits.W))))
 
   when (io.resetThread.valid) {
-    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
-    params(io.resetThread.bits) := io.startParams
+    execMask(io.resetThread.bits.thread) := ~0.U(cfg.shaderVectorLanes.W)
+    tags(io.resetThread.bits.thread) := io.resetThread.bits.tag
   }
 
   when (io.resetThread.valid) {
-    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
-    params(io.resetThread.bits) := io.startParams
+    execMask(io.resetThread.bits.thread) := ~0.U(cfg.shaderVectorLanes.W)
+    tags(io.resetThread.bits.thread) := io.resetThread.bits.tag
   }
 
   def isLoadConst(inst: UInt): Bool = {
@@ -210,16 +222,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val Const2_0f       = 62.U
     val ConstNeg2_0f    = 63.U
 
-    val Param0          = 96.U
-    val Param1          = 97.U
-
-    val StorePixelRed   = 105.U
-    val StorePixelGreen = 106.U
-    val StorePixelBlue  = 107.U
-    val StorePixelAlpha = 108.U
-    val LpmReadValue    = 109.U
-    val LpmWriteValue   = 110.U
-    val LaneId          = 111.U
+    val LaneId          = 112.U
   }
 
   def constFloat(f: Float): UInt = {
@@ -254,6 +257,10 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val validCycle2 = RegNext(io.fetchedInstruction.valid, init = false.B)
   val threadStage2 = RegNext(io.fetchedInstruction.bits.thread)
 
+  io.regRead.valid := operand1Reg(6, 3) === 12.U && io.fetchedInstruction.valid
+  io.regRead.bits.addr := operand1Reg(2, 0)
+  io.regRead.bits.tag := tags(io.fetchedInstruction.bits.thread)
+
   def resolveOperand(regId: UInt, scalarData: UInt, vectorData: Vec[UInt]): Vec[UInt] = {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
@@ -263,14 +270,15 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     }.elsewhen (regId(6, 5) === 2.U) {
       // 64-95: vector general purpose registers
       result := vectorData
+    }.elsewhen (regId(6, 3) === 12.U) {
+      // 96-103: special purpose input registers
+      result := io.regReadData
     } .otherwise {
       result := DontCare  // Default
       switch (regId) {
         // Special registers
         is(SpecialReg.ExecMask)     { result := broadcast(execMask(threadStage2)) }
         is(SpecialReg.LaneId)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
-        is(SpecialReg.Param0)       { result := params(threadStage2).params(0) }
-        is(SpecialReg.Param1)       { result := params(threadStage2).params(1) }
         is(SpecialReg.Const0)       { result := broadcast(0.U(32.W)) }
         is(SpecialReg.Const1)       { result := broadcast(1.U(32.W)) }
         is(SpecialReg.ConstNeg1)    { result := broadcast((-1).S(32.W).asUInt) }
@@ -291,8 +299,11 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand1 := resolveOperand(operand1RegCycle2, scalarRead1, vectorRead1)
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegCycle2, scalarRead2, vectorRead2)
 
-  io.result.valid := false.B
-  io.result.bits := DontCare
+  io.regWrite.valid := false.B
+  io.regWrite.bits.tag := tags(io.writeback.bits.thread)
+  io.regWrite.bits.addr := io.writeback.bits.destReg(2, 0)
+  io.regWrite.bits.data := io.writeback.bits.value
+
   when (io.writeback.valid) {
     val destReg = io.writeback.bits.destReg
     val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))
@@ -312,21 +323,11 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       // 64-95: vector general purpose registers
       vectorRegisters.write(gprIndex,
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
-    } .otherwise {
-      switch (destReg) {
-        is(SpecialReg.ExecMask) {
-          execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
-        }
-
-        is(SpecialReg.StorePixelRed) {
-          io.result.bits := io.writeback.bits.value
-          io.result.valid := true.B
-        }
-        is(SpecialReg.StorePixelGreen) { /* TODO... */ }
-        is(SpecialReg.StorePixelBlue)  { /* TODO... */ }
-        is(SpecialReg.StorePixelAlpha) { /* TODO... */ }
-        is(SpecialReg.LpmWriteValue)   { /* TODO... */ }
-      }
+    }.elsewhen (destReg(6, 3) === 13.U) {
+      // 104-111: special purpose output registers
+      io.regWrite.valid := true.B
+    }.elsewhen (destReg === SpecialReg.ExecMask) {
+      execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
     }
   }
 

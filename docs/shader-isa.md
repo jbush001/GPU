@@ -26,16 +26,6 @@ processor that handles multiple functions (e.g. vertex and pixel shading).
 External fixed function hardware queues new jobs for the SPE, and the SPE
 can subsequently dispatch work to other fixed function units.
 
-Each `job` has some extrinsic state associated with it, which is passed in
-from requesting functional units, not necessarily used by the programs, but
-carried through to downstream fixed function units, for example:
-
- - Quad X/Y (for pixel shaders)
- - Interplated depth
-
-There's also intrinsic state passed with requests, like the offset in local
-parameter memory.
-
 ### Instruction format
 
 Instructions use fixed width, 32-bit instructions, encoded as follows.
@@ -137,48 +127,27 @@ For a pixel shader, for example:
 Attempting to read a write-only register will not fault, but the result is
 undefined. Attemping to write a read-only register will have no effect.
 
-| Index | Meaning                                           | Access |
-|-------|---------------------------------------------------|--------|
-|  0-31 | Scalar general purpose registers                  |  r/w   |
-|   32  | Exec mask                                         |  r/w   |
-|   33  | LPM read address                                  |  r/w   |
-|   34  | LPM write address                                 |  r/w   |
-|   35  | Uniform read address                              |  r/w   |
-|   36  | Uniform read value                                |   r    |
-|   53  | Constant 0                                        |   r    |
-|   54  | Constant 1                                        |   r    |
-|   55  | Constant -1                                       |   r    |
-|   56  | Constant 2                                        |   r    |
-|   57  | Constant 4                                        |   r    |
-|   58  | Constant 0.5f                                     |   r    |
-|   59  | Constant -0.5f                                    |   r    |
-|   60  | Constant 1.0f                                     |   r    |
-|   61  | Constant -1.0f                                    |   r    |
-|   62  | Constant 2.0f                                     |   r    |
-|   63  | Constant -2.0f                                    |   r    |
-| 64-95 | Vector general purpose registers                  |  r/w   |
-| 96-103| Job parameters (from requestor)                   |   r    |
-|  105  | Store pixel, red (10 bit)                         |   w    |
-|  106  | Store pixel, green                                |   w    |
-|  107  | Store pixel, blue                                 |   w    |
-|  108  | Store pixel, alpha                                |   w    |
-|  109  | LPM read value                                    |   r    |
-|  110  | LPM write value                                   |   w    |
-|  111  | Lane ID                                           |   r    |
-|  112  | Texture S                                         |   w    |
-|  113  | Texture T                                         |   w    |
-|  114  | Texture R                                         |   r    |
-|  115  | Texture G                                         |   r    |
-|  116  | Texture B                                         |   r    |
-|  117  | Texture A                                         |   r    |
+|  Index  | Meaning                                           | Access |
+|---------|---------------------------------------------------|--------|
+|  0-31   | Scalar general purpose registers                  |  r/w   |
+|   32    | Exec mask                                         |  r/w   |
+|   53    | Constant 0                                        |   r    |
+|   54    | Constant 1                                        |   r    |
+|   55    | Constant -1                                       |   r    |
+|   56    | Constant 2                                        |   r    |
+|   57    | Constant 4                                        |   r    |
+|   58    | Constant 0.5f                                     |   r    |
+|   59    | Constant -0.5f                                    |   r    |
+|   60    | Constant 1.0f                                     |   r    |
+|   61    | Constant -1.0f                                    |   r    |
+|   62    | Constant 2.0f                                     |   r    |
+|   63    | Constant -2.0f                                    |   r    |
+| 64-95   | Vector general purpose registers                  |  r/w   |
+| 96-103  | Input parameters*                                 |   r    |
+| 104-111 | Output results                                    |   w    |
+|  112    | Lane ID                                           |   r    |
 
-Local parameter memory (LPM) access: whenever the registers LPM read/write
-value are accessed, the current LPM address is incremented. If the register
-LPM address is written it will reset this value. Note that the offset into
-LPM for the current job is added automatically, so this is relative.
-
-Some external fixed function units read/write directly into LPM (for example,
-vertex fetch).
+*Note that input parameter registers can only be in the first operand slot*
 
 **Predicated execution**
 

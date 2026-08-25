@@ -29,8 +29,10 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     dut.io.startJob.ready.expect(true.B)
     dut.io.startJob.valid.poke(true.B)
     dut.io.startJob.bits.startPc.poke(startPc)
+    dut.io.startJob.bits.tag.poke(1.U)
     dut.clock.step()
     dut.io.startJob.valid.poke(false.B)
+    dut.io.resetThread.bits.tag.expect(1.U)
 
     // Record the thread that was allocated.
     val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
@@ -42,18 +44,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
   test("FetchSelectStage single thread") {
     simulate(new FetchSelectStage()) { dut =>
-      for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.startJob.bits.params.params(0)(i).poke((i + 1).U)
-        dut.io.startJob.bits.params.params(1)(i).poke((i + 10).U)
-      }
-
       val allocatedThread = startJob(dut, 0x1000.U)
-      // This is just a pass-through
-      for (j <- 0 until cfg.shaderVectorLanes) {
-        dut.io.startParams.params(0)(j).expect((j + 1).U)
-        dut.io.startParams.params(1)(j).expect((j + 10).U)
-      }
-
       // Issue a few more fetch requests
       for (i <- 1 until 5) {
         // Wait for RAW delay
@@ -91,8 +82,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       dut.io.startJob.ready.expect(true.B)
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0x1000.U)
-      dut.io.resetThread.valid.expect(true.B)
-      val resetThread = dut.io.resetThread.bits.peek().litValue
+      dut.io.startJob.bits.tag.poke(1.U)
+      val resetThread = dut.io.resetThread.bits.thread.peek().litValue
+      dut.io.resetThread.bits.tag.expect(1.U)
       dut.clock.step()
       dut.io.startJob.valid.poke(false.B)
 

@@ -21,16 +21,6 @@ import chisel3.util._
 import gpu._
 
 /**
-  * Parameters are available to shader program by reading special registers.
-  * These registers are initialized when a thread is started and can be used to
-  * pass data from fixed function units to the shader program.
-  */
-class ShaderParams(implicit val cfg: GpuConfig) extends Bundle {
-  val numParams = 2
-  val params = Vec(numParams, Vec(cfg.shaderVectorLanes, UInt(32.W)))
-}
-
-/**
   * Top level shader core, which can run multiple shader program threads.
   */
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
@@ -38,11 +28,21 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
     val icacheReadPort = new MemReadPort
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
-      val params = new ShaderParams
+      val tag = UInt(cfg.shaderTagBits.W)
     }))
 
-    // A bit of a debug hack for now
-    val result = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val regRead = Valid(new Bundle {
+      val tag = UInt(cfg.shaderTagBits.W)
+      val addr = UInt(3.W)
+    })
+
+    val regReadData = Input(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+
+    val regWrite = Valid(new Bundle {
+      val tag = UInt(cfg.shaderTagBits.W)
+      val addr = UInt(3.W)
+      val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
+    })
   })
 
   val icacheFillUnit = Module(new ICacheFillUnit)
@@ -69,8 +69,9 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   instructionFetchStage.io.squash <> executeStage.io.squash
 
   instructionDecodeStage.io.decodedInstruction <> executeStage.io.decodedInstruction
-  instructionDecodeStage.io.startParams := fetchSelectStage.io.startParams
-  io.result := instructionDecodeStage.io.result
+  io.regRead <> instructionDecodeStage.io.regRead
+  instructionDecodeStage.io.regReadData := io.regReadData
+  io.regWrite <> instructionDecodeStage.io.regWrite
 
   executeStage.io.writeback <> instructionDecodeStage.io.writeback
 

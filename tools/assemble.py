@@ -67,10 +67,6 @@ INSTRS = {
 
 BUILTIN_REGISTERS = {
     'exec': 32,
-    'LPM_READ_ADDR': 33,
-    'LPM_WRITE_ADDR': 34,
-    'UNIFORM_ADDR': 35,
-    'UNIFORM_READ_DATA': 36,
     'CONST_0': 53,
     'CONST_1': 54,
     'CONST_MINUS_ONE': 55,
@@ -82,9 +78,7 @@ BUILTIN_REGISTERS = {
     'CONST_MINUS_1_0': 61,
     'CONST_2_0': 62,
     'CONST_MINUS_2_0': 63,
-    'LPM_READ_VALUE': 109,
-    'LPM_WRITE_VALUE': 110,
-    'LANE_ID': 111
+    'LANE_ID': 112
 }
 
 BRANCH_OFFSET_WIDTH = 19

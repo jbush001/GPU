@@ -33,12 +33,14 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     // From external fixed function units. Request to start a new shader job.
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
-      val params = new ShaderParams
+      val tag = UInt(cfg.shaderTagBits.W)
     }))
 
     // To InstructionDecodeStage. Initialize state when a new job starts.
-    val resetThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
-    val startParams = Output(new ShaderParams)
+    val resetThread = Valid(new Bundle {
+      val thread = UInt(log2Up(cfg.shaderThreads).W)
+      val tag = UInt(cfg.shaderTagBits.W)
+    })
 
     // To InstructionFetchStage. Request an instruction fetch for a thread.
     val fetchRequest = Valid(new FetchRequest)
@@ -82,8 +84,8 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     io.resetThread.valid := false.B
   }
 
-  io.startParams := io.startJob.bits.params
-  io.resetThread.bits := nextFreeThread
+  io.resetThread.bits.thread := nextFreeThread
+  io.resetThread.bits.tag := io.startJob.bits.tag
 
   when (io.halt.valid) {
     assert(!threadHalted(io.halt.bits), "Cannot halt a thread that is already halted")
