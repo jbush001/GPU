@@ -14,6 +14,8 @@
 //   limitations under the License.
 //
 
+// These functions do not support subnormals and only support round towards zero.
+
 package gpu
 
 import chisel3._
@@ -127,17 +129,10 @@ object Float32 {
   }
 }
 
-/** These blocks
-  *
-  *   - Do not support subnormal numbers and treats them as zero
-  *   - Only support round towards zero
-  */
-trait FloatingPointBlock
-
 /**
   * This has 3 cycles of latency
   */
-class FpAddSub extends Module with FloatingPointBlock {
+class FpAddSub extends Module {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val operand1 = Input(Float32())
@@ -227,7 +222,7 @@ class FpAddSub extends Module with FloatingPointBlock {
 /**
  * This has 3 cycles of latency
  */
-class FpMul extends Module with FloatingPointBlock {
+class FpMul extends Module {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val operand1 = Input(Float32())
@@ -303,7 +298,7 @@ class FpMul extends Module with FloatingPointBlock {
 /**
  * This has one cycle of latency
  */
-class FpReciprocalEstimate extends Module with FloatingPointBlock {
+class FpReciprocalEstimate extends Module {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val operand = Input(Float32())
@@ -347,4 +342,3 @@ class FpReciprocalEstimate extends Module with FloatingPointBlock {
 
   io.result := Float32(RegNext(resultNext, 0.U))
 }
-
