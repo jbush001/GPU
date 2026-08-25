@@ -38,10 +38,10 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   val tileBuffer = Module(new TileBuffer)
 
   val fillColors = Wire(Vec(4, new Color))
-  val normFactor = rasterizer.io.output.bits.lambda(0)(0) + rasterizer.io.output.bits.lambda(0)(1) + rasterizer.io.output.bits.lambda(0)(2)
   for (pixel <- 0 until 4) {
     for (component <- 0 until 3) {
-      fillColors(pixel).channels(component) := (rasterizer.io.output.bits.lambda(pixel)(component) * 1023.S / normFactor).asUInt
+      fillColors(pixel).channels(component) := ((rasterizer.io.output.bits.lambda(pixel)(component) >> 6)
+        .asUInt(Color.channelBits - 1, 0))
     }
 
     fillColors(pixel).channels(3) := 0x3ff.U
@@ -92,10 +92,10 @@ object Simulation extends App {
       // Set up a triangle
       val x0 = 5
       val y0 = 7
-      val x1 = 118
-      val y1 = 49
-      val x2 = 23
-      val y2 = 110
+      val x1 = 23
+      val y1 = 110
+      val x2 = 118
+      val y2 = 49
 
       val tileLeft = tileColumn * cfg.tileSizePixels
       val tileTop = tileRow * cfg.tileSizePixels
@@ -104,15 +104,37 @@ object Simulation extends App {
       dut.io.inputTriangle.bits.boundingBox.top.poke(tileTop)
       dut.io.inputTriangle.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
       dut.io.inputTriangle.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
-      dut.io.inputTriangle.bits.xStep(0).poke((y1 - y0).S)
-      dut.io.inputTriangle.bits.yStep(0).poke((x0 - x1).S)
-      dut.io.inputTriangle.bits.initialValue(0).poke(((tileLeft - x0) * (y1 - y0) - (tileTop - y0) * (x1 - x0)).S)
-      dut.io.inputTriangle.bits.xStep(1).poke((y2 - y1).S)
-      dut.io.inputTriangle.bits.yStep(1).poke((x1 - x2).S)
-      dut.io.inputTriangle.bits.initialValue(1).poke(((tileLeft - x1) * (y2 - y1) - (tileTop - y1) * (x2 - x1)).S)
-      dut.io.inputTriangle.bits.xStep(2).poke((y0 - y2).S)
-      dut.io.inputTriangle.bits.yStep(2).poke((x2 - x0).S)
-      dut.io.inputTriangle.bits.initialValue(2).poke(((tileLeft - x2) * (y0 - y2) - (tileTop - y2) * (x0 - x2)).S)
+      var xs0 = y1 - y0
+      var ys0 = x0 - x1
+      var iv0 = ((tileLeft - x0) * xs0 - (tileTop - y0) * -ys0)
+      var xs1 = y2 - y1
+      var ys1 = x1 - x2
+      var iv1 = ((tileLeft - x1) * xs1 - (tileTop - y1) * -ys1)
+      var xs2 = y0 - y2
+      var ys2 = x2 - x0
+      var iv2 = ((tileLeft - x2) * xs2 - (tileTop - y2) * -ys2)
+
+      // Normalize
+      val det = math.abs(iv0 + iv1 + iv2)
+      xs0 = (xs0 * 0x10000L / det).toInt
+      ys0 = (ys0 * 0x10000L / det).toInt
+      iv0 = (iv0 * 0x10000L / det).toInt
+      xs1 = (xs1 * 0x10000L / det).toInt
+      ys1 = (ys1 * 0x10000L / det).toInt
+      iv1 = (iv1 * 0x10000L / det).toInt
+      xs2 = (xs2 * 0x10000L / det).toInt
+      ys2 = (ys2 * 0x10000L / det).toInt
+      iv2 = (iv2 * 0x10000L / det).toInt
+
+      dut.io.inputTriangle.bits.xStep(0).poke(xs0.S)
+      dut.io.inputTriangle.bits.yStep(0).poke(ys0.S)
+      dut.io.inputTriangle.bits.initialValue(0).poke(iv0.S)
+      dut.io.inputTriangle.bits.xStep(1).poke(xs1.S)
+      dut.io.inputTriangle.bits.yStep(1).poke(ys1.S)
+      dut.io.inputTriangle.bits.initialValue(1).poke(iv1.S)
+      dut.io.inputTriangle.bits.xStep(2).poke(xs2.S)
+      dut.io.inputTriangle.bits.yStep(2).poke(ys2.S)
+      dut.io.inputTriangle.bits.initialValue(2).poke(iv2.S)
       while (dut.io.inputTriangle.ready.peek().litValue.toLong == 0) {
         dut.clock.step()
       }

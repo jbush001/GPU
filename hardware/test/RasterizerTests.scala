@@ -141,7 +141,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
           (coeffs.initialValue(i) +
             coeffs.xStep(i) * x +
             coeffs.yStep(i) * y
-          ) < 0
+          ) >= 0
         )
 
         sb.append(if (covered) "X" else ".")
@@ -155,10 +155,9 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
   test("Rasterizer rasterize") {
     simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
+      val coeffs = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
       val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
       val expected = """
-................
 ................
 ........X.......
 ........X.......
@@ -173,7 +172,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 ...XXXXXXXXXXX..
 ...XXXXXXXXXXX..
 ..XXXXXXXXXXXXX.
-................"""
+..XXXXXXXXXXXXX.
+.XXXXXXXXXXXXXXX"""
 
       assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
     }
@@ -182,7 +182,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   // Fill entire framebuffer
   test("Rasterizer fill") {
     simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(-1, -1, 40, -1, -1, 40, 0, 0)
+      val coeffs = computeEdgeCoefficient(-1, -1, -1, 40, 40, -1, 0, 0)
       val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
       assert(output.filterNot(_.isWhitespace) == "X" * 256)
     }
@@ -201,7 +201,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
         // Ensure these are wound clockwise using the cross product.
         var x2 = 0
         var y2 = 0
-        while ((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) < 0) {
+        while ((x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0) > 0) {
           x2 = rng.nextInt(blockSize * 2)
           y2 = rng.nextInt(blockSize * 2)
         }
@@ -224,7 +224,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   // Won't display anything
   test("Rasterizer reverse winding") {
     simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
+      val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
       val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
       val expected =  """................
 ................

@@ -105,7 +105,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
         }
       }
 
-      edgeValue(cfg.edgeFunctionBits - 1)
+      edgeValue >= 0.S
     }
 
     edgeCheck.reduceLeft(_ & _)
