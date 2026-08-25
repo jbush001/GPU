@@ -27,7 +27,7 @@ class RasterizerSetupParams(implicit cfg: GpuConfig) extends Bundle {
 }
 
 /** Contains coverage and interpolation data for a single 2x2 pixel quad. */
-class QuadOutput(implicit cfg: GpuConfig) extends Bundle {
+class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   /** Coordinates of the upper left corner, relative to the left/top edges
     * of the current tile bounding box.
     */
@@ -60,8 +60,8 @@ class QuadOutput(implicit cfg: GpuConfig) extends Bundle {
   */
 class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val input = Flipped(Decoupled(new RasterizerSetupParams))
-    val output = Decoupled(new QuadOutput)
+    val setupParams = Flipped(Decoupled(new RasterizerSetupParams))
+    val quad = Decoupled(new RasterizedQuad)
   })
 
   object StepCommand extends ChiselEnum {
@@ -70,8 +70,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val stepCommand = Wire(StepCommand())
 
-  val inParams = RegEnable(io.input.bits, io.input.fire)
-  val startRasterize = RegNext(io.input.fire)
+  val inParams = RegEnable(io.setupParams.bits, io.setupParams.fire)
+  val startRasterize = RegNext(io.setupParams.fire)
 
   val quadLoc = Reg(Point2D())
 
@@ -84,7 +84,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       val edgeValue = Reg(SInt(cfg.edgeFunctionBits.W))
 
       if (edge > 0) {
-        io.output.bits.lambda(pixel)(edge - 1) := edgeValue
+        io.quad.bits.lambda(pixel)(edge - 1) := edgeValue
       }
 
       switch(stepCommand) {
@@ -122,13 +122,13 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
-  io.input.ready := false.B
-  io.output.valid := false.B
+  io.setupParams.ready := false.B
+  io.quad.valid := false.B
   stepCommand := StepCommand.Wait;
   switch (stateReg) {
     // Waiting to start a new triangle
     is (State.Idle) {
-      io.input.ready := true.B
+      io.setupParams.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
         quadLoc := inParams.boundingBox.topLeft
@@ -139,8 +139,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     }
 
     is (State.StepRight) {
-      io.output.valid := pixelCheck =/= 0.U;
-      when (io.output.ready) {
+      io.quad.valid := pixelCheck =/= 0.U;
+      when (io.quad.ready) {
         when (quadLoc.x === inParams.boundingBox.right) {
           when (quadLoc.y === inParams.boundingBox.bottom) {
             stateReg := State.Idle
@@ -157,8 +157,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     }
 
    is (State.StepLeft) {
-      io.output.valid := pixelCheck =/= 0.U
-      when (io.output.ready) {
+      io.quad.valid := pixelCheck =/= 0.U
+      when (io.quad.ready) {
         when(quadLoc.x === inParams.boundingBox.left) {
           when (quadLoc.y === inParams.boundingBox.bottom) {
             stateReg := State.Idle
@@ -176,7 +176,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   }
 
   // Coordinates need to be relative to bounding box.
-  io.output.bits.location := quadLoc - inParams.boundingBox.topLeft
-  io.output.bits.mask := pixelCheck
+  io.quad.bits.location := quadLoc - inParams.boundingBox.topLeft
+  io.quad.bits.mask := pixelCheck
 }
 

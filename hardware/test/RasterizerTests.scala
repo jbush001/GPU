@@ -58,61 +58,61 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     bbBottom: Int,
     rng: Option[Random]) : String = {
 
-    dut.io.input.valid.poke(false)
-    dut.io.output.ready.poke(false)
+    dut.io.setupParams.valid.poke(false)
+    dut.io.quad.ready.poke(false)
     dut.clock.step() // Wait for reset to complete
 
-    dut.io.output.ready.poke(true)
+    dut.io.quad.ready.poke(true)
     dut.clock.step()
 
-    dut.io.input.bits.boundingBox.left.poke(bbLeft)
-    dut.io.input.bits.boundingBox.top.poke(bbTop)
-    dut.io.input.bits.boundingBox.right.poke(bbRight)
-    dut.io.input.bits.boundingBox.bottom.poke(bbBottom)
+    dut.io.setupParams.bits.boundingBox.left.poke(bbLeft)
+    dut.io.setupParams.bits.boundingBox.top.poke(bbTop)
+    dut.io.setupParams.bits.boundingBox.right.poke(bbRight)
+    dut.io.setupParams.bits.boundingBox.bottom.poke(bbBottom)
 
     // Edge 0->1
-    dut.io.input.bits.xStep(0).poke(coeffs.xStep(0))
-    dut.io.input.bits.yStep(0).poke(coeffs.yStep(0))
-    dut.io.input.bits.initialValue(0).poke(coeffs.initialValue(0))
+    dut.io.setupParams.bits.xStep(0).poke(coeffs.xStep(0))
+    dut.io.setupParams.bits.yStep(0).poke(coeffs.yStep(0))
+    dut.io.setupParams.bits.initialValue(0).poke(coeffs.initialValue(0))
 
     // Edge 1->2
-    dut.io.input.bits.xStep(1).poke(coeffs.xStep(1))
-    dut.io.input.bits.yStep(1).poke(coeffs.yStep(1))
-    dut.io.input.bits.initialValue(1).poke(coeffs.initialValue(1))
+    dut.io.setupParams.bits.xStep(1).poke(coeffs.xStep(1))
+    dut.io.setupParams.bits.yStep(1).poke(coeffs.yStep(1))
+    dut.io.setupParams.bits.initialValue(1).poke(coeffs.initialValue(1))
 
     // Edge 2->0
-    dut.io.input.bits.xStep(2).poke(coeffs.xStep(2))
-    dut.io.input.bits.yStep(2).poke(coeffs.yStep(2))
-    dut.io.input.bits.initialValue(2).poke(coeffs.initialValue(2))
-    dut.io.input.valid.poke(true)
+    dut.io.setupParams.bits.xStep(2).poke(coeffs.xStep(2))
+    dut.io.setupParams.bits.yStep(2).poke(coeffs.yStep(2))
+    dut.io.setupParams.bits.initialValue(2).poke(coeffs.initialValue(2))
+    dut.io.setupParams.valid.poke(true)
 
-    while (dut.io.input.ready.peek().litValue.toLong == 0) {
+    while (dut.io.setupParams.ready.peek().litValue.toLong == 0) {
       dut.clock.step()
     }
 
     dut.clock.step()
-    dut.io.input.valid.poke(false)
+    dut.io.setupParams.valid.poke(false)
 
     val outputBuffer = Array.ofDim[Boolean](bbRight - bbLeft + 2, bbBottom - bbTop + 2);
 
-    dut.io.output.ready.poke(true)
+    dut.io.quad.ready.poke(true)
 
     dut.clock.step()
 
-    while (!dut.io.input.ready.peek().litToBoolean) {
+    while (!dut.io.setupParams.ready.peek().litToBoolean) {
       rng match {
-        case Some(rng) => dut.io.output.ready.poke(rng.nextBoolean())
+        case Some(rng) => dut.io.quad.ready.poke(rng.nextBoolean())
         case None => {}
       }
 
-      if (dut.io.output.valid.peek().litValue.toLong != 0
-        && dut.io.output.ready.peek().litValue.toLong != 0) {
-        dut.io.input.ready.expect(0)
-        val x = dut.io.output.bits.location.x.peek().litValue.toInt
-        val y = dut.io.output.bits.location.y.peek().litValue.toInt
+      if (dut.io.quad.valid.peek().litValue.toLong != 0
+        && dut.io.quad.ready.peek().litValue.toLong != 0) {
+        dut.io.setupParams.ready.expect(0)
+        val x = dut.io.quad.bits.location.x.peek().litValue.toInt
+        val y = dut.io.quad.bits.location.y.peek().litValue.toInt
         assert(x <= (bbRight - bbLeft))
         assert(y <= (bbBottom - bbTop))
-        val mask = dut.io.output.bits.mask.peek().litValue.toLong
+        val mask = dut.io.quad.bits.mask.peek().litValue.toLong
         if ((mask & 1) != 0) outputBuffer(y)(x) = true
         if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
         if ((mask & 4) != 0) outputBuffer(y + 1)(x) = true

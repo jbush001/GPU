@@ -28,7 +28,7 @@ import gpu._
 // in a real configuration, but demonstrates things working end-to-end.
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val inputTriangle = Flipped(Decoupled(new RasterizerSetupParams))
+    val setupParams = Flipped(Decoupled(new RasterizerSetupParams))
     val startFlush = Input(Bool())
     val flushData = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
@@ -39,10 +39,10 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 
   val fillColors = Wire(Vec(4, new Color))
   for (pixel <- 0 until 4) {
-    val lambda0 = rasterizer.io.output.bits.lambda(pixel)(0)
-    fillColors(pixel).channels(0) := ((rasterizer.io.output.bits.lambda(pixel)(0) >> 6)
+    val lambda0 = rasterizer.io.quad.bits.lambda(pixel)(0)
+    fillColors(pixel).channels(0) := ((rasterizer.io.quad.bits.lambda(pixel)(0) >> 6)
       .asUInt(Color.channelBits - 1, 0))
-    val lambda1 = rasterizer.io.output.bits.lambda(pixel)(1)
+    val lambda1 = rasterizer.io.quad.bits.lambda(pixel)(1)
     fillColors(pixel).channels(1) := ((lambda1 >> 6)
       .asUInt(Color.channelBits - 1, 0))
     val lambda2 = 0x10000.S - (lambda0 + lambda1)
@@ -54,10 +54,10 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 
   val fillDepth = 0.U(cfg.depthBits.W)
 
-  rasterizer.io.output.ready := true.B // No wait
-  tileBuffer.io.quad.valid := rasterizer.io.output.valid
-  tileBuffer.io.quad.bits.location := rasterizer.io.output.bits.location
-  tileBuffer.io.quad.bits.mask := rasterizer.io.output.bits.mask
+  rasterizer.io.quad.ready := true.B // No wait
+  tileBuffer.io.quad.valid := rasterizer.io.quad.valid
+  tileBuffer.io.quad.bits.location := rasterizer.io.quad.bits.location
+  tileBuffer.io.quad.bits.mask := rasterizer.io.quad.bits.mask
   tileBuffer.io.quad.bits.colors := fillColors
   tileBuffer.io.quad.bits.depths := VecInit.fill(4)(fillDepth)
   tileBuffer.io.clearColor.channels(0) := 0.U
@@ -71,7 +71,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.enableDepthWrite := true.B
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
-  rasterizer.io.input <> io.inputTriangle
+  rasterizer.io.setupParams <> io.setupParams
 }
 
 object Simulation extends App {
@@ -80,7 +80,7 @@ object Simulation extends App {
   simulate(new SimTop()) { dut =>
     dut.reset.poke(true.B)
     dut.io.startFlush.poke(false)
-    dut.io.inputTriangle.valid.poke(false)
+    dut.io.setupParams.valid.poke(false)
     dut.clock.step(5)
     dut.reset.poke(false.B)
     dut.clock.step(1)
@@ -104,11 +104,11 @@ object Simulation extends App {
 
       val tileLeft = tileColumn * cfg.tileSizePixels
       val tileTop = tileRow * cfg.tileSizePixels
-      dut.io.inputTriangle.valid.poke(true)
-      dut.io.inputTriangle.bits.boundingBox.left.poke(tileLeft)
-      dut.io.inputTriangle.bits.boundingBox.top.poke(tileTop)
-      dut.io.inputTriangle.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
-      dut.io.inputTriangle.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+      dut.io.setupParams.valid.poke(true)
+      dut.io.setupParams.bits.boundingBox.left.poke(tileLeft)
+      dut.io.setupParams.bits.boundingBox.top.poke(tileTop)
+      dut.io.setupParams.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+      dut.io.setupParams.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
       var xs0 = y1 - y0
       var ys0 = x0 - x1
       var iv0 = ((tileLeft - x0) * xs0 - (tileTop - y0) * -ys0)
@@ -131,20 +131,20 @@ object Simulation extends App {
       ys2 = (ys2 * 0x10000L / det).toInt
       iv2 = (iv2 * 0x10000L / det).toInt
 
-      dut.io.inputTriangle.bits.xStep(0).poke(xs0.S)
-      dut.io.inputTriangle.bits.yStep(0).poke(ys0.S)
-      dut.io.inputTriangle.bits.initialValue(0).poke(iv0.S)
-      dut.io.inputTriangle.bits.xStep(1).poke(xs1.S)
-      dut.io.inputTriangle.bits.yStep(1).poke(ys1.S)
-      dut.io.inputTriangle.bits.initialValue(1).poke(iv1.S)
-      dut.io.inputTriangle.bits.xStep(2).poke(xs2.S)
-      dut.io.inputTriangle.bits.yStep(2).poke(ys2.S)
-      dut.io.inputTriangle.bits.initialValue(2).poke(iv2.S)
-      while (dut.io.inputTriangle.ready.peek().litValue.toLong == 0) {
+      dut.io.setupParams.bits.xStep(0).poke(xs0.S)
+      dut.io.setupParams.bits.yStep(0).poke(ys0.S)
+      dut.io.setupParams.bits.initialValue(0).poke(iv0.S)
+      dut.io.setupParams.bits.xStep(1).poke(xs1.S)
+      dut.io.setupParams.bits.yStep(1).poke(ys1.S)
+      dut.io.setupParams.bits.initialValue(1).poke(iv1.S)
+      dut.io.setupParams.bits.xStep(2).poke(xs2.S)
+      dut.io.setupParams.bits.yStep(2).poke(ys2.S)
+      dut.io.setupParams.bits.initialValue(2).poke(iv2.S)
+      while (dut.io.setupParams.ready.peek().litValue.toLong == 0) {
         dut.clock.step()
       }
       dut.clock.step()
-      dut.io.inputTriangle.valid.poke(false)
+      dut.io.setupParams.valid.poke(false)
 
       // Render stuff. Note that we don't check for completion, just run for
       // enough cycles we know it should finish.
