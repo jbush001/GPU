@@ -22,12 +22,18 @@ import gpu._
 
 /**
   * Top level shader core, which can run multiple shader program threads.
+  * The regRead/regWrite ports form the primary interface to fixed function
+  * hardware.
   */
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val icacheReadPort = new MemReadPort
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
+
+      /** The tag uniquely identifies this job. It is included with each
+        * external special register read.
+        */
       val tag = UInt(cfg.shaderTagBits.W)
     }))
 
@@ -36,6 +42,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
       val addr = UInt(3.W)
     })
 
+    /** This returns data one cycle after a regRead request. */
     val regReadData = Input(Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
     val regWrite = Valid(new Bundle {

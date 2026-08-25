@@ -90,8 +90,10 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
 }
 
 /**
-  * Instruction decode stage. This stage decodes the instruction and reads the
-  * source registers. It also handles writing back to registers.
+  * Instruction decode stage.
+  * - This stage decodes the instruction and reads the source registers.
+  * - Handles writing back to registers.
+  * - Handles special register access
   */
 class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

@@ -22,8 +22,8 @@ import gpu._
 
 class ICacheAddress(implicit cfg: GpuConfig) extends Bundle {
   val raw = UInt(cfg.busAddressBits.W)
-  def tag = raw(cfg.busAddressBits - 1, cfg.busAddressBits - cfg.tagBits)
-  def index = raw(cfg.cacheLineOffsetBits + cfg.indexBits - 1, cfg.cacheLineOffsetBits)
+  def tag = raw(cfg.busAddressBits - 1, cfg.busAddressBits - cfg.icacheTagBits)
+  def index = raw(cfg.cacheLineOffsetBits + cfg.icacheIndexBits - 1, cfg.cacheLineOffsetBits)
   def cacheLineOffset = raw(cfg.cacheLineOffsetBits - 1, 0)
 
   def cacheLineAligned = WireInit(new ICacheAddress,
@@ -44,12 +44,16 @@ class CacheUpdateRequest (implicit cfg: GpuConfig) extends Bundle {
   val last = Bool()
 }
 
-/** Handles tracking pending L1 instruction cache misses, issuing requests to
-  * the memory arbiter, and writing data back to the cache.
+/**
+  * - Tracks pending L1 instruction cache misses,
+  * - Detects when multiple threads miss on the same address and consolidates
+  *   requests.
+  * - Issues requests to the memory arbiter.
+  * - Writes data back to the cache.
   */
 class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // To memory arbiter, request data for a cache line fill.
+    // To MemoryArbiter, request data for a cache line fill.
     val readPort = new MemReadPort
 
     // From InstructionFetchStage. Enqueue a new miss request.

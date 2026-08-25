@@ -22,10 +22,10 @@ import gpu._
 
 /**
   * This is the first stage in the instruction pipeline, responsible for:
-  * - Maintaining the program counter for each thread.
-  * - Selecting which address to send to the instruction cache each cycle.
   * - Allocating/deallocating threads for jobs.
-  * - Suspending threads that are waiting on instruction cache misses.
+  * - Maintaining the program counter for each thread.
+  * - Selecting which thread to issue to the instruction cache each cycle.
+  * - Suspending/resuming threads that are waiting on instruction cache misses.
   * - Handling rollbacks for branches or other blocking conditions.
   */
 class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
@@ -70,7 +70,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   val threadHalted = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(true.B)))
   val threadStalled = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
 
-  // Threads start upon request and run to completion, halting when they
+  // Threads start upon request and run to completion, stopping when they
   // reach a HALT instruction. This logic tracks which threads are active
   // and assigns new threads on request. This unit can only start one new
   // thread per cycle.
@@ -94,10 +94,14 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
   // This handles stalling threads that are waiting on instruction cache misses.
   for (thid <- 0 until cfg.shaderThreads) {
-    assert(!(io.wakeThreads(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot wake and stall a thread at the same time")
-    assert(!(threadStalled(thid) && io.icacheMiss && io.icacheMissThread === thid.U), "Cannot stall a thread that is already stalled")
-    assert(threadStalled(thid) || !io.wakeThreads(thid), "Cannot wake a thread that is not stalled")
-    assert(!threadHalted(thid) || !(io.icacheMiss && io.icacheMissThread === thid.U), "Cannot stall a thread that is halted")
+    assert(!(io.wakeThreads(thid) && io.icacheMiss && io.icacheMissThread === thid.U),
+      "Cannot wake and stall a thread at the same time")
+    assert(!(threadStalled(thid) && io.icacheMiss && io.icacheMissThread === thid.U),
+      "Cannot stall a thread that is already stalled")
+    assert(threadStalled(thid) || !io.wakeThreads(thid),
+      "Cannot wake a thread that is not stalled")
+    assert(!threadHalted(thid) || !(io.icacheMiss && io.icacheMissThread === thid.U),
+      "Cannot stall a thread that is halted")
 
     // TODO There is actually an edge case where this can happen: if an instruction cache miss occurs
     // while fetching the next instruction and a previously fetched instruction is HALT, the
@@ -123,6 +127,9 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // The second instruction reads r1 before the first instruction writes it.
   // Not every instruction will have this hazard, but we enforce a 3-cycle delay
   // to simplify the pipeline.
+  // TODO an alternate approach would be to make the virtual vector register width
+  // wider than the number of physical execution units and issue the same
+  // instruction multiple times with a "chime" index.
   val rawLatency = 4 // Will issue every nth cycle, where n = rawLatency + 1
   val issueRawDelay = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(3.W))))
   val inRawWait = Wire(Vec(cfg.shaderThreads, Bool()))

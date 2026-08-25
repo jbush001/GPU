@@ -52,14 +52,14 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Color())
-      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBits.W))
+      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
     }))
 
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val flushData = Decoupled(Bits(32.W))
     val clearColor = Input(Color())
-    val clearDepth = Input(UInt(cfg.depthBits.W))
+    val clearDepth = Input(UInt(cfg.depthBufferBits.W))
 
     // Configuration
     val enableDepthWrite = Input(Bool())
@@ -80,7 +80,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
   // Memory is divided into four banks, one per pixel in the quad
   val colorMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, Color()))
-  val depthMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, UInt(cfg.depthBits.W)))
+  val depthMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, UInt(cfg.depthBufferBits.W)))
 
   // Each quad stores its pixels across four banks, but during a flush, we
   // need to send them to memory in linear raster order. These do the shuffling
@@ -112,7 +112,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val quadWriteLanes = Wire(Vec(Consts.pixelsPerQuad, Bool())) // Set by pixel processing pipelines
   val writeAddress = Wire(UInt(memoryAddrBits.W))
   val colorWriteVal = Wire(Vec(Consts.pixelsPerQuad, new Color))
-  val depthWriteVal = Wire(Vec(Consts.pixelsPerQuad, UInt(cfg.depthBits.W)))
+  val depthWriteVal = Wire(Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W)))
 
   // Clear writes are delayed one cycle after reads.
   val clearAddress = RegNext(flushAddress)

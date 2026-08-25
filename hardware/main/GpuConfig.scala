@@ -23,7 +23,7 @@ import chisel3.util._
 //
 case class GpuConfig(
   // Configurable parameters
-  depthBits: Int = 24,
+  depthBufferBits: Int = 24,
   tileSizePixels: Int = 64,
   edgeFunctionBits: Int = 32,
   coordinateBits: Int = 16,
@@ -47,9 +47,9 @@ case class GpuConfig(
   val tileCoordBits = log2Up(tileSizePixels)
   val totalTilePixels = tileSizePixels * tileSizePixels
 
-  val indexBits = log2Up(icacheLines)
+  val icacheIndexBits = log2Up(icacheLines)
   val cacheLineOffsetBits = log2Up(cacheLineSizeBytes)
-  val tagBits = busAddressBits - indexBits - cacheLineOffsetBits
+  val icacheTagBits = busAddressBits - icacheIndexBits - cacheLineOffsetBits
 }
 
 object Consts {
