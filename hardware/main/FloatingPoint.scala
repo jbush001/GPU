@@ -71,7 +71,7 @@ class Float32 extends Bundle {
   def toSInt(): SInt = {
     val result = Wire(SInt(32.W))
     when (this.exponent < Float32.exponentBias || this.isNaN) {
-      // Number is less than zero
+      // Absolute value is less than one
       result := 0.S
     }.elsewhen (this.exponent > Float32.exponentBias + 30.U || this.isInf) {
       // Number is too large to fit, saturate.
@@ -105,11 +105,8 @@ object Float32 {
   }
 
   def apply(negative: Bool, exponent: UInt, fraction: UInt) = {
-    require(exponent.getWidth == 8)
-    require(fraction.getWidth == 23)
-
     val f = Wire(new Float32)
-    f.raw := negative ## exponent ## fraction
+    f.raw := negative ## exponent.pad(exponentWidth)(exponentWidth-1, 0) ## fraction.pad(fractionWidth)(fractionWidth-1, 0)
     f
   }
 
@@ -280,18 +277,18 @@ class FpMul extends Module {
       stage2.fractionProduct(Float32.fractionWidth - 1, 0))
     val adjustedExponent = Mux(normShift, stage2.mulExponent + 1.U, stage2.mulExponent)
 
-    val resultNext = WireInit(0.U(32.W))
+    val resultNext = Wire(Float32())
     when (stage2.isNaN) {
-      resultNext := false.B ## 0xff.U(Float32.exponentWidth.W) ## 0x400000.U(Float32.fractionWidth.W)
+      resultNext := Float32(false.B, 0xff.U, 0x400000.U)
     }.elsewhen (stage2.isInf) {
-      resultNext := stage2.isNegative ## 0xff.U(Float32.exponentWidth.W) ## 0.U(Float32.fractionWidth.W)
+      resultNext := Float32(stage2.isNegative, 0xff.U, 0.U)
     }.elsewhen (stage2.isZero) {
-      resultNext := stage2.isNegative ## 0.U(31.W)
+      resultNext := Float32(stage2.isNegative, 0.U, 0.U)
     }.otherwise {
-      resultNext := stage2.isNegative ## adjustedExponent ## normalizedFraction
+      resultNext := Float32(stage2.isNegative, adjustedExponent, normalizedFraction)
     }
 
-    io.result := Float32(RegNext(resultNext, 0.U))
+    io.result := RegNext(resultNext)
   }
 }
 
@@ -307,11 +304,10 @@ class FpReciprocalEstimate extends Module {
   // Generate the fraction lookup table.
   // Because the floating point significant is normalized, its value ranges
   // from [1.0, 2.0). The reciprocal of this range therefore spans (0.5, 1.0].
-  // For the table calculation, we treat the table entries as 1.6 fixed point
-  // numbers, so the numerator for our calculations is 64 * 64. However, 0.5 is
-  // not representable in a normalized value, so we need to also multiply by
-  // two (we will compensate in hardware by shifting and adjusting the exponent
-  // to renormalize)
+  // We treat table entries as 1.6 fixed point numbers for the calculation,
+  // so the numerator for our calculations is 64 * 64. However, 0.5 is not
+  // representable as a normalized value, so we need to also multiply by
+  // two (we compensate by shifting and adjusting the exponent to renormalize)
   val numEntries = 64 // Must be a power of two
   val entryWidth = log2Up(numEntries)
   val numerator = (numEntries * numEntries * 2)
@@ -329,16 +325,16 @@ class FpReciprocalEstimate extends Module {
   val normalizationCorrection = io.operand.fraction(22, 17) === 0.U
   val exponentNext = 253.U - io.operand.exponent + normalizationCorrection.asUInt
 
-  val resultNext = Wire(UInt(32.W))
+  val resultNext = Wire(Float32())
   when (io.operand.isZero || io.operand.isNaN) {
     // Division by zero or NaN = NaN
-    resultNext := false.B ## 0xff.U(Float32.exponentWidth.W) ## 0x400000.U(Float32.fractionWidth.W)
+    resultNext := Float32(false.B, 0xff.U, 0x400000.U)
   }.elsewhen (io.operand.isInf) {
     // Division by +/- inf = 0.0
-    resultNext := io.operand.negative ##  0.U(8.W) ## 0.U(23.W)
+    resultNext := Float32(io.operand.negative, 0.U, 0.U)
   }.otherwise {
-    resultNext := io.operand.negative ## exponentNext ## (fractionNext << 17).pad(Float32.fractionWidth)
+    resultNext := Float32(io.operand.negative, exponentNext, (fractionNext << 17))
   }
 
-  io.result := Float32(RegNext(resultNext, 0.U))
+  io.result := RegNext(resultNext)
 }
