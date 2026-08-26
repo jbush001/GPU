@@ -48,7 +48,7 @@ object RenderBufferId extends ChiselEnum {
   */
 class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val quad = Flipped(Valid(new Bundle {
+    val shadedQuad = Flipped(Valid(new Bundle {
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Color())
@@ -96,12 +96,12 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   // The memory read ports are shared between flush and pixel operations
   // (which are never happening at the same time). Note we divide each
   // coordinate by two here to get the quad address from the pixel address.
-  val inputQuadAddress = Cat(io.quad.bits.location.y(cfg.tileCoordBits - 1, 1),
-    io.quad.bits.location.x(cfg.tileCoordBits - 1, 1)).asUInt
+  val inputQuadAddress = Cat(io.shadedQuad.bits.location.y(cfg.tileCoordBits - 1, 1),
+    io.shadedQuad.bits.location.x(cfg.tileCoordBits - 1, 1)).asUInt
   val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
-  val colorReadVal = VecInit(colorMemory.map(_.read(readAddress, io.quad.valid
+  val colorReadVal = VecInit(colorMemory.map(_.read(readAddress, io.shadedQuad.valid
     || flushActive)))
-  val depthReadVal = VecInit(depthMemory.map(_.read(readAddress, io.quad.valid
+  val depthReadVal = VecInit(depthMemory.map(_.read(readAddress, io.shadedQuad.valid
     || flushActive)))
 
   // Pipelined quad address registers
@@ -163,9 +163,9 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
     // Stage 1: This waits for the read of the old color and depth values above,
     // and passes through the other values.
     val stage1 = new {
-      val newColor = RegNext(io.quad.bits.colors(pixel))
-      val newDepth = RegNext(io.quad.bits.depths(pixel))
-      val mask = RegNext(io.quad.bits.mask(pixel) && io.quad.valid, false.B)
+      val newColor = RegNext(io.shadedQuad.bits.colors(pixel))
+      val newDepth = RegNext(io.shadedQuad.bits.depths(pixel))
+      val mask = RegNext(io.shadedQuad.bits.mask(pixel) && io.shadedQuad.valid, false.B)
     }
 
     // Stage 2: visibility checks, destination blending
