@@ -98,6 +98,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
         val tag = UInt(cfg.shaderTagBits.W)
       }))
 
+      val jobFinished = Valid(UInt(cfg.shaderTagBits.W))
+
       val regRead = Valid(new Bundle {
         val tag = UInt(cfg.shaderTagBits.W)
         val addr = UInt(3.W)
@@ -125,6 +127,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     core.io.regRead <> io.regRead
     core.io.regReadData := io.regReadData
     core.io.regWrite <> io.regWrite
+    io.jobFinished <> core.io.jobFinished
 
     arbiter.io.writePorts(0).burst.valid := false.B
     arbiter.io.writePorts(0).data.valid := false.B
@@ -211,6 +214,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     // next one. The Job structure tracks the state of active threads.
     class Job {
       var active = false
+      var gotResult = false
       var tag: Int = 0
       var a = Seq.fill(cfg.shaderVectorLanes)(0)
       var b = Seq.fill(cfg.shaderVectorLanes)(0)
@@ -243,6 +247,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       job.a = base.map(x => x * primes(rng.nextInt(primes.length)))
       job.b = base.map(x => x * primes(rng.nextInt(primes.length)))
       job.active = true
+      job.gotResult = false
       job.expectedVector = job.a.zip(job.b).map { case (x, y) => gcd(x, y) }
       job
     }
@@ -283,6 +288,14 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
           assert(jobs(jobIndex).active, s"Job $jobIndex was not active when result was received")
           assert(result == jobs(jobIndex).expectedVector, s"Job $jobIndex failed: got $result, expected ${jobs(jobIndex).expectedVector}")
+          assert(!jobs(jobIndex).gotResult, s"Job $jobIndex received multiple results")
+
+          jobs(jobIndex).gotResult = true
+        }
+
+        if (dut.io.jobFinished.valid.peek().litToBoolean) {
+          val jobIndex = dut.io.jobFinished.bits.peek().litValue.toInt
+          assert(jobs(jobIndex).gotResult, s"Job $jobIndex finished without producing a result")
           jobs(jobIndex).active = false
           activeJobs -= 1
         }

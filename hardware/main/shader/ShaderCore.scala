@@ -37,6 +37,8 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
       val tag = UInt(cfg.shaderTagBits.W)
     }))
 
+    val jobFinished = Valid(UInt(cfg.shaderTagBits.W))
+
     val regRead = Valid(new Bundle {
       val tag = UInt(cfg.shaderTagBits.W)
       val addr = UInt(3.W)
@@ -81,6 +83,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   io.regWrite <> instructionDecodeStage.io.regWrite
 
   executeStage.io.writeback <> instructionDecodeStage.io.writeback
+  io.jobFinished <> executeStage.io.jobFinished
 
   icacheFillUnit.io.readPort <> io.icacheReadPort
 }

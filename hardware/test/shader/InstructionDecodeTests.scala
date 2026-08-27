@@ -111,7 +111,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage mask reset") {
+  test("InstructionDecodeStage thread reset") {
     simulate(new InstructionDecodeStage()) { dut =>
       // Write a default vector value
       writeVector(dut, 1, 64, Seq.fill(cfg.shaderVectorLanes)(0xffff))
@@ -122,6 +122,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       // Reset thread, which should reset the mask to all 1s
       dut.io.resetThread.valid.poke(true.B)
       dut.io.resetThread.bits.thread.poke(1.U)
+      dut.io.resetThread.bits.tag.poke(123.U)
       dut.clock.step(1)
       dut.io.resetThread.valid.poke(false.B)
 
@@ -137,6 +138,9 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.decodedInstruction.bits.operand1(i).expect((i + 100).U)
       }
+
+      // Also ensure the tag is set properly on the decoded instruction
+      dut.io.decodedInstruction.bits.meta.tag.expect(123.U)
     }
   }
 
@@ -338,7 +342,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage read shader params") {
+  test("InstructionDecodeStage read shader reg") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.resetThread.valid.poke(true.B)
       dut.io.resetThread.bits.thread.poke(1.U)
@@ -367,7 +371,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage write shader params") {
+  test("InstructionDecodeStage write shader reg") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.resetThread.valid.poke(true.B)
       dut.io.resetThread.bits.thread.poke(1.U)
@@ -377,6 +381,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.writeback.valid.poke(true.B)
       dut.io.writeback.bits.thread.poke(1.U)
+      dut.io.writeback.bits.tag.poke(123.U)
       dut.io.writeback.bits.destReg.poke(105.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(lane).poke((200 + lane).U)
