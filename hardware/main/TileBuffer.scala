@@ -23,6 +23,13 @@ object RenderBufferId extends ChiselEnum {
   val Color, Depth = Value
 }
 
+class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
+  val location = Point2D()
+  val mask = Bits(Consts.pixelsPerQuad.W)
+  val colors = Vec(Consts.pixelsPerQuad, Color())
+  val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
+}
+
 /** Stores rendered depth, and color information for square subset of the
   * framebuffer.
   *
@@ -48,12 +55,7 @@ object RenderBufferId extends ChiselEnum {
   */
 class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val shadedQuad = Flipped(Valid(new Bundle {
-      val location = Point2D()
-      val mask = Bits(Consts.pixelsPerQuad.W)
-      val colors = Vec(Consts.pixelsPerQuad, Color())
-      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
-    }))
+    val shadedQuad = Flipped(Valid(new ShadedQuad))
 
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer

@@ -30,13 +30,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // From Rasterizer.
     val rasterizedQuad = Flipped(Decoupled(new RasterizedQuad))
-
-    // To TileBuffer
-    val shadedQuad = Valid(new Bundle {
-      val location = Point2D()
-      val mask = Bits(Consts.pixelsPerQuad.W)
-      val colors = Vec(Consts.pixelsPerQuad, Color())
-    })
+    val flush = Input(Bool())
 
     // To/From ShaderCore
     val startJob = Decoupled(new Bundle {
@@ -58,6 +52,12 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       val addr = UInt(3.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
+
+    // To TileBuffer
+    val shadedQuad = Valid(new ShadedQuad)
+
+    // True when there are no jobs pending
+    val idle = Output(Bool())
   })
 
   val quadsPerJob = cfg.shaderVectorLanes / Consts.pixelsPerQuad
@@ -75,6 +75,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
 
+  io.idle := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.Idle).reduce(_&&_)
+
   // Fill jobs
   val nextFillJob = Module(new RRArbiter(Bool(), totalPendingJobs))
   for (i <- 0 until totalPendingJobs) {
@@ -91,9 +93,26 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     i => jobs(i).state === JobState.Idle).reduce(_||_) || fillActive
   )
 
+  assert(!(io.flush && io.rasterizedQuad.valid),
+    "Cannot have a valid rasterized quad while flushing")
+
   nextFillJob.io.out.ready := false.B
-  when (io.rasterizedQuad.fire) {
+  when (io.flush && fillActive) {
+    assert(fillQuadCount != 0.U)
+    // Push empty quads to complete any pending entries.
+    jobs(fillIndex).rasterizedQuads(fillQuadCount).mask := 0.U
+    when (fillQuadCount === (quadsPerJob - 1).U) {
+      // Finished filling, ready for processing
+      fillQuadCount := 0.U
+      fillActive := false.B
+      jobs(fillIndex).state := JobState.ReadyToProcess
+    }.otherwise {
+      fillQuadCount := fillQuadCount + 1.U
+    }
+  }.elsewhen (io.rasterizedQuad.fire) {
     when (fillActive) {
+      assert(fillQuadCount != 0.U)
+
       // Fill existing partially readyToProcess job entry
       jobs(fillIndex).rasterizedQuads(fillQuadCount) := io.rasterizedQuad.bits
 
@@ -157,6 +176,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   io.shadedQuad.bits.location := DontCare
   io.shadedQuad.bits.mask := DontCare
   io.shadedQuad.bits.colors := DontCare
+  io.shadedQuad.bits.depths := VecInit(Seq.fill(Consts.pixelsPerQuad)(0.U(cfg.depthBufferBits.W)))
   when (io.shadedQuad.fire) {
     when (drainActive) {
       io.shadedQuad.bits.location := jobs(drainIndex).rasterizedQuads(drainQuadCount).location

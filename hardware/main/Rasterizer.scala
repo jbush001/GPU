@@ -62,6 +62,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val setupParams = Flipped(Decoupled(new RasterizerSetupParams))
     val quad = Decoupled(new RasterizedQuad)
+    val complete = Output(Bool())
   })
 
   object StepCommand extends ChiselEnum {
@@ -119,6 +120,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   }
 
   val stateReg = RegInit(State.Idle)
+  io.complete := (stateReg === State.Idle)
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.

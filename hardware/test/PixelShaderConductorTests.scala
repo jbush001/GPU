@@ -75,18 +75,21 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
   test("PixelShaderConductor basic operation") {
     simulate(new PixelShaderConductor) { dut =>
+      dut.io.idle.expect(true)
 
       // Fill
       dut.io.startJob.valid.expect(false)
       dut.io.rasterizedQuad.ready.expect(true)
-      loadRasterizedQuad(dut, 3, 4, 15,
+      loadRasterizedQuad(dut, 3, 4, 12,
         Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)))
+      dut.io.idle.expect(false)
 
       dut.io.startJob.valid.expect(false)
       dut.io.rasterizedQuad.ready.expect(true)
-      loadRasterizedQuad(dut, 5, 6, 15,
+      loadRasterizedQuad(dut, 5, 6, 13,
         Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 +
         cfg.shaderVectorLanes + 1, i * 2 + cfg.shaderVectorLanes + 2)))
+      dut.io.idle.expect(false)
 
       // Process
       dut.io.startJob.valid.expect(true)
@@ -95,6 +98,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       val tag = dut.io.startJob.bits.tag.peek().litValue.toInt
       dut.clock.step()
       dut.io.startJob.valid.expect(false)
+      dut.io.idle.expect(false)
 
       // Read/write registers
       assert(readRegister(dut, tag, 0) ==
@@ -117,9 +121,53 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         Seq(i + 100, i + 200, i + 300, i + 400))
       val expectColor2 = Seq.tabulate(Consts.pixelsPerQuad)(i =>
         Seq(i + 104, i + 204, i + 304, i + 404))
-      drainShadedQuad(dut, 3, 4, 15, expectColor1)
-      drainShadedQuad(dut, 5, 6, 15, expectColor2)
+      drainShadedQuad(dut, 3, 4, 12, expectColor1)
+      dut.io.idle.expect(false)
+      drainShadedQuad(dut, 5, 6, 13, expectColor2)
       dut.io.shadedQuad.valid.expect(false)
+      dut.io.idle.expect(true)
+    }
+  }
+
+  test("PixelShaderConductor flush") {
+    simulate(new PixelShaderConductor) { dut =>
+      dut.io.startJob.ready.poke(true)
+
+      // Load one valid quad
+      loadRasterizedQuad(dut, 3, 4, 15,
+        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)))
+      dut.io.startJob.valid.expect(false)
+
+      // Flush
+      dut.io.flush.poke(true)
+      dut.clock.step()
+      dut.io.flush.poke(false)
+
+      dut.io.startJob.ready.poke(true)
+      dut.io.startJob.valid.expect(true)
+      val tag = dut.io.startJob.bits.tag.peek().litValue.toInt
+      dut.clock.step()
+
+      // Finish processing
+      dut.io.jobFinished.valid.poke(true)
+      dut.io.jobFinished.bits.poke(tag)
+      dut.clock.step()
+      dut.io.jobFinished.valid.poke(false)
+
+      // Valid pixel
+      dut.io.shadedQuad.valid.expect(true)
+      dut.io.shadedQuad.bits.location.x.expect(3)
+      dut.io.shadedQuad.bits.location.y.expect(4)
+      dut.io.shadedQuad.bits.mask.expect(15)
+      dut.io.idle.expect(false)
+      dut.clock.step()
+
+      // Null quad with zero mask
+      dut.io.shadedQuad.bits.mask.expect(0)
+      dut.io.shadedQuad.valid.expect(true)
+      dut.clock.step()
+      dut.io.shadedQuad.valid.expect(false)
+      dut.io.idle.expect(true)
     }
   }
 }

@@ -58,10 +58,6 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     bbBottom: Int,
     rng: Option[Random]) : String = {
 
-    dut.io.setupParams.valid.poke(false)
-    dut.io.quad.ready.poke(false)
-    dut.clock.step() // Wait for reset to complete
-
     dut.io.quad.ready.poke(true)
     dut.clock.step()
 
@@ -99,7 +95,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
     dut.clock.step()
 
-    while (!dut.io.setupParams.ready.peek().litToBoolean) {
+    while (!dut.io.complete.peek().litToBoolean) {
       rng match {
         case Some(rng) => dut.io.quad.ready.poke(rng.nextBoolean())
         case None => {}
@@ -121,6 +117,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
       dut.clock.step()
     }
+
+    dut.io.setupParams.ready.expect(true)
 
     val sb = new StringBuilder()
     for (y <- 0 until outputBuffer.length) {
