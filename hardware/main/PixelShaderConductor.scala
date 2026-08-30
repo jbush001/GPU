@@ -63,10 +63,17 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
     // True when there are no jobs pending
     val idle = Output(Bool())
+
+    // Program varying parameters, from triangle setup
+    val writeVaryingCoeff = Flipped(Valid(new Bundle {
+      val index = UInt(5.W)
+      val value = new Float32()
+    }))
   })
 
   val quadsPerJob = cfg.shaderVectorLanes / Consts.pixelsPerQuad
   val totalPendingJobs = 10
+  val maxVaryingCoeffs = 18
 
   object JobState extends ChiselEnum {
     val Idle, Filling, ReadyToProcess, Processing, ReadyToDrain, Draining = Value
@@ -76,9 +83,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val state = JobState()
     val rasterizedQuads = Vec(quadsPerJob, new RasterizedQuad)
     val colors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
+    val varyingCoeffIndex = UInt(log2Up(maxVaryingCoeffs).W)
   }
 
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
+  val varyingCoeffs = RegInit(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(new Float32()))))
 
   io.idle := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.Idle).reduce(_&&_)
 
@@ -155,6 +164,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   when (io.startJob.fire) {
     jobs(nextShaderJob.io.chosen).state := JobState.Processing
+    jobs(nextShaderJob.io.chosen).varyingCoeffIndex := 0.U
   }
 
   when (io.jobFinished.fire) {
@@ -221,10 +231,24 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     readResult(i) := readJob.rasterizedQuads(quadIndex).lambda(pixelIndex)(io.shaderRegRead.bits.addr(0)).asUInt
   }
 
+  when (io.shaderRegRead.bits.addr === 2.U && io.shaderRegRead.valid) {
+    val paramVal = varyingCoeffs(readJob.varyingCoeffIndex)
+    for (i <- 0 until cfg.shaderVectorLanes) {
+      readResult(i) := paramVal.raw
+    }
+
+    readJob.varyingCoeffIndex := readJob.varyingCoeffIndex + 1.U
+  }
+
   io.shaderRegReadData := readResult
 
   when (io.shaderRegWrite.valid) {
     val writeJob = jobs(io.shaderRegWrite.bits.tag(log2Up(totalPendingJobs) - 1, 0))
     writeJob.colors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
+  }
+
+  // Write parameter memory during setup
+  when (io.writeVaryingCoeff.valid) {
+    varyingCoeffs(io.writeVaryingCoeff.bits.index) := io.writeVaryingCoeff.bits.value
   }
 }

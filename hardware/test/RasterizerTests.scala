@@ -22,7 +22,7 @@ import scala.util.Random
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class EdgeCoefficients {
+class ComputedCoeffs {
   val edges = 3
   val xStep = Array.ofDim[Int](edges)
   val yStep = Array.ofDim[Int](edges)
@@ -33,8 +33,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def computeEdgeCoefficient(x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int,
-  startX: Int, startY: Int): EdgeCoefficients = {
-    val coeffs = new EdgeCoefficients()
+  startX: Int, startY: Int): ComputedCoeffs = {
+    val coeffs = new ComputedCoeffs()
     coeffs.xStep(0) = y1 - y0
     coeffs.yStep(0) = x0 - x1
     coeffs.initialValue(0) = (startX - x0) * (y1 - y0) - (startY - y0) * (x1 - x0)
@@ -51,7 +51,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   }
 
   def rasterizeTriangle(dut: Rasterizer,
-    coeffs: EdgeCoefficients,
+    coeffs: ComputedCoeffs,
     bbLeft: Int,
     bbTop: Int,
     bbRight: Int,
@@ -61,33 +61,33 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     dut.io.quad.ready.poke(true)
     dut.clock.step()
 
-    dut.io.setupParams.bits.boundingBox.left.poke(bbLeft)
-    dut.io.setupParams.bits.boundingBox.top.poke(bbTop)
-    dut.io.setupParams.bits.boundingBox.right.poke(bbRight)
-    dut.io.setupParams.bits.boundingBox.bottom.poke(bbBottom)
+    dut.io.edgeCoeffs.bits.boundingBox.left.poke(bbLeft)
+    dut.io.edgeCoeffs.bits.boundingBox.top.poke(bbTop)
+    dut.io.edgeCoeffs.bits.boundingBox.right.poke(bbRight)
+    dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(bbBottom)
 
     // Edge 0->1
-    dut.io.setupParams.bits.xStep(0).poke(coeffs.xStep(0))
-    dut.io.setupParams.bits.yStep(0).poke(coeffs.yStep(0))
-    dut.io.setupParams.bits.initialValue(0).poke(coeffs.initialValue(0))
+    dut.io.edgeCoeffs.bits.xStep(0).poke(coeffs.xStep(0))
+    dut.io.edgeCoeffs.bits.yStep(0).poke(coeffs.yStep(0))
+    dut.io.edgeCoeffs.bits.initialValue(0).poke(coeffs.initialValue(0))
 
     // Edge 1->2
-    dut.io.setupParams.bits.xStep(1).poke(coeffs.xStep(1))
-    dut.io.setupParams.bits.yStep(1).poke(coeffs.yStep(1))
-    dut.io.setupParams.bits.initialValue(1).poke(coeffs.initialValue(1))
+    dut.io.edgeCoeffs.bits.xStep(1).poke(coeffs.xStep(1))
+    dut.io.edgeCoeffs.bits.yStep(1).poke(coeffs.yStep(1))
+    dut.io.edgeCoeffs.bits.initialValue(1).poke(coeffs.initialValue(1))
 
     // Edge 2->0
-    dut.io.setupParams.bits.xStep(2).poke(coeffs.xStep(2))
-    dut.io.setupParams.bits.yStep(2).poke(coeffs.yStep(2))
-    dut.io.setupParams.bits.initialValue(2).poke(coeffs.initialValue(2))
-    dut.io.setupParams.valid.poke(true)
+    dut.io.edgeCoeffs.bits.xStep(2).poke(coeffs.xStep(2))
+    dut.io.edgeCoeffs.bits.yStep(2).poke(coeffs.yStep(2))
+    dut.io.edgeCoeffs.bits.initialValue(2).poke(coeffs.initialValue(2))
+    dut.io.edgeCoeffs.valid.poke(true)
 
-    while (dut.io.setupParams.ready.peek().litValue.toLong == 0) {
+    while (dut.io.edgeCoeffs.ready.peek().litValue.toLong == 0) {
       dut.clock.step()
     }
 
     dut.clock.step()
-    dut.io.setupParams.valid.poke(false)
+    dut.io.edgeCoeffs.valid.poke(false)
 
     val outputBuffer = Array.ofDim[Boolean](bbRight - bbLeft + 2, bbBottom - bbTop + 2);
 
@@ -103,7 +103,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
       if (dut.io.quad.valid.peek().litValue.toLong != 0
         && dut.io.quad.ready.peek().litValue.toLong != 0) {
-        dut.io.setupParams.ready.expect(0)
+        dut.io.edgeCoeffs.ready.expect(0)
         val x = dut.io.quad.bits.location.x.peek().litValue.toInt
         val y = dut.io.quad.bits.location.y.peek().litValue.toInt
         assert(x <= (bbRight - bbLeft))
@@ -118,7 +118,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
     }
 
-    dut.io.setupParams.ready.expect(true)
+    dut.io.edgeCoeffs.ready.expect(true)
 
     val sb = new StringBuilder()
     for (y <- 0 until outputBuffer.length) {
@@ -131,7 +131,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     sb.toString()
   }
 
-  def computeReference(coeffs: EdgeCoefficients, width: Int, height: Int): String = {
+  def computeReference(coeffs: ComputedCoeffs, width: Int, height: Int): String = {
     val sb = new StringBuilder()
     for (y <- 0 until height) {
       for (x <- 0 until width) {

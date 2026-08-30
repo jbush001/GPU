@@ -19,7 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-class RasterizerSetupParams(implicit cfg: GpuConfig) extends Bundle {
+class EdgeCoeffs(implicit cfg: GpuConfig) extends Bundle {
   val boundingBox = BoundingBox()
   val initialValue = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
   val xStep = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
@@ -60,7 +60,7 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   */
 class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val setupParams = Flipped(Decoupled(new RasterizerSetupParams))
+    val edgeCoeffs = Flipped(Decoupled(new EdgeCoeffs))
     val quad = Decoupled(new RasterizedQuad)
     val complete = Output(Bool())
   })
@@ -71,8 +71,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val stepCommand = Wire(StepCommand())
 
-  val inParams = RegEnable(io.setupParams.bits, io.setupParams.fire)
-  val startRasterize = RegNext(io.setupParams.fire)
+  val inParams = RegEnable(io.edgeCoeffs.bits, io.edgeCoeffs.fire)
+  val startRasterize = RegNext(io.edgeCoeffs.fire)
 
   val quadLoc = Reg(Point2D())
 
@@ -84,9 +84,9 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       // is on the inside of all three triangle edges, then it is inside the triangle.
       val edgeValue = Reg(SInt(cfg.edgeFunctionBits.W))
 
-      if (edge > 0) {
+      if (edge == 0 || edge == 2) {
         // These are 16_16 fixed point values by convention from the setup stage.
-        io.quad.bits.lambda(pixel)(edge - 1) := Float32.fromFixedPoint(edgeValue, 16)
+        io.quad.bits.lambda(pixel)(if (edge == 0) 1 else 0) := Float32.fromFixedPoint(edgeValue, 16)
       }
 
       switch(stepCommand) {
@@ -125,13 +125,13 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
-  io.setupParams.ready := false.B
+  io.edgeCoeffs.ready := false.B
   io.quad.valid := false.B
   stepCommand := StepCommand.Wait;
   switch (stateReg) {
     // Waiting to start a new triangle
     is (State.Idle) {
-      io.setupParams.ready := true.B
+      io.edgeCoeffs.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
         quadLoc := inParams.boundingBox.topLeft

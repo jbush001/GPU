@@ -30,7 +30,11 @@ import gpu.shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val setupParams = Flipped(Decoupled(new RasterizerSetupParams))
+    val edgeCoeffs = Flipped(Decoupled(new EdgeCoeffs))
+    val writeVaryingCoeff = Flipped(Valid(new Bundle {
+      val index = UInt(5.W)
+      val value = new Float32()
+    }))
     val startFlush = Input(Bool())
     val flushData = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
@@ -76,7 +80,9 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.enableDepthWrite := true.B
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
-  rasterizer.io.setupParams <> io.setupParams
+  rasterizer.io.edgeCoeffs <> io.edgeCoeffs
+
+  io.writeVaryingCoeff <> pixelShaderConductor.io.writeVaryingCoeff
 }
 
 object Simulation extends App {
@@ -85,7 +91,7 @@ object Simulation extends App {
   simulate(new SimTop()) { dut =>
     dut.reset.poke(true.B)
     dut.io.startFlush.poke(false)
-    dut.io.setupParams.valid.poke(false)
+    dut.io.edgeCoeffs.valid.poke(false)
     dut.clock.step(5)
     dut.reset.poke(false.B)
     dut.clock.step(1)
@@ -93,12 +99,15 @@ object Simulation extends App {
     val asm = new ShaderAssembler()
     asm
       .move(64, 96) // lambda0
+      .rInst(OpCode.Mulf, 64, 98, 64) // dQ1 * lambda0
       .move(65, 97) // lambda1
-      .rInst(OpCode.Addf, 66, 64, 65) // tmp = lambda0 + lambda1
-      .rInst(OpCode.Subf, 66, 60, 66) // lambda2 = 1.0 - tmp
+      .rInst(OpCode.Mulf, 65, 98, 65) // dQ2 * lambda1
+      .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
+      .rInst(OpCode.Addf, 64, 98, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+
       .move(104, 64) // red = lambda0
-      .move(105, 65) // green = lambda1
-      .move(106, 66) // blue = lambda2
+      .move(105, 64) // green = lambda1
+      .move(106, 64) // blue = lambda2
       .move(107, 60) // alpha = 1.0
       .halt()
     val programBytes = asm.finish()
@@ -114,6 +123,8 @@ object Simulation extends App {
 
     val vertices = Array((5, 7), (23, 110), (118, 49))
 
+    setUpParameterInterp(dut, (0.3f, 0.411504425f, 1.0f))
+
     for (tile <- 0 until 4) {
       val tileRow = tile / 2
       val tileColumn = tile % 2
@@ -121,40 +132,7 @@ object Simulation extends App {
       // Set up a triangle
       val tileLeft = tileColumn * cfg.tileSizePixels
       val tileTop = tileRow * cfg.tileSizePixels
-      dut.io.setupParams.valid.poke(true)
-      dut.io.setupParams.bits.boundingBox.left.poke(tileLeft)
-      dut.io.setupParams.bits.boundingBox.top.poke(tileTop)
-      dut.io.setupParams.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
-      dut.io.setupParams.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
-      val rawParams = (0 until 3).map { i =>
-        val (startX, startY) = vertices(i)
-        val (endX, endY) = vertices((i + 1) % 3)
-        val xs = endY - startY
-        val ys = endX - startX
-        val iv = ((tileLeft - startX) * xs - (tileTop - startY) * ys)
-        (xs, -ys, iv)
-      }
-
-      val det = math.abs(rawParams.map(_._3).sum)
-
-      rawParams.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
-        val normXs = (xs * 0xffffL / det).toInt
-        val normYs = (ys * 0xffffL / det).toInt
-        val normIv = (iv * 0xffffL / det).toInt
-
-        dut.io.setupParams.bits.xStep(i).poke(normXs.S)
-        dut.io.setupParams.bits.yStep(i).poke(normYs.S)
-        dut.io.setupParams.bits.initialValue(i).poke(normIv.S)
-      }
-
-      while (dut.io.setupParams.ready.peek().litValue.toLong == 0) {
-        dut.clock.step()
-      }
-
-      dut.clock.step()
-      dut.io.setupParams.valid.poke(false)
-
-      dut.clock.step() // Wait for rasterizer to start to complete is false.
+      setUpRasterizer(dut, vertices, tileLeft, tileTop)
 
       var totalCycles = 0
       while (!dut.io.complete.peek().litToBoolean) {
@@ -176,6 +154,63 @@ object Simulation extends App {
     val outputFile = new File("output.png")
     ImageIO.write(canvas, "png", outputFile)
     println("wrote output file to output.png")
+  }
+
+  def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
+
+  var nextWriteParam = 0
+
+  def setUpParameterInterp(dut: SimTop, values: (Float, Float, Float)): Unit = {
+    dut.io.writeVaryingCoeff.valid.poke(true)
+    dut.io.writeVaryingCoeff.bits.index.poke(nextWriteParam)
+    nextWriteParam += 1
+    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._2 - values._1)) // dQ1
+    dut.clock.step()
+    dut.io.writeVaryingCoeff.bits.index.poke(nextWriteParam)
+    nextWriteParam += 1
+    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._3 - values._1)) // dQ2
+    dut.clock.step()
+    dut.io.writeVaryingCoeff.bits.index.poke(nextWriteParam)
+    nextWriteParam += 1
+    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._1))
+    dut.clock.step()
+  }
+
+  def setUpRasterizer(dut: SimTop, vertices: Array[(Int, Int)], tileLeft: Int, tileTop: Int): Unit = {
+    dut.io.edgeCoeffs.valid.poke(true)
+    dut.io.edgeCoeffs.bits.boundingBox.left.poke(tileLeft)
+    dut.io.edgeCoeffs.bits.boundingBox.top.poke(tileTop)
+    dut.io.edgeCoeffs.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+    dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+    val rawParams = (0 until 3).map { i =>
+      val (startX, startY) = vertices(i)
+      val (endX, endY) = vertices((i + 1) % 3)
+      val xs = endY - startY
+      val ys = endX - startX
+      val iv = ((tileLeft - startX) * xs - (tileTop - startY) * ys)
+      (xs, -ys, iv)
+    }
+
+    val det = math.abs(rawParams.map(_._3).sum)
+
+    rawParams.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
+      val normXs = (xs * 0xffffL / det).toInt
+      val normYs = (ys * 0xffffL / det).toInt
+      val normIv = (iv * 0xffffL / det).toInt
+
+      dut.io.edgeCoeffs.bits.xStep(i).poke(normXs.S)
+      dut.io.edgeCoeffs.bits.yStep(i).poke(normYs.S)
+      dut.io.edgeCoeffs.bits.initialValue(i).poke(normIv.S)
+    }
+
+    while (dut.io.edgeCoeffs.ready.peek().litValue.toLong == 0) {
+      dut.clock.step()
+    }
+
+    dut.clock.step()
+    dut.io.edgeCoeffs.valid.poke(false)
+
+    dut.clock.step() // Wait for rasterizer to start to complete is false.
   }
 
   def flushBuffer(dut: SimTop, out: Option[Array[Int]], start: Int, stride: Int) = {
