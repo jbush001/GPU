@@ -193,4 +193,3 @@ class MemoryArbiter(
     io.axiBus.writeResponse.ready := writeBurstActive
   }
 }
-

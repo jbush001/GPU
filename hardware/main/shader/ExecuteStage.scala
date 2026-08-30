@@ -86,7 +86,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
 
   // Floating point comparison. This is used for Fmin/Fmax and Setgtf
   // instructions, so hoist it explicitly.
-  val fpGreater = vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)((_, a, b) => Float32(a).greaterThan(Float32(b)))
+  val fpGreater = vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)((_, a, b) => Float32(a) > Float32(b))
 
   // This multiplier is shared between Muli and Mulih.
   val isUnsignedMul = io.decodedInstruction.bits.meta.opcode === OpCode.Mulihu
@@ -109,7 +109,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.LoadHi -> ((_, a, _) => Cat(io.decodedInstruction.bits.meta.immediateValue(15, 0), a(15, 0))),
     OpCode.Ftoi -> ((_, a, _) => Float32(a).toFixedPoint().asUInt),
     OpCode.Itof -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
-    OpCode.Fabs -> ((_, a, _) => Float32(a).abs().raw),
+    OpCode.Fabs -> ((_, a, _) => Float32(a).abs.raw),
     OpCode.Fmin -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
     OpCode.Fmax -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b))
   )

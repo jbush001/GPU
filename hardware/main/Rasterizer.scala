@@ -41,9 +41,9 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
     */
   val mask = Bits(Consts.pixelsPerQuad.W)
 
-  /** Unnormalized barycentric coordindates of the pixels relative to
-    * the triangle vertices. The third coordinate is omitted as it can be
-    * derived from the first two.
+  /** Normalized barycentric coordindates of the pixels relative to the
+    * triangle vertices. The third coordinate is omitted as it can be
+    * derived from the first two (all three sum to 1.0)
     * [[https://en.wikipedia.org/wiki/Barycentric_coordinate_system]]
     */
   val lambda = Vec(Consts.pixelsPerQuad, Vec(2, Float32()))
@@ -182,4 +182,3 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   io.quad.bits.location := quadLoc - inParams.boundingBox.topLeft
   io.quad.bits.mask := pixelCheck
 }
-

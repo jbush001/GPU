@@ -20,10 +20,10 @@ import chisel3._
 import chisel3.util._
 
 /**
-  * PixelShaderConductor coordinates between the Rasterizer, ShaderCore,
-  * and TileBuffer.
-  * It collects rasterized quads from the Rasterizer, dispatches shading
-  * jobs to the ShaderCore, and sends shaded quads to the TileBuffer, tracking
+  * PixelShaderConductor coordinates between the [[Rasterizer]], [[ShaderCore]],
+  * and [[TileBuffer]].
+  * It collects rasterized quads from the rasterizer, dispatches shading
+  * jobs to the shader core, and sends shaded quads to the tile buffer, tracking
   * the state of all in-flight quads.
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
@@ -212,7 +212,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  // Register access
+  // Register access from shader core.
   val readJob = jobs(io.shaderRegRead.bits.tag(log2Up(totalPendingJobs) - 1, 0))
   val readResult = RegInit(VecInit(Seq.fill(cfg.shaderVectorLanes)(0.U(32.W))))
   for (i <- 0 until cfg.shaderVectorLanes) {

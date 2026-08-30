@@ -219,5 +219,4 @@ class FloatArrayToColor(implicit val cfg: GpuConfig) extends Module {
     io.shadedQuad.bits.depths(pixel) := io.floatQuad.bits.depths(pixel)
   }
   io.shadedQuad.valid := io.floatQuad.valid
-
 }

@@ -343,7 +343,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         val result = Output(Bool())
       })
 
-      io.result := io.a.asTypeOf(Float32()).greaterThan(io.b.asTypeOf(Float32()))
+      io.result := io.a.asTypeOf(Float32()) > io.b.asTypeOf(Float32())
     }) { dut =>
       val testVectors = Seq(
         (1.0f, 2.0f, false),
@@ -385,7 +385,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         val result = Output(UInt(32.W))
       })
 
-      io.result := io.a.asTypeOf(Float32()).abs().raw
+      io.result := io.a.asTypeOf(Float32()).abs.raw
     }) { dut =>
       val testVectors = Seq(
         (-1.0f, 1.0f),

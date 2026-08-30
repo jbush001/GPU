@@ -41,7 +41,7 @@ class Float32 extends Bundle {
   // This adds the leading hidden bit
   def fullFraction = (!this.isZero ## this.fraction).asUInt
 
-  def abs() = Float32(false.B, this.exponent, this.fraction)
+  def abs = Float32(false.B, this.exponent, this.fraction)
 
   def absGreaterThan(that: Float32): Bool = {
     ((this.exponent > that.exponent)
@@ -49,7 +49,7 @@ class Float32 extends Bundle {
       && this.fullFraction > that.fullFraction))
   }
 
-  def greaterThan(that: Float32): Bool = {
+  def >(that: Float32): Bool = {
     val result = WireInit(false.B)
     when (this.negative === that.negative) {
       when (this.negative) {
@@ -102,6 +102,7 @@ object Float32 {
   final def exponentBias = 127.U(exponentWidth.W) // This is an exponent of zero
 
   def apply() = new Float32()
+
   def apply(raw: UInt) = {
     val f = Wire(new Float32)
     f.raw := raw
