@@ -123,7 +123,7 @@ object Simulation extends App {
 
     val vertices = Array((5, 7), (23, 110), (118, 49))
 
-    setUpParameterInterp(dut, (0.3f, 0.411504425f, 1.0f))
+    setUpVarying(dut, (0.3f, 0.411504425f, 1.0f))
 
     for (tile <- 0 until 4) {
       val tileRow = tile / 2
@@ -158,20 +158,20 @@ object Simulation extends App {
 
   def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
 
-  var nextWriteParam = 0
+  var nextVaryingCoeffWrite = 0
 
-  def setUpParameterInterp(dut: SimTop, values: (Float, Float, Float)): Unit = {
+  def setUpVarying(dut: SimTop, values: (Float, Float, Float)): Unit = {
     dut.io.writeVaryingCoeff.valid.poke(true)
-    dut.io.writeVaryingCoeff.bits.index.poke(nextWriteParam)
-    nextWriteParam += 1
+    dut.io.writeVaryingCoeff.bits.index.poke(nextVaryingCoeffWrite)
+    nextVaryingCoeffWrite += 1
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._2 - values._1)) // dQ1
     dut.clock.step()
-    dut.io.writeVaryingCoeff.bits.index.poke(nextWriteParam)
-    nextWriteParam += 1
+    dut.io.writeVaryingCoeff.bits.index.poke(nextVaryingCoeffWrite)
+    nextVaryingCoeffWrite += 1
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._3 - values._1)) // dQ2
     dut.clock.step()
-    dut.io.writeVaryingCoeff.bits.index.poke(nextWriteParam)
-    nextWriteParam += 1
+    dut.io.writeVaryingCoeff.bits.index.poke(nextVaryingCoeffWrite)
+    nextVaryingCoeffWrite += 1
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._1))
     dut.clock.step()
   }
@@ -182,7 +182,7 @@ object Simulation extends App {
     dut.io.edgeCoeffs.bits.boundingBox.top.poke(tileTop)
     dut.io.edgeCoeffs.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
     dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
-    val rawParams = (0 until 3).map { i =>
+    val rawCoeffs = (0 until 3).map { i =>
       val (startX, startY) = vertices(i)
       val (endX, endY) = vertices((i + 1) % 3)
       val xs = endY - startY
@@ -191,9 +191,9 @@ object Simulation extends App {
       (xs, -ys, iv)
     }
 
-    val det = math.abs(rawParams.map(_._3).sum)
+    val det = math.abs(rawCoeffs.map(_._3).sum)
 
-    rawParams.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
+    rawCoeffs.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
       val normXs = (xs * 0xffffL / det).toInt
       val normYs = (ys * 0xffffL / det).toInt
       val normIv = (iv * 0xffffL / det).toInt

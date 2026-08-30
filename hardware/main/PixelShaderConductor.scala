@@ -64,7 +64,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     // True when there are no jobs pending
     val idle = Output(Bool())
 
-    // Program varying parameters, from triangle setup
+    // Program varying coefficients, from triangle setup
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val index = UInt(5.W)
       val value = new Float32()
@@ -232,9 +232,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   when (io.shaderRegRead.bits.addr === 2.U && io.shaderRegRead.valid) {
-    val paramVal = varyingCoeffs(readJob.varyingCoeffIndex)
+    val coeffVal = varyingCoeffs(readJob.varyingCoeffIndex)
     for (i <- 0 until cfg.shaderVectorLanes) {
-      readResult(i) := paramVal.raw
+      readResult(i) := coeffVal.raw
     }
 
     readJob.varyingCoeffIndex := readJob.varyingCoeffIndex + 1.U
@@ -247,7 +247,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     writeJob.colors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
   }
 
-  // Write parameter memory during setup
+  // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
     varyingCoeffs(io.writeVaryingCoeff.bits.index) := io.writeVaryingCoeff.bits.value
   }

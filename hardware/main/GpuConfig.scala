@@ -22,7 +22,7 @@ import chisel3.util._
 // Global constants
 //
 case class GpuConfig(
-  // Configurable parameters
+  // Configurable design parameters
   depthBufferBits: Int = 24,
   tileSizePixels: Int = 64,
   edgeFunctionBits: Int = 32,

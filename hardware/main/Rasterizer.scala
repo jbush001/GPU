@@ -71,7 +71,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val stepCommand = Wire(StepCommand())
 
-  val inParams = RegEnable(io.edgeCoeffs.bits, io.edgeCoeffs.fire)
+  val inCoeffs = RegEnable(io.edgeCoeffs.bits, io.edgeCoeffs.fire)
   val startRasterize = RegNext(io.edgeCoeffs.fire)
 
   val quadLoc = Reg(Point2D())
@@ -92,21 +92,21 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       switch(stepCommand) {
         is(StepCommand.Reset) {
           pixel match {
-            case 0 => edgeValue := inParams.initialValue(edge)
-            case 1 => edgeValue := inParams.initialValue(edge) + inParams.xStep(edge)
-            case 2 => edgeValue := inParams.initialValue(edge) + inParams.yStep(edge)
-            case 3 => edgeValue := (inParams.initialValue(edge) + inParams.xStep(edge)
-                + inParams.yStep(edge))
+            case 0 => edgeValue := inCoeffs.initialValue(edge)
+            case 1 => edgeValue := inCoeffs.initialValue(edge) + inCoeffs.xStep(edge)
+            case 2 => edgeValue := inCoeffs.initialValue(edge) + inCoeffs.yStep(edge)
+            case 3 => edgeValue := (inCoeffs.initialValue(edge) + inCoeffs.xStep(edge)
+                + inCoeffs.yStep(edge))
           }
         }
         is(StepCommand.Right) {
-          edgeValue := edgeValue + (inParams.xStep(edge) << 1.U).tail(1).asSInt
+          edgeValue := edgeValue + (inCoeffs.xStep(edge) << 1.U).tail(1).asSInt
         }
         is(StepCommand.Down) {
-          edgeValue := edgeValue + (inParams.yStep(edge) << 1.U).tail(1).asSInt
+          edgeValue := edgeValue + (inCoeffs.yStep(edge) << 1.U).tail(1).asSInt
         }
         is(StepCommand.Left) {
-          edgeValue := edgeValue - (inParams.xStep(edge) << 1.U).tail(1).asSInt
+          edgeValue := edgeValue - (inCoeffs.xStep(edge) << 1.U).tail(1).asSInt
         }
       }
 
@@ -134,7 +134,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       io.edgeCoeffs.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
-        quadLoc := inParams.boundingBox.topLeft
+        quadLoc := inCoeffs.boundingBox.topLeft
         stateReg := State.StepRight
       } otherwise {
         stepCommand := StepCommand.Wait
@@ -144,8 +144,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepRight) {
       io.quad.valid := pixelCheck =/= 0.U;
       when (io.quad.ready) {
-        when (quadLoc.x === inParams.boundingBox.right) {
-          when (quadLoc.y === inParams.boundingBox.bottom) {
+        when (quadLoc.x === inCoeffs.boundingBox.right) {
+          when (quadLoc.y === inCoeffs.boundingBox.bottom) {
             stateReg := State.Idle
           }.otherwise {
             stepCommand := StepCommand.Down;
@@ -162,8 +162,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
    is (State.StepLeft) {
       io.quad.valid := pixelCheck =/= 0.U
       when (io.quad.ready) {
-        when(quadLoc.x === inParams.boundingBox.left) {
-          when (quadLoc.y === inParams.boundingBox.bottom) {
+        when(quadLoc.x === inCoeffs.boundingBox.left) {
+          when (quadLoc.y === inCoeffs.boundingBox.bottom) {
             stateReg := State.Idle
           }.otherwise {
             stepCommand := StepCommand.Down
@@ -179,6 +179,6 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   }
 
   // Coordinates need to be relative to bounding box.
-  io.quad.bits.location := quadLoc - inParams.boundingBox.topLeft
+  io.quad.bits.location := quadLoc - inCoeffs.boundingBox.topLeft
   io.quad.bits.mask := pixelCheck
 }
