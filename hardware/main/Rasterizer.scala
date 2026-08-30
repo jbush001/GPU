@@ -46,7 +46,7 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
     * derived from the first two.
     * [[https://en.wikipedia.org/wiki/Barycentric_coordinate_system]]
     */
-  val lambda = Vec(Consts.pixelsPerQuad, Vec(2, SInt(cfg.edgeFunctionBits.W)))
+  val lambda = Vec(Consts.pixelsPerQuad, Vec(2, Float32()))
 }
 
 /** Determines pixel coverage for a triangle.
@@ -85,7 +85,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       val edgeValue = Reg(SInt(cfg.edgeFunctionBits.W))
 
       if (edge > 0) {
-        io.quad.bits.lambda(pixel)(edge - 1) := edgeValue
+        // These are 16_16 fixed point values by convention from the setup stage.
+        io.quad.bits.lambda(pixel)(edge - 1) := Float32.fromFixedPoint(edgeValue, 16)
       }
 
       switch(stepCommand) {

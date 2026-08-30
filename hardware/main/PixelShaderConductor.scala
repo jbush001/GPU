@@ -54,7 +54,12 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }))
 
     // To TileBuffer
-    val shadedQuad = Valid(new ShadedQuad)
+    val shadedQuad = Valid(new Bundle {
+      val location = Point2D()
+      val mask = Bits(Consts.pixelsPerQuad.W)
+      val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
+      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
+    })
 
     // True when there are no jobs pending
     val idle = Output(Bool())
@@ -70,7 +75,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   class JobInfo extends Bundle {
     val state = JobState()
     val rasterizedQuads = Vec(quadsPerJob, new RasterizedQuad)
-    val colors = Vec(cfg.shaderVectorLanes, new Color())
+    val colors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
   }
 
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
@@ -172,20 +177,23 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   io.shadedQuad.valid := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.ReadyToDrain).reduce(_ || _) || drainActive
 
+  val drainSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
   nextDrainJob.io.out.ready := false.B
-  io.shadedQuad.bits.location := DontCare
-  io.shadedQuad.bits.mask := DontCare
-  io.shadedQuad.bits.colors := DontCare
-  io.shadedQuad.bits.depths := VecInit(Seq.fill(Consts.pixelsPerQuad)(0.U(cfg.depthBufferBits.W)))
+  io.shadedQuad.bits.location := jobs(drainSelect).rasterizedQuads(drainQuadCount).location
+  io.shadedQuad.bits.mask := jobs(drainSelect).rasterizedQuads(drainQuadCount).mask
+  io.shadedQuad.bits.depths := VecInit(Seq.fill(Consts.pixelsPerQuad)(0.U(cfg.depthBufferBits.W))) // XXX not implemented
+  for (pixelI <- 0 until Consts.pixelsPerQuad) {
+    for (channelI <- 0 until Color.numChannels) {
+      val pixelIndex = drainQuadCount * Consts.pixelsPerQuad.U + pixelI.U
+      io.shadedQuad.bits.colors(pixelI)(channelI) := (
+        jobs(drainSelect).colors(channelI)(pixelIndex(log2Up(cfg.shaderVectorLanes) - 1, 0))
+      )
+    }
+  }
+
   when (io.shadedQuad.fire) {
     when (drainActive) {
-      io.shadedQuad.bits.location := jobs(drainIndex).rasterizedQuads(drainQuadCount).location
-      io.shadedQuad.bits.mask := jobs(drainIndex).rasterizedQuads(drainQuadCount).mask
-      io.shadedQuad.bits.colors := VecInit(Seq.tabulate(Consts.pixelsPerQuad) { i =>
-        val colorIndex = (drainQuadCount * Consts.pixelsPerQuad.U) + i.U
-        jobs(drainIndex).colors(colorIndex(log2Up(cfg.shaderVectorLanes) - 1, 0))
-      })
-
+      drainSelect := drainIndex
       when (drainQuadCount === (quadsPerJob - 1).U) {
         // Finished draining, ready for next job
         drainQuadCount := 0.U
@@ -200,9 +208,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       drainActive := true.B
       drainQuadCount := 1.U
       drainIndex := nextDrainJob.io.chosen
-      io.shadedQuad.bits.location := jobs(nextDrainJob.io.chosen).rasterizedQuads(0).location
-      io.shadedQuad.bits.mask := jobs(nextDrainJob.io.chosen).rasterizedQuads(0).mask
-      io.shadedQuad.bits.colors := jobs(nextDrainJob.io.chosen).colors.slice(0, Consts.pixelsPerQuad)
+      drainSelect := nextDrainJob.io.chosen
     }
   }
 
@@ -218,9 +224,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   io.shaderRegReadData := readResult
 
   when (io.shaderRegWrite.valid) {
-    for (i <- 0 until cfg.shaderVectorLanes) {
-      val writeJob = jobs(io.shaderRegWrite.bits.tag(log2Up(totalPendingJobs) - 1, 0))
-      writeJob.colors(i).channels(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data(i)(Color.channelBits - 1, 0)
-    }
+    val writeJob = jobs(io.shaderRegWrite.bits.tag(log2Up(totalPendingJobs) - 1, 0))
+    writeJob.colors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
   }
 }

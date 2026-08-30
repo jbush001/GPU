@@ -30,7 +30,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     dut.io.rasterizedQuad.bits.mask.poke(mask)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
-        dut.io.rasterizedQuad.bits.lambda(i)(j).poke(lambda(i)(j))
+        dut.io.rasterizedQuad.bits.lambda(i)(j).raw.poke(lambda(i)(j))
       }
     }
     dut.clock.step()
@@ -45,7 +45,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     dut.io.shadedQuad.valid.expect(true)
     for (i <- colors.indices) {
       for (j <- colors(i).indices) {
-        dut.io.shadedQuad.bits.colors(i).channels(j).expect(colors(i)(j))
+        dut.io.shadedQuad.bits.colors(i)(j).raw.expect(colors(i)(j))
       }
     }
     dut.clock.step()
@@ -78,11 +78,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.io.idle.expect(true)
 
       // Fill
+      val masks = Seq.tabulate(cfg.shaderVectorLanes / Consts.pixelsPerQuad)(i => 10 + i)
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.startJob.valid.expect(false)
         dut.io.rasterizedQuad.ready.expect(true)
         val base = i * Consts.pixelsPerQuad
-        loadRasterizedQuad(dut, 3, 4, 12,
+        loadRasterizedQuad(dut, 3, 4, masks(i),
           Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)))
         dut.io.idle.expect(false)
       }
@@ -117,7 +118,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         dut.io.idle.expect(false)
         dut.io.startJob.valid.expect(false)
         dut.io.rasterizedQuad.ready.expect(true)
-        drainShadedQuad(dut, 3, 4, 12, Seq.tabulate(Consts.pixelsPerQuad)(j =>
+        drainShadedQuad(dut, 3, 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
           Seq(i * 4 + j + 100, i * 4 + j + 200, i * 4 + j + 300, i * 4 + j + 400)))
       }
 

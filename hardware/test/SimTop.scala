@@ -43,6 +43,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   val shaderCore = Module(new ShaderCore)
   val memoryArbiter = Module(new MemoryArbiter(1, 1))
   val memory = Module(new SimAxiMemory(1024))
+  val floatArrayToColor = Module(new FloatArrayToColor)
 
   io.complete := pixelShaderConductor.io.idle && rasterizer.io.complete
 
@@ -53,8 +54,8 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
   pixelShaderConductor.io.shaderRegReadData <> shaderCore.io.regReadData
   shaderCore.io.regWrite <> pixelShaderConductor.io.shaderRegWrite
-  pixelShaderConductor.io.shadedQuad <> tileBuffer.io.shadedQuad
-
+  pixelShaderConductor.io.shadedQuad <> floatArrayToColor.io.floatQuad
+  floatArrayToColor.io.shadedQuad <> tileBuffer.io.shadedQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
   memoryArbiter.io.axiBus <> memory.io
   memory.dap <> io.dap
@@ -93,16 +94,12 @@ object Simulation extends App {
     asm
       .move(64, 96) // lambda0
       .move(65, 97) // lambda1
-      .rInst(OpCode.Addi, 66, 64, 65) // a = lambda0 + lambda1
-      .kInst(OpCode.LoadHi, 67, 0)
-      .kInst(OpCode.LoadLo, 67, 0xffff)
-      .rInst(OpCode.Subi, 66, 67, 66) // lambda2 = 0x10000 - (lambda0 + lambda1)
-      .kInst(OpCode.LoadHi, 67, 0)
-      .kInst(OpCode.LoadLo, 67, 6)
-      .rInst(OpCode.Lsr, 104, 64, 67) // red = lambda0 >> 6
-      .rInst(OpCode.Lsr, 105, 65, 67) // green = lambda1 >> 6
-      .rInst(OpCode.Lsr, 106, 66, 67) // blue = lambda2 >> 6
-      .move(107, 55) // alpha = 0xff
+      .rInst(OpCode.Addf, 66, 64, 65) // tmp = lambda0 + lambda1
+      .rInst(OpCode.Subf, 66, 60, 66) // lambda2 = 1.0 - tmp
+      .move(104, 64) // red = lambda0
+      .move(105, 65) // green = lambda1
+      .move(106, 66) // blue = lambda2
+      .move(107, 60) // alpha = 1.0
       .halt()
     val programBytes = asm.finish()
 
