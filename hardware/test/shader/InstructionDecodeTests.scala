@@ -91,7 +91,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       writeVector(dut, 1, 64, Seq.fill(cfg.shaderVectorLanes)(0xffff))
 
       // Write exec mask
-      writeScalar(dut, 1, 32, "b01010101".U.litValue.toInt)
+      writeScalar(dut, 1, 32, "b0101010101010101".U.litValue.toInt)
 
       // Write new vector value
       writeVector(dut, 1, 64, (0 until cfg.shaderVectorLanes).map(i => i + 100))
@@ -117,7 +117,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       writeVector(dut, 1, 64, Seq.fill(cfg.shaderVectorLanes)(0xffff))
 
       // Write exec mask
-      writeScalar(dut, 1, 32, "b01010101".U.litValue.toInt)
+      writeScalar(dut, 1, 32, "b0101010101010101".U.litValue.toInt)
 
       // Reset thread, which should reset the mask to all 1s
       dut.io.resetThread.valid.poke(true.B)
@@ -147,7 +147,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
   test("InstructionDecodeStage exec mask register read back") {
     simulate(new InstructionDecodeStage()) { dut =>
       // Write exec mask
-      writeScalar(dut, 1, 32, "b01010101".U.litValue.toInt)
+      writeScalar(dut, 1, 32, "b0101010101010101".U.litValue.toInt)
 
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
       dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 32, 65).U) // read exec mask
@@ -159,7 +159,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.fetchedInstruction.bits.pc.poke(0.U)
       dut.io.fetchedInstruction.bits.thread.poke(0.U)
 
-      dut.io.decodedInstruction.bits.operand1(0).expect("b01010101".U)
+      dut.io.decodedInstruction.bits.operand1(0).expect("b0101010101010101".U)
     }
   }
 

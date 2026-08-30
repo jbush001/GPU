@@ -244,8 +244,9 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
           val (opcode, op1, op2, expected) = testVectors(cycle - execLatency)
           dut.io.writeback.valid.expect(true.B)
           val result = dut.io.writeback.bits.value(0).peek().litValue
-          if (result != (if (expected) 0xff else 0)) {
-            fail(s"Test failed for opcode $opcode, got $result, expected=${if (expected) 0xff else 0}")
+          val expectedVector = if (expected) (1 << dut.cfg.shaderVectorLanes) - 1 else 0
+          if (result != expectedVector) {
+            fail(s"Test failed for opcode $opcode, got $result, expected=$expectedVector")
           }
 
           dut.io.writeback.bits.thread.expect(1.U)
