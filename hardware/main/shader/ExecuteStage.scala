@@ -107,8 +107,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Lsr -> ((_, a, b) => a >> b(4, 0)),
     OpCode.LoadLo -> ((_, a, _) => Cat(a(31, 16), io.decodedInstruction.bits.meta.immediateValue(15, 0))),
     OpCode.LoadHi -> ((_, a, _) => Cat(io.decodedInstruction.bits.meta.immediateValue(15, 0), a(15, 0))),
-    OpCode.Ftoi -> ((_, a, _) => Float32(a).toSInt().asUInt),
-    OpCode.Itof -> ((_, a, _) => Float32.fromSInt(a.asSInt).raw),
+    OpCode.Ftoi -> ((_, a, _) => Float32(a).toFixedPoint().asUInt),
+    OpCode.Itof -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
     OpCode.Fabs -> ((_, a, _) => Float32(a).abs().raw),
     OpCode.Fmin -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
     OpCode.Fmax -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b))

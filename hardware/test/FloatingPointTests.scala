@@ -222,54 +222,60 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("Float32 toSInt") {
+  test("Float32 toFixedPoint") {
     simulate(new Module {
       val io = IO(new Bundle {
         val a = Input(UInt(32.W))
-        val result = Output(SInt(32.W))
+        val result0 = Output(SInt(32.W))
+        val result16_16 = Output(SInt(32.W))
       })
 
-      io.result := io.a.asTypeOf(Float32()).toSInt()
+      io.result0 := io.a.asTypeOf(Float32()).toFixedPoint()
+      io.result16_16 := io.a.asTypeOf(Float32()).toFixedPoint(16)
     }) { dut =>
       val testVectors = Seq(
-        (1.0f, 1),
-        (-1.0f, -1),
-        (0.0f, 0),
-        (1234.56f, 1234),
-        (0.1234f, 0),
-        (-5543.1f, -5543),
-        (Float.NaN, 0),
-        (Float.PositiveInfinity, Int.MaxValue),
-        (Float.NegativeInfinity, Int.MinValue),
-        (2000000000.0f, 2000000000),
-        (-2000000000.0f, -2000000000),
-        (3000000000.0f, Int.MaxValue),
-        (-3000000000.0f, Int.MinValue),
-        (1E+30f, Int.MaxValue),
-        (-1E+30f, Int.MinValue),
-        (1E-30f, 0),
-        (-1E-30f, 0),
+        (1.0f, 1, (1 << 16)),
+        (-1.0f, -1, -(1 << 16)),
+        (0.0f, 0, 0),
+        (1234.56f, 1234, (1234.56f * 0x10000).toInt),
+        (0.1234f, 0, (0.1234f * 0x10000).toInt),
+        (-5543.1f, -5543, (-5543.1f * 0x10000).toInt),
+        (Float.NaN, 0, 0),
+        (Float.PositiveInfinity, Int.MaxValue, Int.MaxValue),
+        (Float.NegativeInfinity, Int.MinValue, Int.MinValue),
+        (2000000000.0f, 2000000000, Int.MaxValue),
+        (-2000000000.0f, -2000000000, Int.MinValue),
+        (3000000000.0f, Int.MaxValue, Int.MaxValue),
+        (-3000000000.0f, Int.MinValue, Int.MinValue),
+        (1E+30f, Int.MaxValue, Int.MaxValue),
+        (-1E+30f, Int.MinValue, Int.MinValue),
+        (1E-30f, 0, 0),
+        (-1E-30f, 0, 0),
       )
 
-      for ((a, expected) <- testVectors) {
+      for ((a, expected0, expected16_16) <- testVectors) {
         dut.io.a.poke(floatToRawBits(a).U)
         dut.clock.step()
-        if (dut.io.result.peek().litValue.toInt != expected) {
-          println(f"mismatch: $a%.3f to int, expected $expected actual ${dut.io.result.peek().litValue.toInt}")
+        if (dut.io.result0.peek().litValue.toInt != expected0) {
+          println(f"mismatch: $a%.3f to int, expected $expected0 actual ${dut.io.result0.peek().litValue.toInt}")
+          fail()
+        }
+        if (dut.io.result16_16.peek().litValue.toInt != expected16_16) {
+          println(f"mismatch: $a%.3f to 16.16 fixed point, expected $expected16_16 actual ${dut.io.result16_16.peek().litValue.toInt}")
           fail()
         }
       }
     }
   }
 
-  test("Float32 fromSInt") {
+  test("Float32 fromFixedPoint") {
     simulate(new Module {
       val io = IO(new Bundle {
         val a = Input(SInt(32.W))
         val result = Output(UInt(32.W))
       })
 
-      io.result := Float32.fromSInt(io.a).raw
+      io.result := Float32.fromFixedPoint(io.a).raw
     }) { dut =>
       val testVectors = Seq(
         (1, 1.0f),
@@ -294,6 +300,40 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
       }
     }
   }
+
+  test("Float32 fromFixedPoint2") {
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val a = Input(SInt(32.W))
+        val result = Output(UInt(32.W))
+      })
+
+      io.result := Float32.fromFixedPoint(io.a, 16).raw
+    }) { dut =>
+      val testVectors = Seq(
+        (0x10000, 1.0f),
+        (0x20000, 2.0f),
+        (-0x10000, -1.0f),
+        (-0x20000, -2.0f),
+        (0x500, 0.01953125f),
+        (-0x500, -0.01953125f),
+        (0, 0.0f),
+        (Int.MaxValue, 32767.998f),
+        (Int.MinValue, -32768.0f)
+      )
+
+      for ((a, expected) <- testVectors) {
+        dut.io.a.poke(a.S)
+        dut.clock.step()
+        val actual = dut.io.result.peek().litValue.toLong & 0xffffffffL
+        if (math.abs(floatToRawBits(expected) - actual) > 1) {
+          println(f"mismatch: int to fp, expected $expected actual ${java.lang.Float.intBitsToFloat(dut.io.result.peek().litValue.toInt)} (0x${dut.io.result.peek().litValue.toInt}%08x)")
+          fail()
+        }
+      }
+    }
+  }
+
 
   test("Float32 greaterThan") {
     simulate(new Module {

@@ -68,24 +68,28 @@ class Float32 extends Bundle {
     result
   }
 
-  def toSInt(): SInt = {
+  def toFixedPoint(fractionalBits: Int = 0): SInt = {
+    require(fractionalBits >= 0 && fractionalBits <= 30,
+      "fractionalBits must be in range [0, 30]")
+
     val result = Wire(SInt(32.W))
-    when (this.exponent < Float32.exponentBias || this.isNaN) {
-      // Absolute value is less than one
+    val unbiasedExponent = this.exponent.asSInt - Float32.exponentBias.asSInt
+
+    when (this.isNaN) {
       result := 0.S
-    }.elsewhen (this.exponent > Float32.exponentBias + 30.U || this.isInf) {
-      // Number is too large to fit, saturate.
-      when (this.negative) {
-        result := -0x80000000.S
-      }.otherwise {
-        result := 0x7fffffff.S
-      }
+    }.elsewhen (this.isInf || unbiasedExponent > (30 - fractionalBits).S) {
+      // Infinity or exponent overflow -> Saturate
+      result := Mux(this.negative, Int.MinValue.S, Int.MaxValue.S)
+    }.elsewhen (unbiasedExponent < -fractionalBits.S) {
+      // Underflow -> 0
+      result := 0.S
     }.otherwise {
-      // Shift to align whole portion
-      val shiftAmount = Float32.exponentBias - this.exponent + 32.U
-      val shifted = ((this.fullFraction ## 0.U((32 - Float32.fractionWidth).W)) >>
-        shiftAmount).tail(1).asSInt
-      result := Mux(this.negative, -shifted, shifted)
+      val paddedFraction = this.fullFraction ## 0.U(40.W)
+      val shiftAmount = (63.S - fractionalBits.S - unbiasedExponent).asUInt
+      val shifted = paddedFraction >> shiftAmount
+
+      val magnitude = shifted(31, 0).asSInt
+      result := Mux(this.negative, -magnitude, magnitude)
     }
 
     result
@@ -110,14 +114,16 @@ object Float32 {
     f
   }
 
-  def fromSInt(value: SInt): Float32 = {
+  def fromFixedPoint(value: SInt, fractionalBits: Int = 0): Float32 = {
+    require(fractionalBits >= 0 && fractionalBits <= 30,
+      "fractionalBits must be in range [0, 30]")
     val result = Wire(new Float32)
     when (value === 0.S) {
       result.raw := 0.U
     }.otherwise {
       val absValue = value.abs.asUInt
       val leadingZeros = PriorityEncoder(Reverse(absValue))
-      val exponent = (31.U(8.W) - leadingZeros) + exponentBias
+      val exponent = (31.U(8.W) - leadingZeros - fractionalBits.U(8.W)) + exponentBias
       val fraction = (absValue << leadingZeros)(30, 8)
       result := Float32(value(31), exponent, fraction)
     }
