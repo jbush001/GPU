@@ -219,7 +219,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   when (io.shaderRegWrite.valid) {
     for (i <- 0 until cfg.shaderVectorLanes) {
-      readJob.colors(i).channels(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data(i)(Color.channelBits - 1, 0)
+      val writeJob = jobs(io.shaderRegWrite.bits.tag(log2Up(totalPendingJobs) - 1, 0))
+      writeJob.colors(i).channels(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data(i)(Color.channelBits - 1, 0)
     }
   }
 }

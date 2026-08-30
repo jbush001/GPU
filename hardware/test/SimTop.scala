@@ -23,43 +23,47 @@ import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
 import gpu._
+import gpu.shader._
 
 // This is a bit of a hack, as the components won't connect exactly like this
 // in a real configuration, but demonstrates things working end-to-end.
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
+    val dap = new DirectAccessPort
     val setupParams = Flipped(Decoupled(new RasterizerSetupParams))
     val startFlush = Input(Bool())
     val flushData = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
+    val complete = Output(Bool())
   })
 
   val rasterizer = Module(new Rasterizer)
   val tileBuffer = Module(new TileBuffer)
+  val pixelShaderConductor = Module(new PixelShaderConductor)
+  val shaderCore = Module(new ShaderCore)
+  val memoryArbiter = Module(new MemoryArbiter(1, 1))
+  val memory = Module(new SimAxiMemory(1024))
 
-  val fillColors = Wire(Vec(4, new Color))
-  for (pixel <- 0 until 4) {
-    val lambda0 = rasterizer.io.quad.bits.lambda(pixel)(0)
-    fillColors(pixel).channels(0) := ((rasterizer.io.quad.bits.lambda(pixel)(0) >> 6)
-      .asUInt(Color.channelBits - 1, 0))
-    val lambda1 = rasterizer.io.quad.bits.lambda(pixel)(1)
-    fillColors(pixel).channels(1) := ((lambda1 >> 6)
-      .asUInt(Color.channelBits - 1, 0))
-    val lambda2 = 0x10000.S - (lambda0 + lambda1)
-    fillColors(pixel).channels(2) := ((lambda2 >> 6)
-      .asUInt(Color.channelBits - 1, 0))
+  io.complete := pixelShaderConductor.io.idle && rasterizer.io.complete
 
-    fillColors(pixel).channels(3) := 0x3ff.U
-  }
+  rasterizer.io.quad <> pixelShaderConductor.io.rasterizedQuad
+  pixelShaderConductor.io.flush := rasterizer.io.complete
+  pixelShaderConductor.io.startJob <> shaderCore.io.startJob
+  shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
+  shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
+  pixelShaderConductor.io.shaderRegReadData <> shaderCore.io.regReadData
+  shaderCore.io.regWrite <> pixelShaderConductor.io.shaderRegWrite
+  pixelShaderConductor.io.shadedQuad <> tileBuffer.io.shadedQuad
 
-  val fillDepth = 0.U(cfg.depthBufferBits.W)
+  shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
+  memoryArbiter.io.axiBus <> memory.io
+  memory.dap <> io.dap
+  memoryArbiter.io.writePorts(0).burst.valid := false.B
+  memoryArbiter.io.writePorts(0).data.valid := false.B
+  memoryArbiter.io.writePorts(0).burst.bits.address := 0.U
+  memoryArbiter.io.writePorts(0).burst.bits.length := 0.U
+  memoryArbiter.io.writePorts(0).data.bits := 0.U
 
-  rasterizer.io.quad.ready := true.B // No wait
-  tileBuffer.io.shadedQuad.valid := rasterizer.io.quad.valid
-  tileBuffer.io.shadedQuad.bits.location := rasterizer.io.quad.bits.location
-  tileBuffer.io.shadedQuad.bits.mask := rasterizer.io.quad.bits.mask
-  tileBuffer.io.shadedQuad.bits.colors := fillColors
-  tileBuffer.io.shadedQuad.bits.depths := VecInit.fill(4)(fillDepth)
   tileBuffer.io.clearColor.channels(0) := 0.U
   tileBuffer.io.clearColor.channels(1) := 0.U
   tileBuffer.io.clearColor.channels(2) := 0.U
@@ -84,6 +88,26 @@ object Simulation extends App {
     dut.clock.step(5)
     dut.reset.poke(false.B)
     dut.clock.step(1)
+
+    val asm = new ShaderAssembler()
+    asm
+      .move(64, 96) // lambda0
+      .move(65, 97) // lambda1
+      .rInst(OpCode.Addi, 66, 64, 65) // a = lambda0 + lambda1
+      .kInst(OpCode.LoadHi, 67, 0)
+      .kInst(OpCode.LoadLo, 67, 0xffff)
+      .rInst(OpCode.Subi, 66, 67, 66) // lambda2 = 0x10000 - (lambda0 + lambda1)
+      .kInst(OpCode.LoadHi, 67, 0)
+      .kInst(OpCode.LoadLo, 67, 6)
+      .rInst(OpCode.Lsr, 104, 64, 67) // red = lambda0 >> 6
+      .rInst(OpCode.Lsr, 105, 65, 67) // green = lambda1 >> 6
+      .rInst(OpCode.Lsr, 106, 66, 67) // blue = lambda2 >> 6
+      .move(107, 55) // alpha = 0xff
+      .halt()
+    val programBytes = asm.finish()
+
+    // Fill in memory
+    SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
     // Run a flush to clear out the buffer initially
     flushBuffer(dut, None, 0, 0)
@@ -117,9 +141,9 @@ object Simulation extends App {
       val det = math.abs(rawParams.map(_._3).sum)
 
       rawParams.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
-        val normXs = (xs * 0x10000L / det).toInt
-        val normYs = (ys * 0x10000L / det).toInt
-        val normIv = (iv * 0x10000L / det).toInt
+        val normXs = (xs * 0xffffL / det).toInt
+        val normYs = (ys * 0xffffL / det).toInt
+        val normIv = (iv * 0xffffL / det).toInt
 
         dut.io.setupParams.bits.xStep(i).poke(normXs.S)
         dut.io.setupParams.bits.yStep(i).poke(normYs.S)
@@ -133,11 +157,15 @@ object Simulation extends App {
       dut.clock.step()
       dut.io.setupParams.valid.poke(false)
 
-      // Render stuff. Note that we don't check for completion, just run for
-      // enough cycles we know it should finish.
-      for (_ <- 0 until 1500) {
+      dut.clock.step() // Wait for rasterizer to start to complete is false.
+
+      var totalCycles = 0
+      while (!dut.io.complete.peek().litToBoolean) {
         dut.clock.step()
+        totalCycles += 1
       }
+
+      println(s"Completed tile in $totalCycles cycles")
 
       // Read out the final data
       val offset = (fbSize * cfg.tileSizePixels * tileRow) +
