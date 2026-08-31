@@ -20,6 +20,7 @@ import chisel3._
 import chisel3.util._
 
 class EdgeCoeffs(implicit cfg: GpuConfig) extends Bundle {
+  val offset = Point2D()
   val boundingBox = BoundingBox()
   val initialValue = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
   val xStep = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
@@ -182,6 +183,6 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   }
 
   // Coordinates need to be relative to bounding box.
-  io.quad.bits.location := quadLoc - inCoeffs.boundingBox.topLeft
+  io.quad.bits.location := quadLoc - inCoeffs.offset
   io.quad.bits.mask := pixelCheck
 }

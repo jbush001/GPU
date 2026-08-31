@@ -178,16 +178,25 @@ object Simulation extends App {
 
   def setUpRasterizer(dut: SimTop, vertices: Array[(Int, Int)], tileLeft: Int, tileTop: Int): Unit = {
     dut.io.edgeCoeffs.valid.poke(true)
-    dut.io.edgeCoeffs.bits.boundingBox.left.poke(tileLeft)
-    dut.io.edgeCoeffs.bits.boundingBox.top.poke(tileTop)
-    dut.io.edgeCoeffs.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
-    dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+    dut.io.edgeCoeffs.bits.offset.x.poke(tileLeft)
+    dut.io.edgeCoeffs.bits.offset.y.poke(tileTop)
+
+    // Compute minimal bounding box that contains the triangle (but is inside the tile)
+    val bbLeft = math.max(vertices.map(_._1).min & ~1, tileLeft)
+    val bbTop = math.max(vertices.map(_._2).min & ~1, tileTop)
+    val bbRight = math.min((vertices.map(_._1).max + 1) & ~1, tileLeft + cfg.tileSizePixels - 2)
+    val bbBottom = math.min((vertices.map(_._2).max + 1) & ~1, tileTop + cfg.tileSizePixels - 2)
+
+    dut.io.edgeCoeffs.bits.boundingBox.left.poke(bbLeft)
+    dut.io.edgeCoeffs.bits.boundingBox.top.poke(bbTop)
+    dut.io.edgeCoeffs.bits.boundingBox.right.poke(bbRight)
+    dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(bbBottom)
     val rawCoeffs = (0 until 3).map { i =>
       val (startX, startY) = vertices(i)
       val (endX, endY) = vertices((i + 1) % 3)
       val xs = endY - startY
       val ys = endX - startX
-      val iv = ((tileLeft - startX) * xs - (tileTop - startY) * ys)
+      val iv = ((bbLeft - startX) * xs - (bbTop - startY) * ys)
       (xs, -ys, iv)
     }
 
