@@ -76,45 +76,48 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val quadLoc = Reg(Point2D())
 
-  // We compute the visibility of four pixels in the quad in parallel.
-  val pixelCheck = Cat((for (pixel <- 0 until Consts.pixelsPerQuad) yield {
-    val edgeCheck = for (edge <- 0 until Consts.triangleEdges) yield {
-      // The edge value represents the dot product of this point with the edge,
-      // which tells us on which side of the edge it is on. If the pixel
-      // is on the inside of all three triangle edges, then it is inside the triangle.
-      val edgeValue = Reg(SInt(cfg.edgeFunctionBits.W))
+  def doubled(value: SInt) = (value << 1.U).tail(1).asSInt
 
-      if (edge == 0 || edge == 2) {
-        // These are 16_16 fixed point values by convention from the setup stage.
-        io.quad.bits.lambda(pixel)(if (edge == 0) 1 else 0) := Float32.fromFixedPoint(edgeValue, 16)
+  // For the upper left pixel
+  val edgeValue = Reg(Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W)))
+  for (edge <- 0 until Consts.triangleEdges) {
+    switch(stepCommand) {
+      is(StepCommand.Reset) {
+        edgeValue(edge) := inCoeffs.initialValue(edge)
       }
-
-      switch(stepCommand) {
-        is(StepCommand.Reset) {
-          pixel match {
-            case 0 => edgeValue := inCoeffs.initialValue(edge)
-            case 1 => edgeValue := inCoeffs.initialValue(edge) + inCoeffs.xStep(edge)
-            case 2 => edgeValue := inCoeffs.initialValue(edge) + inCoeffs.yStep(edge)
-            case 3 => edgeValue := (inCoeffs.initialValue(edge) + inCoeffs.xStep(edge)
-                + inCoeffs.yStep(edge))
-          }
-        }
-        is(StepCommand.Right) {
-          edgeValue := edgeValue + (inCoeffs.xStep(edge) << 1.U).tail(1).asSInt
-        }
-        is(StepCommand.Down) {
-          edgeValue := edgeValue + (inCoeffs.yStep(edge) << 1.U).tail(1).asSInt
-        }
-        is(StepCommand.Left) {
-          edgeValue := edgeValue - (inCoeffs.xStep(edge) << 1.U).tail(1).asSInt
-        }
+      is(StepCommand.Right) {
+        edgeValue(edge) := edgeValue(edge) + doubled(inCoeffs.xStep(edge))
       }
-
-      edgeValue >= 0.S
+      is(StepCommand.Down) {
+        edgeValue(edge) := edgeValue(edge) + doubled(inCoeffs.yStep(edge))
+      }
+      is(StepCommand.Left) {
+        edgeValue(edge) := edgeValue(edge) - doubled(inCoeffs.xStep(edge))
+      }
     }
+  }
 
-    edgeCheck.reduceLeft(_ & _)
-  }).reverse)
+  // Derive the other pixels values combinationally.
+  val pixelEdgeValue = Seq.tabulate(Consts.pixelsPerQuad, Consts.triangleEdges) { (pixel, edge) =>
+    pixel match {
+      case 0 => edgeValue(edge)
+      case 1 => edgeValue(edge) + inCoeffs.xStep(edge)
+      case 2 => edgeValue(edge) + inCoeffs.yStep(edge)
+      case 3 => edgeValue(edge) + inCoeffs.xStep(edge) + inCoeffs.yStep(edge)
+    }
+  }
+
+  // This checks if each pixel is inside or outside the triangle
+  val pixelCheck = Cat((0 until Consts.pixelsPerQuad).map { pixel =>
+    val edgeChecks = (0 until Consts.triangleEdges).map(edge => pixelEdgeValue(pixel)(edge) >= 0.S)
+    edgeChecks.reduceLeft(_ & _)
+  }.reverse)
+
+  // The lambda values are computed from the edge equations.
+  for (pixel <- 0 until Consts.pixelsPerQuad) {
+    io.quad.bits.lambda(pixel)(0) := Float32.fromFixedPoint(pixelEdgeValue(pixel)(2), 16)
+    io.quad.bits.lambda(pixel)(1) := Float32.fromFixedPoint(pixelEdgeValue(pixel)(0), 16)
+  }
 
   object State extends ChiselEnum {
     val Idle, StepRight, StepLeft = Value
