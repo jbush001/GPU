@@ -56,9 +56,9 @@ K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
 |    5    | subi rd, rs0, rs1        | Integer subtract            |   R    |
 |    6    | muli rd, rs0, rs1        | Integer multiply            |   R    |
 |    7    | mulih rd, rs0, rs1       | Integer multiply (high word)|   R    |
-|    8    | lsl rd, rs0, rs1         | Logical shift left          |   R    |
-|    9    | asr rd, rs0, rs1         | Arithmetic shift right      |   R    |
-|   10    | lsr rd, rs0, rs1         | Logical shift right         |   R    |
+|    8    | shl rd, rs0, rs1         | Shift left                  |   R    |
+|    9    | shr rd, rs0, rs1         | Signed shift right          |   R    |
+|   10    | shru rd, rs0, rs1        | Unsigned shift right        |   R    |
 |   11    | addf rd, rs0, rs1        | Floating point addition     |   R    |
 |   12    | subf rd, rs0, rs1        | FP subtraction              |   R    |
 |   13    | mulf rd, rs0, rs1        | FP multiplication           |   R    |
@@ -104,7 +104,8 @@ encoded as other instruction types.
 | nop                    | and r0, r0, r0 (0x00000001)   |
 | setgti rd, rs0, rs1    | setlti rd, rs1, rs0           |
 | setlei rd, rs0, rs1    | setgei rd, rs1, rs0           |
-| move rd, rs            | and rd, rs, rs                |
+| setltf rd, rs0, rs1    | setgtf rd, rs1, rs0           |
+| move rd, rs            | or rd, rs, zero               |
 | clr rd                 | xor rd, rd, rd                |
 | loadf rd, value        | loadhi/loadlo                 |
 | loadi rd, value        | loadhi/loadlo                 |
@@ -115,14 +116,6 @@ these instructions can also do scalar compares.
 
 **Registers**
 Registers 0-63 are scalar registers, registers 64-127 are vector registers.
-Registers 96-103 represent values passed in by the fixed function unit.
-For a pixel shader, for example:
-
-| Index | Meaning                                           |
-|-------|---------------------------------------------------|
-|   96  | Barycentric coordinate L1 (pixel shader only)     |
-|   97  | Barycentric coordinate L2 (pixel shader only)     |
-|   98  | Interpolated Z (pixel shader only)                |
 
 Attempting to read a write-only register will not fault, but the result is
 undefined. Attemping to write a read-only register will have no effect.
@@ -143,11 +136,18 @@ undefined. Attemping to write a read-only register will have no effect.
 |   62    | Constant 2.0f                                     |   r    |
 |   63    | Constant -2.0f                                    |   r    |
 | 64-95   | Vector general purpose registers                  |  r/w   |
-| 96-103  | Input parameters*                                 |   r    |
-| 104-111 | Output results                                    |   w    |
+|   96    | Lambda0 (barycentric coordinate)                  |   r    |
+|   97    | Lambda1 (barycentric coordinate)                  |   r    |
+|   98    | Read varying coefficient                          |   r    |
+| 99-103  | Reserved                                          |   r    |
+|  104    | Output red                                        |   w    |
+|  105    | Output green                                      |   w    |
+|  106    | Output blue                                       |   w    |
+|  107    | Output alpha                                      |   w    |
+| 108-111 | Reserved                                          |   w    |
 |  112    | Lane ID                                           |   r    |
 
-*Note that input parameter registers can only be in the first operand slot*
+*Note that register 96-103 can only be used in the first register operand*
 
 **Predicated execution**
 

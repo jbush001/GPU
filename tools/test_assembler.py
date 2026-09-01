@@ -100,9 +100,9 @@ class TestAssemblerConstants(unittest.TestCase):
             subi v13, r14, v15
             muli v16, r17, r18
             mulih v16, r17, r18
-            lsl r19, r20, r21
-            asr r22, r23, r24
-            lsr r25, r26, r27
+            shl r19, r20, r21
+            shr r22, r23, r24
+            shru r25, r26, r27
             addf r28, r29, r30
             subf r31, r32, r33
             mulf r34, r35, r36

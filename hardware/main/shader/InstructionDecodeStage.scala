@@ -43,9 +43,9 @@ object OpCode extends ChiselEnum {
   val Subi = Value(5.U)
   val Muli = Value(6.U)
   val Mulih = Value(7.U)
-  val Lsl = Value(8.U)
-  val Asr = Value(9.U)
-  val Lsr = Value(10.U)
+  val Shl = Value(8.U)
+  val Shr = Value(9.U)
+  val Shru = Value(10.U)
   val Addf = Value(11.U)
   val Subf = Value(12.U)
   val Mulf = Value(13.U)
@@ -172,9 +172,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       OpCode.Subi -> true.B,
       OpCode.Muli -> true.B,
       OpCode.Mulih -> true.B,
-      OpCode.Lsl -> true.B,
-      OpCode.Asr -> true.B,
-      OpCode.Lsr -> true.B,
+      OpCode.Shl -> true.B,
+      OpCode.Shr -> true.B,
+      OpCode.Shru -> true.B,
       OpCode.Addf -> true.B,
       OpCode.Subf -> true.B,
       OpCode.Mulf -> true.B,
