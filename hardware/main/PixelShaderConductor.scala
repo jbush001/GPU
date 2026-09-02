@@ -244,7 +244,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   when (io.shaderRegWrite.valid) {
     val writeJob = jobs(io.shaderRegWrite.bits.tag(log2Up(totalPendingJobs) - 1, 0))
-    writeJob.colors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
+    switch (io.shaderRegWrite.bits.addr) {
+      is (0.U, 1.U, 2.U, 3.U) {
+        writeJob.colors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
+      }
+    }
   }
 
   // Write coefficient memory during setup
