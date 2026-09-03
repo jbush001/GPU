@@ -164,18 +164,22 @@ object Simulation extends App {
     val rawCoeffs = (0 until 3).map { i =>
       val (startX, startY) = vertices(i)
       val (endX, endY) = vertices((i + 1) % 3)
-      val xs = endY - startY
-      val ys = endX - startX
-            val iv = ((bbLeft - startX) * xs - (bbTop - startY) * ys)
-      (xs, -ys, iv)
+      val dx = endY - startY
+      val dy = endX - startX
+
+      // Implement top-left fill convention.
+      val isTopLeft = (dy > 0) || (dy == 0 && dx < 0)
+      val rawIv = ((bbLeft - startX) * dx - (bbTop - startY) * dy)
+      val biasedIv = rawIv + (if (isTopLeft) 0 else -1)
+      (dx, -dy, rawIv, biasedIv)
     }
 
     val det = math.abs(rawCoeffs.map(_._3).sum)
 
-    rawCoeffs.zipWithIndex.foreach { case ((xs, ys, iv), i) =>
+    rawCoeffs.zipWithIndex.foreach { case ((xs, ys, _, biasedIv), i) =>
       val normXs = (xs * 0xffffL / det).toInt
       val normYs = (ys * 0xffffL / det).toInt
-      val normIv = (iv * 0xffffL / det).toInt
+      val normIv = (biasedIv * 0xffffL / det).toInt
 
       dut.io.edgeCoeffs.bits.xStep(i).poke(normXs.S)
       dut.io.edgeCoeffs.bits.yStep(i).poke(normYs.S)
