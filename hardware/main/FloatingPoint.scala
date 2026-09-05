@@ -118,6 +118,7 @@ object Float32 {
   def fromFixedPoint(value: SInt, fractionalBits: Int = 0): Float32 = {
     require(fractionalBits >= 0 && fractionalBits <= 30,
       "fractionalBits must be in range [0, 30]")
+    require(value.getWidth == 32, "value must be 32 bits wide") // XXX fixme
     val result = Wire(new Float32)
     when (value === 0.S) {
       result.raw := 0.U
