@@ -57,7 +57,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     dut.io.shaderRegRead.bits.addr.poke(addr)
     dut.clock.step()
     val result = Seq.tabulate(cfg.shaderVectorLanes)(i =>
-      (dut.io.shaderRegReadData(i).peek().litValue & 0xffffffff).toInt)
+      (dut.io.shaderRegReadData.bits(i).peek().litValue & 0xffffffff).toInt)
     dut.io.shaderRegRead.valid.poke(false)
     result
   }
@@ -83,7 +83,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         dut.io.startJob.valid.expect(false)
         dut.io.rasterizedQuad.ready.expect(true)
         val base = i * Consts.pixelsPerQuad
-        loadRasterizedQuad(dut, 3, 4, masks(i),
+        loadRasterizedQuad(dut, i + 3, i + 4, masks(i),
           Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)))
         dut.io.idle.expect(false)
       }
@@ -118,7 +118,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         dut.io.idle.expect(false)
         dut.io.startJob.valid.expect(false)
         dut.io.rasterizedQuad.ready.expect(true)
-        drainShadedQuad(dut, 3, 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
+        drainShadedQuad(dut, i + 3, i + 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
           Seq(i * 4 + j + 100, i * 4 + j + 200, i * 4 + j + 300, i * 4 + j + 400)))
       }
 
@@ -255,12 +255,57 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
           outstandingQuads -= ((locationX, locationY))
         }
 
-        // We ONLY step the clock here. ONLY ONLY ONLY
         dut.clock.step()
       }
 
       assert(outstandingQuads.isEmpty, "There are still outstanding quads at the end of the simulation.")
       assert(activeJobs.isEmpty, "There are still active jobs at the end of the simulation.")
+    }
+  }
+
+  test("PixelShaderConductor texture fetch") {
+    simulate(new PixelShaderConductor) { dut =>
+      // Start a job
+      for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        dut.io.rasterizedQuad.ready.expect(true)
+        loadRasterizedQuad(dut, 0, 0, 15,
+            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)))
+        dut.io.textureFetchRequest.valid.expect(false)
+      }
+
+      dut.io.startJob.valid.expect(true)
+      dut.io.startJob.ready.poke(true)
+      dut.io.rasterizedQuad.ready.expect(true)
+      val tag = dut.io.startJob.bits.tag.peek().litValue.toInt
+      dut.clock.step()
+
+      dut.io.textureFetchRequest.valid.expect(false)
+
+      writeRegister(dut, tag, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
+      writeRegister(dut, tag, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      dut.clock.step()
+
+      dut.io.textureFetchRequest.ready.poke(true)
+      dut.io.textureFetchRequest.valid.expect(true)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        dut.io.textureFetchRequest.bits.coord(0)(i).raw.expect(i + 100)
+        dut.io.textureFetchRequest.bits.coord(1)(i).raw.expect(i + 200)
+      }
+
+      dut.clock.step()
+      dut.io.textureFetchResponse.valid.poke(true)
+      dut.io.textureFetchResponse.bits.tag.poke(tag)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        for (colorChannel <- 0 until Color.numChannels) {
+          dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.poke(i + 300 + 10 * colorChannel)
+        }
+      }
+      dut.clock.step()
+      dut.io.textureFetchResponse.valid.poke(false)
+
+      for (colorChannel <- 0 until Color.numChannels) {
+        assert(readRegister(dut, tag, 3 + colorChannel) == Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300 + 10 * colorChannel))
+      }
     }
   }
 }

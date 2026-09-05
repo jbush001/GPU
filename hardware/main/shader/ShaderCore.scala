@@ -45,7 +45,10 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
     })
 
     /** This returns data one cycle after a regRead request. */
-    val regReadData = Input(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+    val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
+
+    /** If regReadData caused a wait, this will signal when it should wake up */
+    val ioWake = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
     val regWrite = Valid(new Bundle {
       val tag = UInt(cfg.shaderTagBits.W)
@@ -65,12 +68,14 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   fetchSelectStage.io.startJob <> io.startJob
   fetchSelectStage.io.resetThread <> instructionDecodeStage.io.resetThread
   fetchSelectStage.io.fetchRequest <> instructionFetchStage.io.fetchRequest
-  fetchSelectStage.io.wakeThreads := icacheFillUnit.io.wakeThreads
+  fetchSelectStage.io.icacheWakeThreads := icacheFillUnit.io.icacheWakeThreads
   fetchSelectStage.io.icacheMiss := instructionFetchStage.io.icacheMiss
   fetchSelectStage.io.icacheNearMiss := instructionFetchStage.io.icacheNearMiss
   fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.icacheMissThread
   fetchSelectStage.io.halt <> executeStage.io.halt
   fetchSelectStage.io.rollback <> executeStage.io.rollback
+  fetchSelectStage.io.ioWait <> instructionDecodeStage.io.ioWait
+  fetchSelectStage.io.ioWake <> io.ioWake
 
   instructionFetchStage.io.fillRequest <> icacheFillUnit.io.fillRequest
   instructionFetchStage.io.updateCache <> icacheFillUnit.io.updateCache
@@ -79,7 +84,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
 
   instructionDecodeStage.io.decodedInstruction <> executeStage.io.decodedInstruction
   io.regRead <> instructionDecodeStage.io.regRead
-  instructionDecodeStage.io.regReadData := io.regReadData
+  instructionDecodeStage.io.regReadData <> io.regReadData
   io.regWrite <> instructionDecodeStage.io.regWrite
 
   executeStage.io.writeback <> instructionDecodeStage.io.writeback

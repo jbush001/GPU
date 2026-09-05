@@ -54,6 +54,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
   pixelShaderConductor.io.shaderRegReadData <> shaderCore.io.regReadData
   shaderCore.io.regWrite <> pixelShaderConductor.io.shaderRegWrite
+  shaderCore.io.ioWake <> pixelShaderConductor.io.ioWake
   pixelShaderConductor.io.shadedQuad <> floatArrayToColor.io.floatQuad
   floatArrayToColor.io.shadedQuad <> tileBuffer.io.shadedQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
@@ -78,4 +79,9 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   rasterizer.io.edgeCoeffs <> io.edgeCoeffs
 
   io.writeVaryingCoeff <> pixelShaderConductor.io.writeVaryingCoeff
+
+  // XXX Placeholder
+  pixelShaderConductor.io.textureFetchRequest.ready := true.B
+  pixelShaderConductor.io.textureFetchResponse.valid := false.B
+  pixelShaderConductor.io.textureFetchResponse.bits := DontCare
 }

@@ -105,7 +105,9 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
         val addr = UInt(3.W)
       })
 
-      val regReadData = Input(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+      val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
+
+      val ioWake = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
       val regWrite = Valid(new Bundle {
         val tag = UInt(cfg.shaderTagBits.W)
@@ -125,7 +127,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     memory.dap <> io.dap
 
     core.io.regRead <> io.regRead
-    core.io.regReadData := io.regReadData
+    core.io.regReadData <> io.regReadData
     core.io.regWrite <> io.regWrite
     io.jobFinished <> core.io.jobFinished
 
@@ -134,6 +136,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     arbiter.io.writePorts(0).burst.bits.address := 0.U
     arbiter.io.writePorts(0).burst.bits.length := 0.U
     arbiter.io.writePorts(0).data.bits := 0.U
+
+    core.io.ioWake <> io.ioWake
   }
 
   def runShaderTest(
@@ -154,15 +158,14 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   }
 
   test("ShaderCore basic arithmetic") {
-    val asm = new ShaderAssembler()
-    asm
+    val program = new ShaderAssembler()
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .kInst(OpCode.LoadLo, 1, 0x5678)
       .move(65, 112) // v2 = lane ID
       .rInst(OpCode.Addi, 105, 1, 65) // output = r1 + v2
       .halt()
 
-    runShaderTest(asm.finish(), 0) { dut =>
+    runShaderTest(program.finish(), 0) { dut =>
       dut.io.startJob.valid.poke(true.B)
       dut.io.startJob.bits.startPc.poke(0.U)
       dut.clock.step(1)
@@ -267,9 +270,11 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       val maxCycles = 40000
       val flushCycles = 2000
       var regReadResult = Seq.fill(cfg.shaderVectorLanes)(0)
+      var hasRegReadResult = false
       for (cycle <- 0 until maxCycles) {
+        dut.io.regReadData.valid.poke(hasRegReadResult.B)
         for (lane <- 0 until cfg.shaderVectorLanes) {
-          dut.io.regReadData(lane).poke(regReadResult(lane).U)
+          dut.io.regReadData.bits(lane).poke(regReadResult(lane).U)
         }
 
         if (dut.io.regRead.valid.peek().litToBoolean) {
@@ -277,6 +282,9 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           val job = jobs(readTag)
           val addr = dut.io.regRead.bits.addr.peek().litValue.toInt
           regReadResult = if (addr == 0) job.a else if (addr == 1) job.b else Seq.fill(cfg.shaderVectorLanes)(0)
+          hasRegReadResult = true
+        } else {
+          hasRegReadResult = false
         }
 
         if (dut.io.regWrite.valid.peek().litToBoolean) {
@@ -326,6 +334,70 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           fail(s"Job $index did not complete, hung for ${maxCycles - job.startCycle} cycles expected=${job.expectedVector}")
         }
       }
+    }
+  }
+
+  // Simulate texture fetch
+  test("ShaderCore register read wait") {
+    val program = new ShaderAssembler()
+      .kInst(OpCode.LoadHi, 1, 0x1234)
+      .move(64, 99)
+      .move(104, 64)
+      .halt()
+
+    runShaderTest(program.finish(), 0) { dut =>
+      dut.io.startJob.valid.poke(true.B)
+      dut.io.startJob.bits.startPc.poke(0.U)
+      dut.clock.step(1)
+      dut.io.startJob.valid.poke(false.B)
+
+      var gotResult = false
+      var wakeupDelay = 0
+      var gotRead = false
+      var threadWoken = false
+      var readTag = 0
+      var regReadValid = false
+      for (_ <- 0 until 60) {
+        dut.io.regReadData.valid.poke(regReadValid.B)
+
+        regReadValid = false
+        if (dut.io.regRead.valid.peek().litToBoolean) {
+          readTag = dut.io.regRead.bits.tag.peek().litValue.toInt
+          if (gotRead) {
+            assert(threadWoken, "Thread should have been woken before second read")
+            // Second read, return value
+            regReadValid = true
+            for (lane <- 0 until cfg.shaderVectorLanes) {
+              dut.io.regReadData.bits(lane).poke((0x12345678 + lane).U)
+            }
+          } else {
+            // First read, block the thread until data is available
+            gotRead = true
+            wakeupDelay = 15
+          }
+        }
+
+        dut.io.ioWake.valid.poke(false.B)
+        if (gotRead && !threadWoken) {
+          wakeupDelay -= 1
+          if (wakeupDelay == 0) {
+            dut.io.ioWake.valid.poke(true.B)
+            dut.io.ioWake.bits.poke(readTag.U)
+            threadWoken = true
+          }
+        }
+
+        dut.clock.step(1)
+
+        if (dut.io.regWrite.valid.peek().litToBoolean) {
+          for (lane <- 0 until cfg.shaderVectorLanes) {
+            dut.io.regWrite.bits.data(lane).expect((0x12345678 + lane).U)
+            gotResult = true
+          }
+        }
+      }
+
+      assert(gotResult, "ShaderCore did not produce any output result")
     }
   }
 }

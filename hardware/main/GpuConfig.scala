@@ -32,7 +32,7 @@ case class GpuConfig(
   busBurstLengthBits: Int = 8,
   shaderThreads: Int = 8, // Number of hardware threads per shader core
   shaderVectorLanes: Int = 16,
-  shaderTagBits: Int = 16,
+  shaderTagBits: Int = 4,
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
 

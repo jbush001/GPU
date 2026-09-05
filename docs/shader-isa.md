@@ -139,12 +139,18 @@ undefined. Attemping to write a read-only register will have no effect.
 |   96    | Lambda0 (barycentric coordinate)                  |   r    |
 |   97    | Lambda1 (barycentric coordinate)                  |   r    |
 |   98    | Read varying coefficient                          |   r    |
-| 99-103  | Reserved                                          |   r    |
+|   99    | Texture fetch R                                   |   r    |
+|  100    | Texture fetch G                                   |   r    |
+|  101    | Texture fetch B                                   |   r    |
+|  102    | Texture fetch A                                   |   r    |
+|  103    | Reserved                                          |   r    |
 |  104    | Output red                                        |   w    |
 |  105    | Output green                                      |   w    |
 |  106    | Output blue                                       |   w    |
 |  107    | Output alpha                                      |   w    |
-| 108-111 | Reserved                                          |   w    |
+|  108    | Texture fetch S                                   |   w    |
+|  109    | Texture fetch T  (initiate)                       |   w    |
+|  110    | Reserved                                          |   w    |
 |  112    | Lane ID                                           |   r    |
 
 *Note that register 96-103 can only be used in the first register operand*

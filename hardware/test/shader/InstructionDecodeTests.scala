@@ -122,7 +122,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       // Reset thread, which should reset the mask to all 1s
       dut.io.resetThread.valid.poke(true.B)
       dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(123.U)
+      dut.io.resetThread.bits.tag.poke(11.U)
       dut.clock.step(1)
       dut.io.resetThread.valid.poke(false.B)
 
@@ -140,7 +140,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       }
 
       // Also ensure the tag is set properly on the decoded instruction
-      dut.io.decodedInstruction.bits.meta.tag.expect(123.U)
+      dut.io.decodedInstruction.bits.meta.tag.expect(11.U)
     }
   }
 
@@ -342,11 +342,11 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage read shader reg") {
+  test("InstructionDecodeStage read shader reg ready") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.resetThread.valid.poke(true.B)
       dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(123.U)
+      dut.io.resetThread.bits.tag.poke(15.U)
       dut.clock.step(1)
       dut.io.resetThread.valid.poke(false.B)
 
@@ -356,18 +356,47 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.regRead.valid.expect(true.B)
       dut.io.regRead.bits.addr.expect(1.U) // Corresponds to register 97
-      dut.io.regRead.bits.tag.expect(123.U)
+      dut.io.regRead.bits.tag.expect(15.U)
       dut.clock.step(1)
       dut.io.fetchedInstruction.valid.poke(false.B)
 
       dut.io.regRead.valid.expect(false.B)
+      dut.io.regReadData.valid.poke(true.B)
       for (lane <- 0 until cfg.shaderVectorLanes) {
-        dut.io.regReadData(lane).poke((100 + lane).U)
+        dut.io.regReadData.bits(lane).poke((100 + lane).U)
       }
 
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.decodedInstruction.bits.operand1(lane).expect((100 + lane).U)
       }
+
+      dut.io.decodedInstruction.valid.expect(true.B)
+    }
+  }
+
+  test("InstructionDecodeStage read shader reg not ready") {
+    simulate(new InstructionDecodeStage()) { dut =>
+      dut.io.resetThread.valid.poke(true.B)
+      dut.io.resetThread.bits.thread.poke(1.U)
+      dut.io.resetThread.bits.tag.poke(15.U)
+      dut.clock.step(1)
+      dut.io.resetThread.valid.poke(false.B)
+
+      dut.io.fetchedInstruction.valid.poke(true.B)
+      dut.io.fetchedInstruction.bits.thread.poke(1.U)
+      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 97, 53).U)
+
+      dut.io.regRead.valid.expect(true.B)
+      dut.io.regRead.bits.addr.expect(1.U) // Corresponds to register 97
+      dut.io.regRead.bits.tag.expect(15.U)
+      dut.clock.step(1)
+      dut.io.fetchedInstruction.valid.poke(false.B)
+
+      dut.io.regRead.valid.expect(false.B)
+      dut.io.regReadData.valid.poke(false.B)
+
+      // Ensure the output is not valid, since the result was not ready.
+      dut.io.decodedInstruction.valid.expect(false.B)
     }
   }
 
@@ -375,13 +404,13 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.resetThread.valid.poke(true.B)
       dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(123.U)
+      dut.io.resetThread.bits.tag.poke(15.U)
       dut.clock.step(1)
       dut.io.resetThread.valid.poke(false.B)
 
       dut.io.writeback.valid.poke(true.B)
       dut.io.writeback.bits.thread.poke(1.U)
-      dut.io.writeback.bits.tag.poke(123.U)
+      dut.io.writeback.bits.tag.poke(15.U)
       dut.io.writeback.bits.destReg.poke(105.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(lane).poke((200 + lane).U)
@@ -389,7 +418,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.regWrite.valid.expect(true.B)
       dut.io.regWrite.bits.addr.expect(1.U) // Corresponds to register 105
-      dut.io.regWrite.bits.tag.expect(123.U)
+      dut.io.regWrite.bits.tag.expect(15.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.regWrite.bits.data(lane).expect((200 + lane).U)
       }

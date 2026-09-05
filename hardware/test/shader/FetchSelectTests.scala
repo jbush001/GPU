@@ -135,7 +135,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage stall/resume") {
+  test("FetchSelectStage icache miss") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThread = startJob(dut, 0x1000.U)
 
@@ -164,9 +164,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Resume Thread
-      dut.io.wakeThreads.poke((1 << allocatedThread.toInt).U)
+      dut.io.icacheWakeThreads.poke((1 << allocatedThread.toInt).U)
       dut.clock.step()
-      dut.io.wakeThreads.poke(0.U)
+      dut.io.icacheWakeThreads.poke(0.U)
 
       // Should resume issuing from the prior location.
       for (i <- 7 until 12) {
@@ -224,6 +224,82 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
         dut.clock.step()
       }
+    }
+  }
+
+  test("FetchSelectStage io wait") {
+    // Similar to icache miss, except uses ioWait
+    simulate(new FetchSelectStage()) { dut =>
+      var pc2 = 0x1000
+      val thread1 = startJob(dut, 0x2000.U)
+      val thread2 = startJob(dut, pc2.U)
+
+      // Issue a few cycles
+      for (_ <- 1 until 20) {
+        if (dut.io.fetchRequest.valid.peek().litToBoolean) {
+          val fetchThread = dut.io.fetchRequest.bits.thread.peek().litValue.toInt
+          val fetchPc = dut.io.fetchRequest.bits.pc.raw.peek().litValue.toInt
+          if (fetchThread == thread2) {
+            assert(fetchPc == pc2)
+            pc2 = fetchPc + 4
+          }
+        }
+
+        dut.clock.step()
+      }
+
+      // Pause thread 2
+      dut.clock.step()
+      dut.io.ioWait.valid.poke(true.B)
+      dut.io.ioWait.bits.poke(thread2.U)
+      dut.clock.step()
+      dut.io.ioWait.valid.poke(false.B)
+      pc2 -= 4
+
+      // Ensure thread 1 continues to issue
+      // (Need to wait at least 5 cycles, given that's the back-to-back latency,
+      // double it to be certain)
+      var thread1Issued = false
+      for (_ <- 1 until 20) {
+        if (dut.io.fetchRequest.valid.peek().litToBoolean) {
+          val fetchThread = dut.io.fetchRequest.bits.thread.peek().litValue.toInt
+          assert(fetchThread == thread1, s"Invalid thread $fetchThread issued")
+          thread1Issued = true
+        }
+
+        dut.clock.step()
+      }
+
+      assert(thread1Issued, "Thread 1 did not issue during io wait")
+
+      // Resume thread 2
+      dut.io.ioWake.valid.poke(true.B)
+      dut.io.ioWake.bits.poke(thread2.U)
+      dut.clock.step()
+      dut.io.ioWake.valid.poke(false.B)
+
+      // Ensure thread 1 resumes issuing and thread 2 continues
+      // Also check that the PC is properly rolled back for thread 1.
+      thread1Issued = false
+      var thread2Issued = false
+      for (_ <- 1 until 20) {
+        if (dut.io.fetchRequest.valid.peek().litToBoolean) {
+          val fetchThread = dut.io.fetchRequest.bits.thread.peek().litValue.toInt
+          val fetchPc = dut.io.fetchRequest.bits.pc.raw.peek().litValue.toInt
+          if (fetchThread == thread2) {
+            assert(fetchPc == pc2)
+            pc2 = fetchPc + 4
+            thread2Issued = true
+          } else if (fetchThread == thread1) {
+            thread1Issued = true
+          }
+        }
+
+        dut.clock.step()
+      }
+
+      assert(thread1Issued, "Thread 1 did not resume issuing")
+      assert(thread2Issued, "Thread 2 did not continue issuing")
     }
   }
 
@@ -292,7 +368,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       val allocatedThreads = (0 until 8).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
 
       // Issue a few cycles to ensure all threads are active
-      for (_ <- 0 until 4) {
+      for (_ <- 0 until 20) {
         dut.io.fetchRequest.valid.expect(true.B)
         dut.clock.step()
       }
@@ -319,7 +395,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       val allocatedThreads = (0 until 8).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
 
       // Issue a few cycles
-      for (_ <- 0 until 4) {
+      for (_ <- 0 until 20) {
         dut.io.fetchRequest.valid.expect(true.B)
         dut.clock.step()
       }
@@ -340,9 +416,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Resume the stalled thread
-      dut.io.wakeThreads.poke((1 << stalledThread).U)
+      dut.io.icacheWakeThreads.poke((1 << stalledThread).U)
       dut.clock.step()
-      dut.io.wakeThreads.poke(0.U)
+      dut.io.icacheWakeThreads.poke(0.U)
 
       // Ensure the previously stalled thread can now issue again
       var foundStalledThread = false
