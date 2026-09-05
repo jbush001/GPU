@@ -94,6 +94,45 @@ class Float32 extends Bundle {
 
     result
   }
+
+  def reciprocalEstimate(): Float32 = {
+    // Generate the fraction lookup table.
+    // Because the floating point significand is normalized, its value ranges
+    // from [1.0, 2.0). The reciprocal of this range therefore spans (0.5, 1.0].
+    // We treat table entries as 1.6 fixed point numbers for the calculation,
+    // so the numerator for our calculations is 64 * 64. However, 0.5 is not
+    // representable as a normalized value, so we need to also multiply by
+    // two (we compensate by shifting and adjusting the exponent to renormalize)
+    val numEntries = 64 // Must be a power of two
+    val entryWidth = log2Up(numEntries)
+    val numerator = (numEntries * numEntries * 2)
+    val romValues = Array.tabulate[UInt](numEntries)(i =>
+      ((numerator / (numEntries + i)) & (numEntries - 1)).U(entryWidth.W))
+
+    val reciprocalRom = VecInit(romValues.toIndexedSeq)
+
+    // Read value out of lookup table
+    val fractionNext = reciprocalRom(this.fraction(22, 17))
+
+    // Adjust the exponent. Note we subtract 1-2 extra values out of the exponent
+    // to compensate for the normalization shift that occurs below.
+    // In the case of zero, there's nothing to normalize.
+    val normalizationCorrection = this.fraction(22, 17) === 0.U
+    val exponentNext = 253.U - this.exponent + normalizationCorrection.asUInt
+
+    val result = Wire(Float32())
+    when (this.isZero || this.isNaN) {
+      // Division by zero or NaN = NaN
+      result := Float32(false.B, 0xff.U, 0x400000.U)
+    }.elsewhen (this.isInf) {
+      // Division by +/- inf = 0.0
+      result := Float32(this.negative, 0.U, 0.U)
+    }.otherwise {
+      result := Float32(this.negative, exponentNext, (fractionNext << 17))
+    }
+
+    result
+  }
 }
 
 object Float32 {
@@ -298,51 +337,4 @@ class FpMul extends Module {
 
     io.result := RegNext(resultNext)
   }
-}
-
-/**
- * This has one cycle of latency
- */
-class FpReciprocalEstimate extends Module {
-  val io = IO(new Bundle {
-    val result = Output(Float32())
-    val operand = Input(Float32())
-  })
-
-  // Generate the fraction lookup table.
-  // Because the floating point significant is normalized, its value ranges
-  // from [1.0, 2.0). The reciprocal of this range therefore spans (0.5, 1.0].
-  // We treat table entries as 1.6 fixed point numbers for the calculation,
-  // so the numerator for our calculations is 64 * 64. However, 0.5 is not
-  // representable as a normalized value, so we need to also multiply by
-  // two (we compensate by shifting and adjusting the exponent to renormalize)
-  val numEntries = 64 // Must be a power of two
-  val entryWidth = log2Up(numEntries)
-  val numerator = (numEntries * numEntries * 2)
-  val romValues = Array.tabulate[UInt](numEntries)(i =>
-    ((numerator / (numEntries + i)) & (numEntries - 1)).U(entryWidth.W))
-
-  val reciprocalRom = VecInit(romValues.toIndexedSeq)
-
-  // Read value out of lookup table
-  val fractionNext = reciprocalRom(io.operand.fraction(22, 17))
-
-  // Adjust the exponent. Note we subtract 1-2 extra values out of the exponent
-  // to compensate for the normalization shift that occurs below.
-  // In the case of zero, there's nothing to normalize.
-  val normalizationCorrection = io.operand.fraction(22, 17) === 0.U
-  val exponentNext = 253.U - io.operand.exponent + normalizationCorrection.asUInt
-
-  val resultNext = Wire(Float32())
-  when (io.operand.isZero || io.operand.isNaN) {
-    // Division by zero or NaN = NaN
-    resultNext := Float32(false.B, 0xff.U, 0x400000.U)
-  }.elsewhen (io.operand.isInf) {
-    // Division by +/- inf = 0.0
-    resultNext := Float32(io.operand.negative, 0.U, 0.U)
-  }.otherwise {
-    resultNext := Float32(io.operand.negative, exponentNext, (fractionNext << 17))
-  }
-
-  io.result := RegNext(resultNext)
 }

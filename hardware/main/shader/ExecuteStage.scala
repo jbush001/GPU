@@ -111,7 +111,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Itof -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
     OpCode.Fabs -> ((_, a, _) => Float32(a).abs.raw),
     OpCode.Fmin -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
-    OpCode.Fmax -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b))
+    OpCode.Fmax -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b)),
+    OpCode.Recip -> ((_, a, _) => Float32(a).reciprocalEstimate().raw)
   )
 
   val singleCycleResult = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
@@ -121,19 +122,6 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val singleCycleResult1 = RegNext(singleCycleResult)
   val singleCycleResult2 = RegNext(singleCycleResult1)
   val singleCycleResult3 = RegNext(singleCycleResult2)
-
-  // Single cycle floating point.
-  // The reciprocal estimate block has one cycle of latency; the output
-  // is registered.
-  val recipResult1 = Wire(VectorResult())
-  for (lane <- 0 until cfg.shaderVectorLanes) {
-    val recipEstimate = Module(new FpReciprocalEstimate)
-    recipEstimate.io.operand := Float32(io.decodedInstruction.bits.operand1(lane))
-    recipResult1(lane) := recipEstimate.io.result.raw
-  }
-
-  val recipResult2 = RegNext(recipResult1)
-  val recipResult3 = RegNext(recipResult2)
 
   // Comparison operations
   // Note the 'reverse' ensures each bit index corresponds to the lane index
@@ -183,7 +171,6 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
       OpCode.Addf -> fpAddSubResult,
       OpCode.Subf -> fpAddSubResult,
       OpCode.Mulf -> fpMulResult,
-      OpCode.Recip -> recipResult3
     ) ++
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
