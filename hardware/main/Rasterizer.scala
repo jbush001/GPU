@@ -98,91 +98,99 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  // Derive the other pixels values combinationally.
-  val pixelEdgeValue = Seq.tabulate(Consts.pixelsPerQuad, Consts.triangleEdges) { (pixel, edge) =>
-    pixel match {
-      case 0 => edgeValue(edge)
-      case 1 => edgeValue(edge) + inCoeffs.xStep(edge)
-      case 2 => edgeValue(edge) + inCoeffs.yStep(edge)
-      case 3 => edgeValue(edge) + inCoeffs.xStep(edge) + inCoeffs.yStep(edge)
+  switch (stepCommand) {
+    is (StepCommand.Right) {
+      quadLoc.x := quadLoc.x + 2.S
+    }
+    is (StepCommand.Down) {
+      quadLoc.y := quadLoc.y + 2.S
+    }
+    is (StepCommand.Left) {
+      quadLoc.x := quadLoc.x - 2.S
     }
   }
 
+  // Derive the other pixels values combinationally.
+  val pixelEdgeValue = Seq.tabulate(Consts.triangleEdges) { edge =>
+    Seq(
+      edgeValue(edge), // Upper left
+      edgeValue(edge) + inCoeffs.xStep(edge), // Upper right
+      edgeValue(edge) + inCoeffs.yStep(edge), // Lower left
+      edgeValue(edge) + inCoeffs.xStep(edge) + inCoeffs.yStep(edge) // Lower right
+    )
+  }
+
   // This checks if each pixel is inside or outside the triangle
-  val pixelCheck = Cat((0 until Consts.pixelsPerQuad).map { pixel =>
-    val edgeChecks = (0 until Consts.triangleEdges).map(edge => pixelEdgeValue(pixel)(edge) >= 0.S)
+  val pixelInside = Cat((0 until Consts.pixelsPerQuad).map { pixel =>
+    val edgeChecks = (0 until Consts.triangleEdges).map(edge => pixelEdgeValue(edge)(pixel) >= 0.S)
     edgeChecks.reduceLeft(_ & _)
   }.reverse)
 
   // The lambda values are computed from the edge equations.
   for (pixel <- 0 until Consts.pixelsPerQuad) {
-    io.quad.bits.lambda(pixel)(0) := Float32.fromFixedPoint(pixelEdgeValue(pixel)(2), 16)
-    io.quad.bits.lambda(pixel)(1) := Float32.fromFixedPoint(pixelEdgeValue(pixel)(0), 16)
+    io.quad.bits.lambda(pixel)(0) := Float32.fromFixedPoint(pixelEdgeValue(2)(pixel), 16)
+    io.quad.bits.lambda(pixel)(1) := Float32.fromFixedPoint(pixelEdgeValue(0)(pixel), 16)
   }
 
   object State extends ChiselEnum {
     val Idle, StepRight, StepLeft = Value
   }
 
-  val stateReg = RegInit(State.Idle)
-  io.complete := (stateReg === State.Idle)
+  val scanState = RegInit(State.Idle)
+  io.complete := (scanState === State.Idle)
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
   io.edgeCoeffs.ready := false.B
   io.quad.valid := false.B
-  stepCommand := StepCommand.Wait;
-  switch (stateReg) {
+  stepCommand := StepCommand.Wait
+  switch (scanState) {
     // Waiting to start a new triangle
     is (State.Idle) {
       io.edgeCoeffs.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
         quadLoc := inCoeffs.boundingBox.topLeft
-        stateReg := State.StepRight
+        scanState := State.StepRight
       } otherwise {
         stepCommand := StepCommand.Wait
       }
     }
 
     is (State.StepRight) {
-      io.quad.valid := pixelCheck =/= 0.U;
+      io.quad.valid := pixelInside =/= 0.U
       when (io.quad.ready) {
         when (quadLoc.x === inCoeffs.boundingBox.right) {
           when (quadLoc.y === inCoeffs.boundingBox.bottom) {
-            stateReg := State.Idle
+            scanState := State.Idle
           }.otherwise {
-            stepCommand := StepCommand.Down;
-            quadLoc.y := quadLoc.y + 2.S
-            stateReg := State.StepLeft
+            stepCommand := StepCommand.Down
+            scanState := State.StepLeft
           }
         }.otherwise {
-          stepCommand := StepCommand.Right;
-          quadLoc.x := quadLoc.x + 2.S
+          stepCommand := StepCommand.Right
         }
       }
     }
 
    is (State.StepLeft) {
-      io.quad.valid := pixelCheck =/= 0.U
+      io.quad.valid := pixelInside =/= 0.U
       when (io.quad.ready) {
         when(quadLoc.x === inCoeffs.boundingBox.left) {
           when (quadLoc.y === inCoeffs.boundingBox.bottom) {
-            stateReg := State.Idle
+            scanState := State.Idle
           }.otherwise {
             stepCommand := StepCommand.Down
-            quadLoc.y := quadLoc.y + 2.S
-            stateReg := State.StepRight
+            scanState := State.StepRight
           }
         }.otherwise {
           stepCommand := StepCommand.Left
-          quadLoc.x := quadLoc.x - 2.S
         }
       }
     }
   }
 
-  // Coordinates need to be relative to bounding box.
+  // Adjust coordinates to be relative to the offset.
   io.quad.bits.location := quadLoc - inCoeffs.offset
-  io.quad.bits.mask := pixelCheck
+  io.quad.bits.mask := pixelInside
 }
