@@ -75,17 +75,17 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   val threadICacheWait = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
   val threadIoWait = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
 
-  for (thid <- 0 until cfg.shaderThreads) {
-    when (io.ioWake.valid && io.ioWake.bits === thid.U) {
-      assert(threadIoWait(thid), "Thread should be waiting on IO before being woken up")
-      threadIoWait(thid) := false.B
-    }
-
-    when (io.ioWait.valid && io.ioWait.bits === thid.U) {
-      assert(!threadIoWait(thid), "Thread cannot be waiting on IO twice")
-      threadIoWait(thid) := true.B
-    }
+  when (io.ioWake.valid) {
+    assert(threadIoWait(io.ioWake.bits),
+      "Attempt to wake a thread that is not waiting on IO")
+    threadIoWait(io.ioWake.bits) := false.B
   }
+  when (io.ioWait.valid) {
+    assert(!threadIoWait(io.ioWait.bits),
+      "Attempt to stall thread that is already waiting on IO")
+    threadIoWait(io.ioWait.bits) := true.B
+  }
+
 
   // Threads start upon request and run to completion, stopping when they
   // reach a HALT instruction. This logic tracks which threads are active
