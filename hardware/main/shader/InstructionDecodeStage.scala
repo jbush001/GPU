@@ -315,7 +315,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegStage2, scalarRead2, vectorRead2)
 
   io.ioWait.valid := validCycle2 && !io.regReadData.valid && operand1RegStage2(6, 3) === 12.U && hasReg1OpStage2
-  io.ioWait.bits := io.decodedInstruction.bits.meta.tag
+  io.ioWait.bits := io.decodedInstruction.bits.meta.thread
 
   io.regWrite.valid := false.B
   io.regWrite.bits.tag := io.writeback.bits.tag

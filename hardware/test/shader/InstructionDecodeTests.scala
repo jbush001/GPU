@@ -390,13 +390,16 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.regRead.bits.addr.expect(1.U) // Corresponds to register 97
       dut.io.regRead.bits.tag.expect(15.U)
       dut.clock.step(1)
-      dut.io.fetchedInstruction.valid.poke(false.B)
 
-      dut.io.regRead.valid.expect(false.B)
-      dut.io.regReadData.valid.poke(false.B)
+      dut.io.regReadData.valid.poke(false.B) // Not ready
+
+      dut.io.fetchedInstruction.valid.poke(false.B)
+      dut.io.fetchedInstruction.bits.thread.poke(10.U)
 
       // Ensure the output is not valid, since the result was not ready.
       dut.io.decodedInstruction.valid.expect(false.B)
+      dut.io.ioWait.valid.expect(true.B)
+      dut.io.ioWait.bits.expect(1.U)
     }
   }
 
