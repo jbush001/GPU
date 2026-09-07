@@ -247,11 +247,6 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   val decodedMetadataStage2 = RegNext(decodedMetadata)
 
-  def constFloat(f: Float): UInt = {
-    val bits = java.lang.Float.floatToIntBits(f)
-    (bits.toLong & 0xFFFFFFFFL).U(32.W)
-  }
-
   def broadcast(v: UInt): Vec[UInt] = VecInit(Seq.fill(cfg.shaderVectorLanes)(v))
 
   val operand1Reg = Mux(isLoadConst(decodedOpcode),
@@ -305,12 +300,12 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
         is(SpecialReg.ConstNeg1.U)    { result := broadcast((-1).S(32.W).asUInt) }
         is(SpecialReg.Const2.U)       { result := broadcast(2.U(32.W)) }
         is(SpecialReg.Const4.U)       { result := broadcast(4.U(32.W)) }
-        is(SpecialReg.Const0_5f.U)    { result := broadcast(constFloat(0.5f)) }
-        is(SpecialReg.ConstNeg0_5f.U) { result := broadcast(constFloat(-0.5f)) }
-        is(SpecialReg.Const1_0f.U)    { result := broadcast(constFloat(1.0f)) }
-        is(SpecialReg.ConstNeg1_0f.U) { result := broadcast(constFloat(-1.0f)) }
-        is(SpecialReg.Const2_0f.U)    { result := broadcast(constFloat(2.0f)) }
-        is(SpecialReg.ConstNeg2_0f.U) { result := broadcast(constFloat(-2.0f)) }
+        is(SpecialReg.Const0_5f.U)    { result := broadcast(Float32(0.5f).raw) }
+        is(SpecialReg.ConstNeg0_5f.U) { result := broadcast(Float32(-0.5f).raw) }
+        is(SpecialReg.Const1_0f.U)    { result := broadcast(Float32(1.0f).raw) }
+        is(SpecialReg.ConstNeg1_0f.U) { result := broadcast(Float32(-1.0f).raw) }
+        is(SpecialReg.Const2_0f.U)    { result := broadcast(Float32(2.0f).raw) }
+        is(SpecialReg.ConstNeg2_0f.U) { result := broadcast(Float32(-2.0f).raw) }
       }
     }
 

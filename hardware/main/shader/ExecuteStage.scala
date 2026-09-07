@@ -68,17 +68,11 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val fpAddSubResult = Wire(VectorResult())
   val fpMulResult = Wire(VectorResult())
   for (lane <- 0 until cfg.shaderVectorLanes) {
-    val fpAddSub = Module(new FpAddSub)
-    val fpMul = Module(new FpMul)
-
-    fpAddSub.io.subtract := io.decodedInstruction.bits.meta.opcode === OpCode.Subf
-    fpAddSub.io.operand1 := Float32(io.decodedInstruction.bits.operand1(lane))
-    fpAddSub.io.operand2 := Float32(io.decodedInstruction.bits.operand2(lane))
-    fpAddSubResult(lane) := fpAddSub.io.result.raw
-
-    fpMul.io.operand1 := Float32(io.decodedInstruction.bits.operand1(lane))
-    fpMul.io.operand2 := Float32(io.decodedInstruction.bits.operand2(lane))
-    fpMulResult(lane) := fpMul.io.result.raw
+    val operand1 = Float32(io.decodedInstruction.bits.operand1(lane))
+    val operand2 = Float32(io.decodedInstruction.bits.operand2(lane))
+    val isSub = io.decodedInstruction.bits.meta.opcode === OpCode.Subf
+    fpAddSubResult(lane) := FpAddSub(operand1, operand2, isSub).raw
+    fpMulResult(lane) := FpMul(operand1, operand2).raw
   }
 
   // Short latency operations (1 cycle)

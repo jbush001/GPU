@@ -158,6 +158,12 @@ object Float32 {
     f
   }
 
+  def apply(fval: Float): Float32 = {
+    val bits = java.lang.Float.floatToIntBits(fval)
+    val raw = (bits.toLong & 0xFFFFFFFFL).U(32.W)
+    apply(raw)
+  }
+
   def fromFixedPoint(value: SInt, fractionalBits: Int = 0): Float32 = {
     require(fractionalBits >= 0 && fractionalBits <= 30,
       "fractionalBits must be in range [0, 30]")
@@ -267,6 +273,16 @@ class FpAddSub extends Module {
   }
 }
 
+object FpAddSub {
+  def apply(operand1: Float32, operand2: Float32, subtract: Bool): Float32 = {
+    val addSub = Module(new FpAddSub())
+    addSub.io.operand1 := operand1
+    addSub.io.operand2 := operand2
+    addSub.io.subtract := subtract
+    addSub.io.result
+  }
+}
+
 /**
  * This has 3 cycles of latency
  */
@@ -340,5 +356,14 @@ class FpMul extends Module {
     }
 
     io.result := RegNext(resultNext)
+  }
+}
+
+object FpMul {
+  def apply(operand1: Float32, operand2: Float32): Float32 = {
+    val multiplier = Module(new FpMul())
+    multiplier.io.operand1 := operand1
+    multiplier.io.operand2 := operand2
+    multiplier.io.result
   }
 }
