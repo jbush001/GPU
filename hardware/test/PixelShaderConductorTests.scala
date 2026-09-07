@@ -56,6 +56,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     dut.io.shaderRegRead.bits.tag.poke(tag)
     dut.io.shaderRegRead.bits.addr.poke(addr)
     dut.clock.step()
+    dut.io.shaderRegReadData.valid.expect(true)
     val result = Seq.tabulate(cfg.shaderVectorLanes)(i =>
       (dut.io.shaderRegReadData.bits(i).peek().litValue & 0xffffffff).toInt)
     dut.io.shaderRegRead.valid.poke(false)
@@ -281,10 +282,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
       dut.io.textureFetchRequest.valid.expect(false)
 
+      // Initiate a texture fetch by writing coordinates
       writeRegister(dut, tag, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
       writeRegister(dut, tag, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
       dut.clock.step()
 
+      // Ensure this is delivered to the texture interface
       dut.io.textureFetchRequest.ready.poke(true)
       dut.io.textureFetchRequest.valid.expect(true)
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -293,6 +296,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       }
 
       dut.clock.step()
+
+      // Case 1: the texel is returned before we have a chance to read it.
       dut.io.textureFetchResponse.valid.poke(true)
       dut.io.textureFetchResponse.bits.tag.poke(tag)
       for (i <- 0 until cfg.shaderVectorLanes) {
@@ -303,8 +308,104 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
       dut.io.textureFetchResponse.valid.poke(false)
 
+      // Read the registers, which will be available without blocking
       for (colorChannel <- 0 until Color.numChannels) {
         assert(readRegister(dut, tag, 3 + colorChannel) == Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300 + 10 * colorChannel))
+      }
+
+      // Case 2: the texel is read before the texture fetch response arrives. The
+      // caller needs to block.
+      writeRegister(dut, tag, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
+      writeRegister(dut, tag, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      dut.clock.step()
+
+      // Initiate a register read
+      dut.io.shaderRegRead.valid.poke(true)
+      dut.io.shaderRegRead.bits.tag.poke(tag)
+      dut.io.shaderRegRead.bits.addr.poke(3) // Read the first color channel
+      dut.clock.step()
+      dut.io.shaderRegRead.valid.poke(false)
+
+      // At this point, the read should be blocked because the texture fetch response has not arrived yet.
+      assert(!dut.io.shaderRegReadData.valid.peek().litToBoolean)
+
+      dut.clock.step()
+
+      // Now, provide the texture fetch response
+      dut.io.textureFetchResponse.valid.poke(true)
+      dut.io.textureFetchResponse.bits.tag.poke(tag)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        for (colorChannel <- 0 until Color.numChannels) {
+          dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.poke(i + 300 + 10 * colorChannel)
+        }
+      }
+
+      // Ensure we get ioWake
+      dut.io.ioWakeTag.valid.expect(true)
+      dut.io.ioWakeTag.bits.expect(tag)
+
+      dut.clock.step()
+      dut.io.textureFetchResponse.valid.poke(false)
+
+      // The read should now succeed
+      assert(readRegister(dut, tag, 3) == Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300))
+
+      // Run a few more cycles to ensure we don't get any asserts
+      for (_ <- 0 until 10) {
+        dut.clock.step()
+      }
+    }
+  }
+
+  // Edge case: a read finishes the same cycle a read is attempted. Ensure
+  // we send the result.
+  test("PixelShaderConductor texture fetch read bypass") {
+    simulate(new PixelShaderConductor) { dut =>
+      // Start a job
+      for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        dut.io.rasterizedQuad.ready.expect(true)
+        loadRasterizedQuad(dut, 0, 0, 15,
+            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)))
+        dut.io.textureFetchRequest.valid.expect(false)
+      }
+
+      dut.io.startJob.valid.expect(true)
+      dut.io.startJob.ready.poke(true)
+      dut.io.rasterizedQuad.ready.expect(true)
+      val tag = dut.io.startJob.bits.tag.peek().litValue.toInt
+      dut.clock.step()
+
+      // Initiate a texture fetch by writing coordinates
+      writeRegister(dut, tag, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
+      writeRegister(dut, tag, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      dut.clock.step()
+
+      dut.io.textureFetchRequest.ready.poke(true)
+      dut.io.textureFetchRequest.valid.expect(true)
+      dut.clock.step()
+
+      // Initiate a read the same cycle a response comes back
+      dut.io.shaderRegRead.valid.poke(true)
+      dut.io.shaderRegRead.bits.tag.poke(tag)
+      dut.io.shaderRegRead.bits.addr.poke(3) // Read the first color channel
+
+      dut.io.textureFetchResponse.valid.poke(true)
+      dut.io.textureFetchResponse.bits.tag.poke(tag)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        for (colorChannel <- 0 until Color.numChannels) {
+          dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.poke(i + 300 + 10 * colorChannel)
+        }
+      }
+
+      dut.clock.step()
+
+      // No wake, no sleep, just ensure pixels are valid
+      dut.io.ioWakeTag.valid.expect(false)
+      dut.io.shaderRegReadData.valid.expect(true)
+      for (i <- 0 until cfg.shaderVectorLanes) {
+        for (colorChannel <- 0 until Color.numChannels) {
+          dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.expect(i + 300 + 10 * colorChannel)
+        }
       }
     }
   }

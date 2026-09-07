@@ -118,7 +118,10 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       val tag = UInt(cfg.shaderTagBits.W)
     }))
 
-    val ioWait = Valid(UInt(log2Up(cfg.shaderThreads).W))
+    val ioWaitThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
+
+    val ioWakeTag = Flipped(Valid(UInt(cfg.shaderTagBits.W)))
+    val ioWakeThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
 
     val regRead = Valid(new Bundle {
       val tag = UInt(cfg.shaderTagBits.W)
@@ -314,8 +317,19 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand1 := resolveOperand(operand1RegStage2, scalarRead1, vectorRead1)
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegStage2, scalarRead2, vectorRead2)
 
-  io.ioWait.valid := validCycle2 && !io.regReadData.valid && operand1RegStage2(6, 3) === 12.U && hasReg1OpStage2
-  io.ioWait.bits := io.decodedInstruction.bits.meta.thread
+  io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && operand1RegStage2(6, 3) === 12.U && hasReg1OpStage2
+
+  io.ioWaitThread.bits := io.decodedInstruction.bits.meta.thread
+
+  // Perform a CAM lookup to translate from tag to thread ID for the fetch stage.
+  io.ioWakeThread.valid := io.ioWakeTag.valid
+  io.ioWakeThread.bits := DontCare
+  for (thid <- 0 until cfg.shaderThreads) {
+    when (io.ioWakeTag.bits === tags(thid)) {
+      io.ioWakeThread.bits := thid.U
+    }
+  }
+
 
   io.regWrite.valid := false.B
   io.regWrite.bits.tag := io.writeback.bits.tag
@@ -349,6 +363,6 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     }
   }
 
-  io.decodedInstruction.valid := validCycle2 && !io.ioWait.valid
+  io.decodedInstruction.valid := validCycle2 && !io.ioWaitThread.valid
   io.decodedInstruction.bits.meta := decodedMetadataStage2
 }

@@ -140,6 +140,10 @@ object Float32 {
   final val fractionWidth = 23 // As encoded (not including hidden bit)
   final def exponentBias = 127.U(exponentWidth.W) // This is an exponent of zero
 
+  def Zero = Float32(0.U)
+  def One = Float32(false.B, exponentBias, 0.U)
+  def NaN = Float32(false.B, 0xff.U, 0x400000.U)
+
   def apply() = new Float32()
 
   def apply(raw: UInt) = {
@@ -326,7 +330,7 @@ class FpMul extends Module {
 
     val resultNext = Wire(Float32())
     when (stage2.isNaN) {
-      resultNext := Float32(false.B, 0xff.U, 0x400000.U)
+      resultNext := Float32.NaN
     }.elsewhen (stage2.isInf) {
       resultNext := Float32(stage2.isNegative, 0xff.U, 0.U)
     }.elsewhen (stage2.isZero) {

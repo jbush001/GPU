@@ -36,7 +36,7 @@ case class GpuConfig(
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
 
-  traceEnable: Boolean = false
+  traceEnable: Boolean = true
 ) {
   require(isPow2(tileSizePixels), "tileSizePixels must be a power of two")
   require(isPow2(shaderThreads), "shaderThreads must be a power of two")

@@ -43,8 +43,8 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     })
 
     // From InstructionDecodeStage: wait on texture cache fetches
-    val ioWait = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
-    val ioWake = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val ioWaitThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val ioWakeThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
     // To InstructionFetchStage. Request an instruction fetch for a thread.
     val fetchRequest = Valid(new FetchRequest)
@@ -73,17 +73,26 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   val programCounters = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.busAddressBits.W))))
   val threadHalted = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(true.B)))
   val threadICacheWait = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
-  val threadIoWait = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
+  val threadWaitingIo = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
 
-  when (io.ioWake.valid) {
-    assert(threadIoWait(io.ioWake.bits),
+  val cycleCount = RegInit(0.U(32.W))
+  cycleCount := cycleCount + 1.U
+
+  when (io.ioWakeThread.valid) {
+    printf(cf"cycle $cycleCount BAD BAD BAD: Waking thread ${io.ioWakeThread.bits} on IO, waiting = ${threadWaitingIo(io.ioWakeThread.bits)}\n")
+    when (!threadWaitingIo(io.ioWakeThread.bits)) {
+      printf(cf"BAD BAD BAD:Tried to wake ${io.ioWakeThread.bits} on IO, waiting = ${threadWaitingIo(io.ioWakeThread.bits)}\n")
+    }
+    assert(threadWaitingIo(io.ioWakeThread.bits),
       "Attempt to wake a thread that is not waiting on IO")
-    threadIoWait(io.ioWake.bits) := false.B
+    threadWaitingIo(io.ioWakeThread.bits) := false.B
   }
-  when (io.ioWait.valid) {
-    assert(!threadIoWait(io.ioWait.bits),
+
+  when (io.ioWaitThread.valid) {
+    printf(cf"cycle $cycleCount FetchSelectStage: Stalling thread ${io.ioWaitThread.bits} on IO, waiting = ${threadWaitingIo(io.ioWaitThread.bits)}\n")
+    assert(!threadWaitingIo(io.ioWaitThread.bits),
       "Attempt to stall thread that is already waiting on IO")
-    threadIoWait(io.ioWait.bits) := true.B
+    threadWaitingIo(io.ioWaitThread.bits) := true.B
   }
 
 
@@ -173,7 +182,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
       !threadHalted(thid)
       && !threadICacheWait(thid)
       && !inRawWait(thid)
-      && !threadIoWait(thid)
+      && !threadWaitingIo(thid)
       && !(io.rollback.valid && io.rollback.bits.thread === thid.U)
       && !((io.icacheMiss || io.icacheNearMiss) && io.icacheMissThread === thid.U))
     threadIssueArbiter.io.in(thid).bits := programCounters(thid)
@@ -191,7 +200,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
       // Rollback a thread, due to a branch or other blocking condition.
       programCounters(thid) := io.rollback.bits.pc
     }.elsewhen ((io.icacheMiss && io.icacheMissThread === thid.U)
-      || (io.ioWait.valid && io.ioWait.bits === thid.U)) {
+      || (io.ioWaitThread.valid && io.ioWaitThread.bits === thid.U)) {
       // Back up to previous instruction so we can restart there when the
       // wait condition is resolved.
       programCounters(thid) := programCounters(thid) - 4.U

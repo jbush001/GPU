@@ -208,15 +208,22 @@ class FloatArrayToColor(implicit val cfg: GpuConfig) extends Module {
     val shadedQuad = Valid(new ShadedQuad)
   })
 
+  def clampChannel(in: SInt): UInt = {
+    Mux(in < 0.S, 0.U(Color.channelBits.W),
+    Mux(in > ((1.S << Color.channelBits) - 1.S),
+    0xffff.U, in.asUInt(Color.channelBits - 1, 0)))
+  }
+
   io.shadedQuad.bits.location := io.floatQuad.bits.location
   io.shadedQuad.bits.mask := io.floatQuad.bits.mask
   for (pixel <- 0 until Consts.pixelsPerQuad) {
     for (channel <- 0 until Color.numChannels) {
       io.shadedQuad.bits.colors(pixel).channels(channel) :=
-        io.floatQuad.bits.colors(pixel)(channel).toFixedPoint(Color.channelBits)(Color.channelBits - 1, 0)
+        clampChannel(io.floatQuad.bits.colors(pixel)(channel).toFixedPoint(Color.channelBits))
     }
 
     io.shadedQuad.bits.depths(pixel) := io.floatQuad.bits.depths(pixel)
   }
+
   io.shadedQuad.valid := io.floatQuad.valid
 }

@@ -107,7 +107,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
       val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
 
-      val ioWake = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+      val ioWakeTag = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
       val regWrite = Valid(new Bundle {
         val tag = UInt(cfg.shaderTagBits.W)
@@ -137,7 +137,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     arbiter.io.writePorts(0).burst.bits.length := 0.U
     arbiter.io.writePorts(0).data.bits := 0.U
 
-    core.io.ioWake <> io.ioWake
+    core.io.ioWakeTag <> io.ioWakeTag
   }
 
   def runShaderTest(
@@ -377,12 +377,12 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           }
         }
 
-        dut.io.ioWake.valid.poke(false.B)
+        dut.io.ioWakeTag.valid.poke(false.B)
         if (gotRead && !threadWoken) {
           wakeupDelay -= 1
           if (wakeupDelay == 0) {
-            dut.io.ioWake.valid.poke(true.B)
-            dut.io.ioWake.bits.poke(readTag.U)
+            dut.io.ioWakeTag.valid.poke(true.B)
+            dut.io.ioWakeTag.bits.poke(readTag.U)
             threadWoken = true
           }
         }

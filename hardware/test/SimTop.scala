@@ -68,16 +68,30 @@ object Simulation extends App {
 
     val asm = new ShaderAssembler()
     asm
+      // Compute s, save in v0
       .move(64, 96) // lambda0
       .rInst(OpCode.Mulf, 64, 98, 64) // dQ1 * lambda0
-      .move(65, 97) // lambda1
-      .rInst(OpCode.Mulf, 65, 98, 65) // dQ2 * lambda1
-      .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
+      .move(66, 97) // lambda1
+      .rInst(OpCode.Mulf, 66, 98, 66) // dQ2 * lambda1
+      .rInst(OpCode.Addf, 64, 64, 66) // (dQ1 * lambda0) + (dQ2 * lambda1)
       .rInst(OpCode.Addf, 64, 98, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
-      .move(104, 64) // red = lambda0
-      .move(105, 64) // green = lambda1
-      .move(106, 64) // blue = lambda2
+      // Compute t, save in v1
+      .move(65, 96) // lambda0
+      .rInst(OpCode.Mulf, 65, 98, 65) // dQ1 * lambda0
+      .move(66, 97) // lambda1
+      .rInst(OpCode.Mulf, 66, 98, 66) // dQ2 * lambda1
+      .rInst(OpCode.Addf, 65, 65, 66) // (dQ1 * lambda0) + (dQ2 * lambda1)
+      .rInst(OpCode.Addf, 65, 98, 65) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+
+      // Start texture fetch
+      .move(108, 64) // s
+      .move(109, 65) // t
+
+      // Read back texture data, store in output registers
+      .move(104, 99) // red
+      .move(105, 100) // green
+      .move(106, 101) // blue
       .move(107, 60) // alpha = 1.0
       .halt()
     val programBytes = asm.finish()
@@ -93,7 +107,8 @@ object Simulation extends App {
 
     val vertices = Array((5, 7), (23, 110), (118, 49))
 
-    setUpVarying(dut, (0.3f, 0.411504425f, 1.0f))
+    setUpVarying(dut, (vertices(0)._1.toFloat / 128.0f, vertices(1)._1.toFloat / 128.0f, vertices(2)._1.toFloat / 128.0f))
+    setUpVarying(dut, (vertices(0)._2.toFloat / 128.0f, vertices(1)._2.toFloat / 128.0f, vertices(2)._2.toFloat / 128.0f))
 
     for (tile <- 0 until 4) {
       val tileRow = tile / 2

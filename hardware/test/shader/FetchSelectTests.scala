@@ -250,10 +250,10 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Pause thread 2
       dut.clock.step()
-      dut.io.ioWait.valid.poke(true.B)
-      dut.io.ioWait.bits.poke(thread2.U)
+      dut.io.ioWaitThread.valid.poke(true.B)
+      dut.io.ioWaitThread.bits.poke(thread2.U)
       dut.clock.step()
-      dut.io.ioWait.valid.poke(false.B)
+      dut.io.ioWaitThread.valid.poke(false.B)
       pc2 -= 4
 
       // Ensure thread 1 continues to issue
@@ -273,10 +273,10 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       assert(thread1Issued, "Thread 1 did not issue during io wait")
 
       // Resume thread 2
-      dut.io.ioWake.valid.poke(true.B)
-      dut.io.ioWake.bits.poke(thread2.U)
+      dut.io.ioWakeThread.valid.poke(true.B)
+      dut.io.ioWakeThread.bits.poke(thread2.U)
       dut.clock.step()
-      dut.io.ioWake.valid.poke(false.B)
+      dut.io.ioWakeThread.valid.poke(false.B)
 
       // Ensure thread 1 resumes issuing and thread 2 continues
       // Also check that the PC is properly rolled back for thread 1.

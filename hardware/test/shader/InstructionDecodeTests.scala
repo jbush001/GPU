@@ -398,8 +398,8 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       // Ensure the output is not valid, since the result was not ready.
       dut.io.decodedInstruction.valid.expect(false.B)
-      dut.io.ioWait.valid.expect(true.B)
-      dut.io.ioWait.bits.expect(1.U)
+      dut.io.ioWaitThread.valid.expect(true.B)
+      dut.io.ioWaitThread.bits.expect(1.U)
     }
   }
 
