@@ -32,11 +32,11 @@ case class GpuConfig(
   busBurstLengthBits: Int = 8,
   shaderThreads: Int = 8, // Number of hardware threads per shader core
   shaderVectorLanes: Int = 16,
-  shaderTagBits: Int = 4,
+  shaderJobIdBits: Int = 4,
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
 
-  traceEnable: Boolean = true
+  traceEnable: Boolean = false
 ) {
   require(isPow2(tileSizePixels), "tileSizePixels must be a power of two")
   require(isPow2(shaderThreads), "shaderThreads must be a power of two")

@@ -52,7 +52,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
       val pc = UInt(cfg.busAddressBits.W)
     })
 
-    val jobFinished = Valid(UInt(cfg.shaderTagBits.W))
+    val jobFinished = Valid(UInt(cfg.shaderJobIdBits.W))
   })
 
   // Shadow instruction pipeline to align with results.
@@ -179,7 +179,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
 
   io.writeback.valid := inst3.valid && inst3.bits.hasWriteback
   io.writeback.bits.thread := inst3.bits.thread
-  io.writeback.bits.tag := inst3.bits.tag
+  io.writeback.bits.jobId := inst3.bits.jobId
   io.writeback.bits.value := result
   io.writeback.bits.destReg := inst3.bits.destReg
 
@@ -193,7 +193,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
 
   // Halt handling
   io.jobFinished.valid := false.B
-  io.jobFinished.bits := inst3.bits.tag
+  io.jobFinished.bits := inst3.bits.jobId
   when (inst3.valid && inst3.bits.opcode === OpCode.Halt) {
     io.halt.valid := true.B
     io.squash.valid := true.B

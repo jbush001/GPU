@@ -33,18 +33,13 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     // From external fixed function units. Request to start a new shader job.
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
     }))
-
-    // To InstructionDecodeStage. Initialize state when a new job starts.
-    val resetThread = Valid(new Bundle {
-      val thread = UInt(log2Up(cfg.shaderThreads).W)
-      val tag = UInt(cfg.shaderTagBits.W)
-    })
+    val resetThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
 
     // From InstructionDecodeStage: wait on texture cache fetches
     val ioWaitThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
-    val ioWakeThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val ioWakeJob = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
     // To InstructionFetchStage. Request an instruction fetch for a thread.
     val fetchRequest = Valid(new FetchRequest)
@@ -70,31 +65,30 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     }))
   })
 
+  // XXX might be more readable to have a struct per job with all these fields (AoS instead of SoA)
   val programCounters = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.busAddressBits.W))))
   val threadHalted = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(true.B)))
   val threadICacheWait = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
   val threadWaitingIo = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
+  val jobIds = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.shaderJobIdBits.W))))
 
   val cycleCount = RegInit(0.U(32.W))
   cycleCount := cycleCount + 1.U
 
-  when (io.ioWakeThread.valid) {
-    printf(cf"cycle $cycleCount BAD BAD BAD: Waking thread ${io.ioWakeThread.bits} on IO, waiting = ${threadWaitingIo(io.ioWakeThread.bits)}\n")
-    when (!threadWaitingIo(io.ioWakeThread.bits)) {
-      printf(cf"BAD BAD BAD:Tried to wake ${io.ioWakeThread.bits} on IO, waiting = ${threadWaitingIo(io.ioWakeThread.bits)}\n")
+  // This CAM looks up the thread by JobID.
+  when (io.ioWakeJob.valid) {
+    for (thread <- 0 until cfg.shaderThreads) {
+      when (!threadHalted(thread) && jobIds(thread) === io.ioWakeJob.bits) {
+        threadWaitingIo(thread) := false.B
+      }
     }
-    assert(threadWaitingIo(io.ioWakeThread.bits),
-      "Attempt to wake a thread that is not waiting on IO")
-    threadWaitingIo(io.ioWakeThread.bits) := false.B
   }
 
   when (io.ioWaitThread.valid) {
-    printf(cf"cycle $cycleCount FetchSelectStage: Stalling thread ${io.ioWaitThread.bits} on IO, waiting = ${threadWaitingIo(io.ioWaitThread.bits)}\n")
     assert(!threadWaitingIo(io.ioWaitThread.bits),
       "Attempt to stall thread that is already waiting on IO")
     threadWaitingIo(io.ioWaitThread.bits) := true.B
   }
-
 
   // Threads start upon request and run to completion, stopping when they
   // reach a HALT instruction. This logic tracks which threads are active
@@ -105,13 +99,13 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   when (io.startJob.fire) {
     threadHalted(nextFreeThread) := false.B
     programCounters(nextFreeThread) := io.startJob.bits.startPc
+    jobIds(nextFreeThread) := io.startJob.bits.jobId
     io.resetThread.valid := true.B
   } .otherwise {
     io.resetThread.valid := false.B
   }
 
-  io.resetThread.bits.thread := nextFreeThread
-  io.resetThread.bits.tag := io.startJob.bits.tag
+  io.resetThread.bits := nextFreeThread
 
   when (io.halt.valid) {
     assert(!threadHalted(io.halt.bits), "Cannot halt a thread that is already halted")
@@ -192,6 +186,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
   io.fetchRequest.valid := threadIssueArbiter.io.out.valid && !(io.halt.valid && io.halt.bits === threadIssueArbiter.io.chosen)
   io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
+  io.fetchRequest.bits.jobId := jobIds(threadIssueArbiter.io.chosen)
   io.fetchRequest.bits.pc.raw := programCounters(threadIssueArbiter.io.chosen)
 
   // Program counter update logic.

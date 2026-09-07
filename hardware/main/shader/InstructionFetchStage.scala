@@ -23,12 +23,14 @@ import gpu._
 class FetchRequest(implicit val cfg: GpuConfig) extends Bundle {
   val pc = new ICacheAddress
   val thread = UInt(log2Up(cfg.shaderThreads).W)
+  val jobId = UInt(cfg.shaderJobIdBits.W)
 }
 
 class FetchedInstruction(implicit val cfg: GpuConfig) extends Bundle {
   val instruction = UInt(32.W)
   val pc = UInt(cfg.busAddressBits.W)
   val thread = UInt(log2Up(cfg.shaderThreads).W)
+  val jobId = UInt(cfg.shaderJobIdBits.W)
 }
 
 /**
@@ -113,6 +115,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     io.icacheNearMiss := RegNext(nearMiss, init = false.B)
     io.icacheMissThread := RegNext(stage1.fetchRequest.bits.thread)
     io.fetchedInstruction.bits.thread := RegNext(stage1.fetchRequest.bits.thread)
+    io.fetchedInstruction.bits.jobId := RegNext(stage1.fetchRequest.bits.jobId)
   }
 
   // Cache memory is 64 bits, but instructions are 32, so need to select correct

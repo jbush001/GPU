@@ -31,16 +31,16 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
 
-      /** The tag uniquely identifies this job. It is included with each
+      /** The jobId uniquely identifies this job. It is included with each
         * external special register read.
         */
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
     }))
 
-    val jobFinished = Valid(UInt(cfg.shaderTagBits.W))
+    val jobFinished = Valid(UInt(cfg.shaderJobIdBits.W))
 
     val regRead = Valid(new Bundle {
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
     })
 
@@ -48,10 +48,10 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
     val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
 
     /** If regReadData caused a wait, this will signal when it should wake up */
-    val ioWakeTag = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+    val ioWakeJob = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
     val regWrite = Valid(new Bundle {
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     })
@@ -74,9 +74,8 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   fetchSelectStage.io.icacheMissThread := instructionFetchStage.io.icacheMissThread
   fetchSelectStage.io.halt <> executeStage.io.halt
   fetchSelectStage.io.rollback <> executeStage.io.rollback
-  fetchSelectStage.io.ioWakeThread <> instructionDecodeStage.io.ioWakeThread
+  fetchSelectStage.io.ioWakeJob <> io.ioWakeJob
   fetchSelectStage.io.ioWaitThread <> instructionDecodeStage.io.ioWaitThread
-  instructionDecodeStage.io.ioWakeTag <> io.ioWakeTag
 
   instructionFetchStage.io.fillRequest <> icacheFillUnit.io.fillRequest
   instructionFetchStage.io.updateCache <> icacheFillUnit.io.updateCache

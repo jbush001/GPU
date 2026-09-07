@@ -63,6 +63,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       val address = 0x1000
       dut.io.fetchedInstruction.bits.pc.poke(address.U)
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
+      dut.io.fetchedInstruction.bits.jobId.poke(11.U)
       dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Subf, 0x0B, 64, 65).U)
       dut.clock.step(1)
 
@@ -75,6 +76,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.decodedInstruction.valid.expect(true.B)
       dut.io.decodedInstruction.bits.meta.pc.expect(address.U)
       dut.io.decodedInstruction.bits.meta.thread.expect(1.U)
+      dut.io.decodedInstruction.bits.meta.jobId.expect(11.U)
       dut.io.decodedInstruction.bits.meta.opcode.expect(OpCode.Subf)
       dut.io.decodedInstruction.bits.meta.destReg.expect(0x0B.U)
 
@@ -121,8 +123,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       // Reset thread, which should reset the mask to all 1s
       dut.io.resetThread.valid.poke(true.B)
-      dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(11.U)
+      dut.io.resetThread.bits.poke(1.U)
       dut.clock.step(1)
       dut.io.resetThread.valid.poke(false.B)
 
@@ -138,9 +139,6 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.decodedInstruction.bits.operand1(i).expect((i + 100).U)
       }
-
-      // Also ensure the tag is set properly on the decoded instruction
-      dut.io.decodedInstruction.bits.meta.tag.expect(11.U)
     }
   }
 
@@ -344,19 +342,15 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
   test("InstructionDecodeStage read shader reg ready") {
     simulate(new InstructionDecodeStage()) { dut =>
-      dut.io.resetThread.valid.poke(true.B)
-      dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(15.U)
-      dut.clock.step(1)
-      dut.io.resetThread.valid.poke(false.B)
 
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
+      dut.io.fetchedInstruction.bits.jobId.poke(15.U)
       dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 97, 53).U)
 
       dut.io.regRead.valid.expect(true.B)
       dut.io.regRead.bits.addr.expect(1.U) // Corresponds to register 97
-      dut.io.regRead.bits.tag.expect(15.U)
+      dut.io.regRead.bits.jobId.expect(15.U)
       dut.clock.step(1)
       dut.io.fetchedInstruction.valid.poke(false.B)
 
@@ -376,19 +370,14 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
   test("InstructionDecodeStage read shader reg not ready") {
     simulate(new InstructionDecodeStage()) { dut =>
-      dut.io.resetThread.valid.poke(true.B)
-      dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(15.U)
-      dut.clock.step(1)
-      dut.io.resetThread.valid.poke(false.B)
-
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
+      dut.io.fetchedInstruction.bits.jobId.poke(15.U)
       dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 97, 53).U)
 
       dut.io.regRead.valid.expect(true.B)
       dut.io.regRead.bits.addr.expect(1.U) // Corresponds to register 97
-      dut.io.regRead.bits.tag.expect(15.U)
+      dut.io.regRead.bits.jobId.expect(15.U)
       dut.clock.step(1)
 
       dut.io.regReadData.valid.poke(false.B) // Not ready
@@ -405,15 +394,9 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
   test("InstructionDecodeStage write shader reg") {
     simulate(new InstructionDecodeStage()) { dut =>
-      dut.io.resetThread.valid.poke(true.B)
-      dut.io.resetThread.bits.thread.poke(1.U)
-      dut.io.resetThread.bits.tag.poke(15.U)
-      dut.clock.step(1)
-      dut.io.resetThread.valid.poke(false.B)
-
       dut.io.writeback.valid.poke(true.B)
       dut.io.writeback.bits.thread.poke(1.U)
-      dut.io.writeback.bits.tag.poke(15.U)
+      dut.io.writeback.bits.jobId.poke(15.U)
       dut.io.writeback.bits.destReg.poke(105.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(lane).poke((200 + lane).U)
@@ -421,7 +404,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
 
       dut.io.regWrite.valid.expect(true.B)
       dut.io.regWrite.bits.addr.expect(1.U) // Corresponds to register 105
-      dut.io.regWrite.bits.tag.expect(15.U)
+      dut.io.regWrite.bits.jobId.expect(15.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.regWrite.bits.data(lane).expect((200 + lane).U)
       }

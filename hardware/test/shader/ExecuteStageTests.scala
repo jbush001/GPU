@@ -265,7 +265,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Halt)
       dut.io.decodedInstruction.bits.meta.thread.poke(1.U)
-      dut.io.decodedInstruction.bits.meta.tag.poke(13.U)
+      dut.io.decodedInstruction.bits.meta.jobId.poke(13.U)
       dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
       dut.io.halt.valid.expect(false.B)
       dut.io.jobFinished.valid.expect(false.B)

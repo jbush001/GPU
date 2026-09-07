@@ -25,14 +25,13 @@ import org.scalatest.funsuite.AnyFunSuite
 class FetchSelectTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
-  def startJob(dut: FetchSelectStage, startPc: UInt): Int = {
+  def startJob(dut: FetchSelectStage, startPc: UInt, jobId: UInt = 1.U): Int = {
     dut.io.startJob.ready.expect(true.B)
     dut.io.startJob.valid.poke(true.B)
     dut.io.startJob.bits.startPc.poke(startPc)
-    dut.io.startJob.bits.tag.poke(1.U)
+    dut.io.startJob.bits.jobId.poke(jobId)
     dut.clock.step()
     dut.io.startJob.valid.poke(false.B)
-    dut.io.resetThread.bits.tag.expect(1.U)
 
     // Record the thread that was allocated.
     val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
@@ -51,11 +50,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         for (_ <- 0 until backToBackLatency) {
           dut.clock.step()
           dut.io.fetchRequest.valid.expect(false.B)
-          dut.io.resetThread.valid.expect(false.B)
         }
 
         dut.clock.step()
-        dut.io.resetThread.valid.expect(false.B)
         dut.io.fetchRequest.valid.expect(true.B)
         assert(dut.io.fetchRequest.valid.peek().litToBoolean, "Fetch request should be valid")
         dut.io.fetchRequest.bits.thread.expect(allocatedThread.U)
@@ -72,25 +69,6 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         dut.io.fetchRequest.valid.expect(false.B)
         dut.clock.step()
       }
-    }
-  }
-
-  // Ensure this resets the thread state appropriately.
-  test("FetchSelectStage thread reset") {
-    simulate(new FetchSelectStage()) { dut =>
-      // Allocate a new job
-      dut.io.startJob.ready.expect(true.B)
-      dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0x1000.U)
-      dut.io.startJob.bits.tag.poke(1.U)
-      val resetThread = dut.io.resetThread.bits.thread.peek().litValue
-      dut.io.resetThread.bits.tag.expect(1.U)
-      dut.clock.step()
-      dut.io.startJob.valid.poke(false.B)
-
-      // Record the thread that was allocated.
-      val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue
-      assert(allocatedThread == resetThread, s"Allocated thread $allocatedThread does not match reset thread $resetThread")
     }
   }
 
@@ -231,8 +209,8 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     // Similar to icache miss, except uses ioWait
     simulate(new FetchSelectStage()) { dut =>
       var pc2 = 0x1000
-      val thread1 = startJob(dut, 0x2000.U)
-      val thread2 = startJob(dut, pc2.U)
+      val thread1 = startJob(dut, 0x2000.U, 1.U)
+      val thread2 = startJob(dut, pc2.U, 2.U)
 
       // Issue a few cycles
       for (_ <- 1 until 20) {
@@ -273,10 +251,10 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       assert(thread1Issued, "Thread 1 did not issue during io wait")
 
       // Resume thread 2
-      dut.io.ioWakeThread.valid.poke(true.B)
-      dut.io.ioWakeThread.bits.poke(thread2.U)
+      dut.io.ioWakeJob.valid.poke(true.B)
+      dut.io.ioWakeJob.bits.poke(2.U)
       dut.clock.step()
-      dut.io.ioWakeThread.valid.poke(false.B)
+      dut.io.ioWakeJob.valid.poke(false.B)
 
       // Ensure thread 1 resumes issuing and thread 2 continues
       // Also check that the PC is properly rolled back for thread 1.

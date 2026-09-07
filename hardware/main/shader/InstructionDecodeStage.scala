@@ -77,7 +77,7 @@ object OpCode extends ChiselEnum {
 class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val pc = UInt(cfg.busAddressBits.W)
   val thread = UInt(log2Up(cfg.shaderThreads).W)
-  val tag = UInt(cfg.shaderTagBits.W)
+  val jobId = UInt(cfg.shaderJobIdBits.W)
   val opcode = OpCode()
   val hasWriteback = Bool()
   val destReg = UInt(7.W)
@@ -86,7 +86,7 @@ class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
 
 class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
-  val tag = UInt(cfg.shaderTagBits.W)
+  val jobId = UInt(cfg.shaderJobIdBits.W)
   val destReg = UInt(7.W)
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
 }
@@ -113,25 +113,19 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val writeback = Flipped(Valid(new WritebackRequest))
 
     // From FetchSelectStage, data for newly started threads.
-    val resetThread = Flipped(Valid(new Bundle {
-      val thread = UInt(log2Up(cfg.shaderThreads).W)
-      val tag = UInt(cfg.shaderTagBits.W)
-    }))
+    val resetThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
     val ioWaitThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
 
-    val ioWakeTag = Flipped(Valid(UInt(cfg.shaderTagBits.W)))
-    val ioWakeThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
-
     val regRead = Valid(new Bundle {
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
     })
 
     val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
 
     val regWrite = Valid(new Bundle {
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     })
@@ -144,11 +138,8 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
   val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
-  val tags = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.shaderTagBits.W))))
-
   when (io.resetThread.valid) {
-    execMask(io.resetThread.bits.thread) := ~0.U(cfg.shaderVectorLanes.W)
-    tags(io.resetThread.bits.thread) := io.resetThread.bits.tag
+    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
   }
 
   def isLoadConst(inst: UInt): Bool = {
@@ -165,7 +156,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   decodedMetadata.opcode := decodedOpcode
   decodedMetadata.pc := io.fetchedInstruction.bits.pc
   decodedMetadata.thread := io.fetchedInstruction.bits.thread
-  decodedMetadata.tag := tags(io.fetchedInstruction.bits.thread)
+  decodedMetadata.jobId := io.fetchedInstruction.bits.jobId
   decodedMetadata.destReg := io.fetchedInstruction.bits.instruction(13, 7)
 
   val decodeTable: Seq[(OpCode.Type, UInt)] = Seq(
@@ -277,7 +268,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   io.regRead.valid := operand1Reg(6, 3) === 12.U && io.fetchedInstruction.valid && hasReg1Op
   io.regRead.bits.addr := operand1Reg(2, 0)
-  io.regRead.bits.tag := decodedMetadata.tag
+  io.regRead.bits.jobId := decodedMetadata.jobId
 
   def resolveOperand(regId: UInt, scalarData: UInt, vectorData: Vec[UInt]): Vec[UInt] = {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
@@ -321,18 +312,8 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   io.ioWaitThread.bits := io.decodedInstruction.bits.meta.thread
 
-  // Perform a CAM lookup to translate from tag to thread ID for the fetch stage.
-  io.ioWakeThread.valid := io.ioWakeTag.valid
-  io.ioWakeThread.bits := DontCare
-  for (thid <- 0 until cfg.shaderThreads) {
-    when (io.ioWakeTag.bits === tags(thid)) {
-      io.ioWakeThread.bits := thid.U
-    }
-  }
-
-
   io.regWrite.valid := false.B
-  io.regWrite.bits.tag := io.writeback.bits.tag
+  io.regWrite.bits.jobId := io.writeback.bits.jobId
   io.regWrite.bits.addr := io.writeback.bits.destReg(2, 0)
   io.regWrite.bits.data := io.writeback.bits.value
 

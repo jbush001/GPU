@@ -20,12 +20,12 @@ import chisel3._
 import chisel3.util._
 
 class TextureFetchRequest(implicit cfg: GpuConfig) extends Bundle {
-  val tag = UInt(cfg.shaderTagBits.W)
+  val jobId = UInt(cfg.shaderJobIdBits.W)
   val coord = Vec(2, Vec(cfg.shaderVectorLanes, new Float32()))
 }
 
 class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
-  val tag = UInt(cfg.shaderTagBits.W)
+  val jobId = UInt(cfg.shaderJobIdBits.W)
   val texels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
 }
 
@@ -45,26 +45,26 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     // To/From ShaderCore
     val startJob = Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
     })
 
-    val jobFinished = Flipped(Valid(UInt(cfg.shaderTagBits.W)))
+    val jobFinished = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
     val shaderRegRead = Flipped(Valid(new Bundle {
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
     }))
 
     // This is the response to shaderRegRead with one cycle of latency.
     // If this is not valid, then the reader should block. This will
-    // subsequently assert ioWakeTag.
+    // subsequently assert ioWakeJob.
     val shaderRegReadData = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
     // This is asserted when a previously blocked shaderRegRead can now proceed.
-    val ioWakeTag = Valid(UInt(cfg.shaderTagBits.W))
+    val ioWakeJob = Valid(UInt(cfg.shaderJobIdBits.W))
 
     val shaderRegWrite = Flipped(Valid(new Bundle {
-      val tag = UInt(cfg.shaderTagBits.W)
+      val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
@@ -187,7 +187,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   io.startJob.valid := nextShaderJob.io.out.valid
   io.startJob.bits.startPc := 0.U // XXX need to allow setting shader address
-  io.startJob.bits.tag := nextShaderJob.io.chosen
+  io.startJob.bits.jobId := nextShaderJob.io.chosen
 
   when (io.startJob.fire) {
     jobs(nextShaderJob.io.chosen).state := JobState.Processing
@@ -253,10 +253,10 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   // register the request and perform the lookup in the second cycle so we can
   // cleanly bypass texture results that happen the same cycle.
   val regReadValidStage2 = RegNext(io.shaderRegRead.valid, init = false.B)
-  val regReadTagStage2 = RegNext(io.shaderRegRead.bits.tag(log2Up(totalPendingJobs) - 1, 0))
+  val regReadJobIdStage2 = RegNext(io.shaderRegRead.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
   val regReadAddrStage2 = RegNext(io.shaderRegRead.bits.addr)
 
-  val readJob = jobs(regReadTagStage2)
+  val readJob = jobs(regReadJobIdStage2)
 
   io.shaderRegReadData.valid := false.B // default
   io.shaderRegReadData.bits := DontCare
@@ -287,7 +287,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       is (3.U, 4.U, 5.U, 6.U) {
         val colorChannel = regReadAddrStage2 - 3.U
         // Bypass result if it arrives from texture cache the same cycle
-        when (io.textureFetchResponse.valid && io.textureFetchResponse.bits.tag === regReadTagStage2) {
+        when (io.textureFetchResponse.valid && io.textureFetchResponse.bits.jobId === regReadJobIdStage2) {
           for (lane <- 0 until cfg.shaderVectorLanes) {
             io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane).raw
           }
@@ -307,11 +307,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   // Wake up reader when a texture result arrives.
-  io.ioWakeTag.valid := io.textureFetchResponse.valid && jobs(io.textureFetchResponse.bits.tag).threadNeedsWake
-  io.ioWakeTag.bits := io.textureFetchResponse.bits.tag
+  io.ioWakeJob.valid := io.textureFetchResponse.valid && jobs(io.textureFetchResponse.bits.jobId).threadNeedsWake
+  io.ioWakeJob.bits := io.textureFetchResponse.bits.jobId
 
   when (io.shaderRegWrite.valid) {
-    val writeJob = jobs(io.shaderRegWrite.bits.tag(log2Up(totalPendingJobs) - 1, 0))
+    val writeJob = jobs(io.shaderRegWrite.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
     switch (io.shaderRegWrite.bits.addr) {
       is (0.U, 1.U, 2.U, 3.U) {
         writeJob.shadedColors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
@@ -338,7 +338,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     totalPendingJobs))
   for (i <- 0 until totalPendingJobs) {
     textureRequestArbiter.io.in(i).valid := jobs(i).textureFetchRequestPending
-    textureRequestArbiter.io.in(i).bits.tag := i.U
+    textureRequestArbiter.io.in(i).bits.jobId := i.U
     textureRequestArbiter.io.in(i).bits.coord := jobs(i).texelCoord
   }
 
@@ -347,14 +347,14 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   textureRequestArbiter.io.out.ready := io.textureFetchRequest.ready
 
   when (io.textureFetchRequest.fire) {
-    assert(jobs(io.textureFetchRequest.bits.tag).textureFetchRequestPending,
+    assert(jobs(io.textureFetchRequest.bits.jobId).textureFetchRequestPending,
       "Texture fetch request fired for a job that was not valid")
-    jobs(io.textureFetchRequest.bits.tag).textureFetchRequestPending := false.B
+    jobs(io.textureFetchRequest.bits.jobId).textureFetchRequestPending := false.B
   }
 
   // Handle texture fetch response
   when (io.textureFetchResponse.valid) {
-    val job = jobs(io.textureFetchResponse.bits.tag)
+    val job = jobs(io.textureFetchResponse.bits.jobId)
 
     job.fetchedTexels := io.textureFetchResponse.bits.texels
     job.texelsValid := true.B

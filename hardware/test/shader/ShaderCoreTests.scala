@@ -95,22 +95,22 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       val dap = new DirectAccessPort
       val startJob = Flipped(Decoupled(new Bundle {
         val startPc = UInt(cfg.busAddressBits.W)
-        val tag = UInt(cfg.shaderTagBits.W)
+        val jobId = UInt(cfg.shaderJobIdBits.W)
       }))
 
-      val jobFinished = Valid(UInt(cfg.shaderTagBits.W))
+      val jobFinished = Valid(UInt(cfg.shaderJobIdBits.W))
 
       val regRead = Valid(new Bundle {
-        val tag = UInt(cfg.shaderTagBits.W)
+        val jobId = UInt(cfg.shaderJobIdBits.W)
         val addr = UInt(3.W)
       })
 
       val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
 
-      val ioWakeTag = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+      val ioWakeJob = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
 
       val regWrite = Valid(new Bundle {
-        val tag = UInt(cfg.shaderTagBits.W)
+        val jobId = UInt(cfg.shaderJobIdBits.W)
         val addr = UInt(3.W)
         val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
       })
@@ -137,20 +137,20 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     arbiter.io.writePorts(0).burst.bits.length := 0.U
     arbiter.io.writePorts(0).data.bits := 0.U
 
-    core.io.ioWakeTag <> io.ioWakeTag
+    core.io.ioWakeJob <> io.ioWakeJob
   }
 
   def runShaderTest(
     programBytes: Seq[Long],
     startAddr: Long,
-    tag: UInt = 0.U
+    jobId: UInt = 0.U
   )(testBody: ShaderTestHarness => Unit)(implicit cfg: GpuConfig): Unit = {
     simulate(new ShaderTestHarness) { dut =>
       // Common Setup / Initialization
       SimMemAccess.write(dut.clock, dut.io.dap, startAddr, programBytes)
 
       dut.io.startJob.bits.startPc.poke(startAddr.U)
-      dut.io.startJob.bits.tag.poke(tag)
+      dut.io.startJob.bits.jobId.poke(jobId)
 
       // Execute test-specific assertions or stimulus
       testBody(dut)
@@ -218,7 +218,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     class Job {
       var active = false
       var gotResult = false
-      var tag: Int = 0
+      var jobId: Int = 0
       var a = Seq.fill(cfg.shaderVectorLanes)(0)
       var b = Seq.fill(cfg.shaderVectorLanes)(0)
       var expectedVector = Seq.fill(cfg.shaderVectorLanes)(0)
@@ -278,8 +278,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
         }
 
         if (dut.io.regRead.valid.peek().litToBoolean) {
-          val readTag = dut.io.regRead.bits.tag.peek().litValue.toInt
-          val job = jobs(readTag)
+          val readJobId = dut.io.regRead.bits.jobId.peek().litValue.toInt
+          val job = jobs(readJobId)
           val addr = dut.io.regRead.bits.addr.peek().litValue.toInt
           regReadResult = if (addr == 0) job.a else if (addr == 1) job.b else Seq.fill(cfg.shaderVectorLanes)(0)
           hasRegReadResult = true
@@ -289,7 +289,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
         if (dut.io.regWrite.valid.peek().litToBoolean) {
           val result = resultToVector(dut)
-          val jobIndex = dut.io.regWrite.bits.tag.peek().litValue.toInt
+          val jobIndex = dut.io.regWrite.bits.jobId.peek().litValue.toInt
           if (DEBUG) {
             println(s"Job $jobIndex completed at cycle $cycle result = $result totalCycles ${cycle - jobs(jobIndex).startCycle}")
           }
@@ -320,7 +320,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           job.startCycle = cycle
           activeJobs += 1
           dut.io.startJob.valid.poke(true.B)
-          dut.io.startJob.bits.tag.poke(jobIndex.U)
+          dut.io.startJob.bits.jobId.poke(jobIndex.U)
         } else {
           dut.io.startJob.valid.poke(false.B)
         }
@@ -355,14 +355,14 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       var wakeupDelay = 0
       var gotRead = false
       var threadWoken = false
-      var readTag = 0
+      var readJobId = 0
       var regReadValid = false
       for (_ <- 0 until 60) {
         dut.io.regReadData.valid.poke(regReadValid.B)
 
         regReadValid = false
         if (dut.io.regRead.valid.peek().litToBoolean) {
-          readTag = dut.io.regRead.bits.tag.peek().litValue.toInt
+          readJobId = dut.io.regRead.bits.jobId.peek().litValue.toInt
           if (gotRead) {
             assert(threadWoken, "Thread should have been woken before second read")
             // Second read, return value
@@ -377,12 +377,12 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           }
         }
 
-        dut.io.ioWakeTag.valid.poke(false.B)
+        dut.io.ioWakeJob.valid.poke(false.B)
         if (gotRead && !threadWoken) {
           wakeupDelay -= 1
           if (wakeupDelay == 0) {
-            dut.io.ioWakeTag.valid.poke(true.B)
-            dut.io.ioWakeTag.bits.poke(readTag.U)
+            dut.io.ioWakeJob.valid.poke(true.B)
+            dut.io.ioWakeJob.bits.poke(readJobId.U)
             threadWoken = true
           }
         }

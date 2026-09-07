@@ -46,7 +46,7 @@ class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
     responseNext.texels(3)(lane) := Float32.One // A
   }
 
-  responseNext.tag := io.textureFetchRequest.bits.tag
+  responseNext.jobId := io.textureFetchRequest.bits.jobId
 
   resultQueue.io.enq.valid := io.textureFetchRequest.valid
   io.textureFetchRequest.ready := resultQueue.io.enq.ready
