@@ -74,6 +74,36 @@ object OpCode extends ChiselEnum {
   private val _reserveWidth = Value(127.U)
 }
 
+object SpecialReg {
+  val ExecMask        = 32
+
+  val Const0          = 53
+  val Const1          = 54
+  val ConstNeg1       = 55
+  val Const2          = 56
+  val Const4          = 57
+  val Const0_5f       = 58
+  val ConstNeg0_5f    = 59
+  val Const1_0f       = 60
+  val ConstNeg1_0f    = 61
+  val Const2_0f       = 62
+  val ConstNeg2_0f    = 63
+  val Lambda0         = 96
+  val Lambda1         = 97
+  val Varying         = 98
+  val TexelR          = 99
+  val TexelG          = 100
+  val TexelB          = 101
+  val TexelA          = 102
+  val OutputR         = 104
+  val OutputG         = 105
+  val OutputB         = 106
+  val OutputA         = 107
+  val TexelS          = 108
+  val TexelT          = 109
+  val LaneId          = 112
+}
+
 /**
   * Decoded instruction fields
   */
@@ -217,28 +247,6 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   val decodedMetadataStage2 = RegNext(decodedMetadata)
 
-  object SpecialReg {
-    val ExecMask        = 32.U
-    val LpmReadAddr     = 33.U
-    val LpmWriteAddr    = 34.U
-    val UniformAddr     = 35.U
-    val UniformVal      = 36.U
-
-    val Const0          = 53.U
-    val Const1          = 54.U
-    val ConstNeg1       = 55.U
-    val Const2          = 56.U
-    val Const4          = 57.U
-    val Const0_5f       = 58.U
-    val ConstNeg0_5f    = 59.U
-    val Const1_0f       = 60.U
-    val ConstNeg1_0f    = 61.U
-    val Const2_0f       = 62.U
-    val ConstNeg2_0f    = 63.U
-
-    val LaneId          = 112.U
-  }
-
   def constFloat(f: Float): UInt = {
     val bits = java.lang.Float.floatToIntBits(f)
     (bits.toLong & 0xFFFFFFFFL).U(32.W)
@@ -290,19 +298,19 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       result := DontCare  // Default
       switch (regId) {
         // Special registers
-        is(SpecialReg.ExecMask)     { result := broadcast(execMask(decodedMetadataStage2.thread)) }
-        is(SpecialReg.LaneId)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
-        is(SpecialReg.Const0)       { result := broadcast(0.U(32.W)) }
-        is(SpecialReg.Const1)       { result := broadcast(1.U(32.W)) }
-        is(SpecialReg.ConstNeg1)    { result := broadcast((-1).S(32.W).asUInt) }
-        is(SpecialReg.Const2)       { result := broadcast(2.U(32.W)) }
-        is(SpecialReg.Const4)       { result := broadcast(4.U(32.W)) }
-        is(SpecialReg.Const0_5f)    { result := broadcast(constFloat(0.5f)) }
-        is(SpecialReg.ConstNeg0_5f) { result := broadcast(constFloat(-0.5f)) }
-        is(SpecialReg.Const1_0f)    { result := broadcast(constFloat(1.0f)) }
-        is(SpecialReg.ConstNeg1_0f) { result := broadcast(constFloat(-1.0f)) }
-        is(SpecialReg.Const2_0f)    { result := broadcast(constFloat(2.0f)) }
-        is(SpecialReg.ConstNeg2_0f) { result := broadcast(constFloat(-2.0f)) }
+        is(SpecialReg.ExecMask.U)     { result := broadcast(execMask(decodedMetadataStage2.thread)) }
+        is(SpecialReg.LaneId.U)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
+        is(SpecialReg.Const0.U)       { result := broadcast(0.U(32.W)) }
+        is(SpecialReg.Const1.U)       { result := broadcast(1.U(32.W)) }
+        is(SpecialReg.ConstNeg1.U)    { result := broadcast((-1).S(32.W).asUInt) }
+        is(SpecialReg.Const2.U)       { result := broadcast(2.U(32.W)) }
+        is(SpecialReg.Const4.U)       { result := broadcast(4.U(32.W)) }
+        is(SpecialReg.Const0_5f.U)    { result := broadcast(constFloat(0.5f)) }
+        is(SpecialReg.ConstNeg0_5f.U) { result := broadcast(constFloat(-0.5f)) }
+        is(SpecialReg.Const1_0f.U)    { result := broadcast(constFloat(1.0f)) }
+        is(SpecialReg.ConstNeg1_0f.U) { result := broadcast(constFloat(-1.0f)) }
+        is(SpecialReg.Const2_0f.U)    { result := broadcast(constFloat(2.0f)) }
+        is(SpecialReg.ConstNeg2_0f.U) { result := broadcast(constFloat(-2.0f)) }
       }
     }
 
@@ -341,7 +349,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     }.elsewhen (destReg(6, 3) === 13.U) {
       // 104-111: special purpose output registers
       io.regWrite.valid := true.B
-    }.elsewhen (destReg === SpecialReg.ExecMask) {
+    }.elsewhen (destReg === SpecialReg.ExecMask.U) {
       execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
     }
   }

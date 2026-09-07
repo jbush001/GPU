@@ -69,27 +69,27 @@ object Simulation extends App {
     val asm = new ShaderAssembler()
     asm
       // Compute s
-      .move(64, 96) // lambda0
-      .rInst(OpCode.Mulf, 64, 98, 64) // dQ1 * lambda0
-      .move(66, 97) // lambda1
-      .rInst(OpCode.Mulf, 66, 98, 66) // dQ2 * lambda1
-      .rInst(OpCode.Addf, 64, 64, 66) // (dQ1 * lambda0) + (dQ2 * lambda1)
-      .rInst(OpCode.Addf, 108, 98, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+      .move(64, SpecialReg.Lambda0)
+      .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
+      .move(65, SpecialReg.Lambda1)
+      .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
+      .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
+      .rInst(OpCode.Addf, SpecialReg.TexelS, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
       // Compute t
       // The last instruction will kick off the texture fetch
-      .move(65, 96) // lambda0
-      .rInst(OpCode.Mulf, 65, 98, 65) // dQ1 * lambda0
-      .move(66, 97) // lambda1
-      .rInst(OpCode.Mulf, 66, 98, 66) // dQ2 * lambda1
-      .rInst(OpCode.Addf, 65, 65, 66) // (dQ1 * lambda0) + (dQ2 * lambda1)
-      .rInst(OpCode.Addf, 109, 98, 65) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+      .move(64, SpecialReg.Lambda0)
+      .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
+      .move(65, SpecialReg.Lambda1)
+      .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
+      .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
+      .rInst(OpCode.Addf, SpecialReg.TexelT, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
       // Read back texture data, store in output registers
-      .move(104, 99) // red
-      .move(105, 100) // green
-      .move(106, 101) // blue
-      .move(107, 60) // alpha = 1.0
+      .move(SpecialReg.OutputR, SpecialReg.TexelR) // red
+      .move(SpecialReg.OutputG, SpecialReg.TexelG) // green
+      .move(SpecialReg.OutputB, SpecialReg.TexelB) // blue
+      .move(SpecialReg.OutputA, SpecialReg.Const1_0f) // alpha = 1.0
       .halt()
     val programBytes = asm.finish()
 
