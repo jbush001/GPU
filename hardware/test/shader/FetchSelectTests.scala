@@ -26,12 +26,15 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = new GpuConfig
 
   def startJob(dut: FetchSelectStage, startPc: UInt, jobId: UInt = 1.U): Int = {
+    dut.io.resetThread.valid.expect(false)
     dut.io.startJob.ready.expect(true.B)
     dut.io.startJob.valid.poke(true.B)
     dut.io.startJob.bits.startPc.poke(startPc)
     dut.io.startJob.bits.jobId.poke(jobId)
+    dut.io.resetThread.valid.expect(true)
     dut.clock.step()
     dut.io.startJob.valid.poke(false.B)
+    dut.io.resetThread.valid.expect(false)
 
     // Record the thread that was allocated.
     val allocatedThread = dut.io.fetchRequest.bits.thread.peek().litValue

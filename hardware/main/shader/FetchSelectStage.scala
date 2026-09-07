@@ -35,6 +35,8 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
       val startPc = UInt(cfg.busAddressBits.W)
       val jobId = UInt(cfg.shaderJobIdBits.W)
     }))
+
+    // To InstructionDecodeStage
     val resetThread = Valid(UInt(log2Up(cfg.shaderThreads).W))
 
     // From InstructionDecodeStage: wait on texture cache fetches
@@ -65,75 +67,76 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     }))
   })
 
-  // XXX might be more readable to have a struct per job with all these fields (AoS instead of SoA)
-  val programCounters = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.busAddressBits.W))))
-  val threadHalted = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(true.B)))
-  val threadICacheWait = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
-  val threadWaitingIo = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(false.B)))
-  val jobIds = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(cfg.shaderJobIdBits.W))))
+  class ThreadInfo extends Bundle {
+    val programCounter = UInt(cfg.busAddressBits.W)
+    val running = Bool()
+    val iCacheWait = Bool()
+    val ioWait = Bool()
+    val jobId = UInt(cfg.shaderJobIdBits.W)
+  }
 
-  val cycleCount = RegInit(0.U(32.W))
-  cycleCount := cycleCount + 1.U
+  val threads = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U.asTypeOf(new ThreadInfo))))
 
   // This CAM looks up the thread by JobID.
   when (io.ioWakeJob.valid) {
-    for (thread <- 0 until cfg.shaderThreads) {
-      when (!threadHalted(thread) && jobIds(thread) === io.ioWakeJob.bits) {
-        threadWaitingIo(thread) := false.B
+    for (thid <- 0 until cfg.shaderThreads) {
+      when (threads(thid).running && threads(thid).jobId === io.ioWakeJob.bits) {
+        assert(threads(thid).ioWait, "Waking a job that is not waiting on IO")
+        threads(thid).ioWait := false.B
       }
     }
   }
 
   when (io.ioWaitThread.valid) {
-    assert(!threadWaitingIo(io.ioWaitThread.bits),
+    assert(!threads(io.ioWaitThread.bits).ioWait,
       "Attempt to stall thread that is already waiting on IO")
-    threadWaitingIo(io.ioWaitThread.bits) := true.B
+    threads(io.ioWaitThread.bits).ioWait := true.B
   }
 
   // Threads start upon request and run to completion, stopping when they
   // reach a HALT instruction. This logic tracks which threads are active
   // and assigns new threads on request. This unit can only start one new
   // thread per cycle.
-  val nextFreeThread = PriorityEncoder(threadHalted.asUInt)
-  io.startJob.ready := threadHalted.asUInt.orR
-  when (io.startJob.fire) {
-    threadHalted(nextFreeThread) := false.B
-    programCounters(nextFreeThread) := io.startJob.bits.startPc
-    jobIds(nextFreeThread) := io.startJob.bits.jobId
-    io.resetThread.valid := true.B
-  } .otherwise {
-    io.resetThread.valid := false.B
-  }
-
+  val haltedThreads = Cat(threads.map(!_.running).reverse).asUInt
+  val nextFreeThread = PriorityEncoder(haltedThreads)
+  io.startJob.ready := haltedThreads.orR
+  io.resetThread.valid := io.startJob.fire
   io.resetThread.bits := nextFreeThread
 
+  when (io.startJob.fire) {
+    val thread = threads(nextFreeThread)
+    thread.running := true.B
+    thread.programCounter := io.startJob.bits.startPc
+    thread.jobId := io.startJob.bits.jobId
+  }
+
   when (io.halt.valid) {
-    assert(!threadHalted(io.halt.bits), "Cannot halt a thread that is already halted")
-    threadHalted(io.halt.bits) := true.B
+    assert(threads(io.halt.bits).running, "Cannot halt a thread that is already halted")
+    threads(io.halt.bits).running := false.B
   }
 
   // This handles threads that are waiting on instruction cache misses.
   for (thid <- 0 until cfg.shaderThreads) {
     assert(!(io.icacheWakeThreads(thid) && io.icacheMiss && io.icacheMissThread === thid.U),
       "Cannot wake and stall a thread at the same time")
-    assert(!(threadICacheWait(thid) && io.icacheMiss && io.icacheMissThread === thid.U),
+    assert(!(threads(thid).iCacheWait && io.icacheMiss && io.icacheMissThread === thid.U),
       "Cannot stall a thread that is already stalled")
-    assert(threadICacheWait(thid) || !io.icacheWakeThreads(thid),
+    assert(threads(thid).iCacheWait || !io.icacheWakeThreads(thid),
       "Cannot wake a thread that is not stalled")
-    assert(!threadHalted(thid) || !(io.icacheMiss && io.icacheMissThread === thid.U),
+    assert(threads(thid).running || !(io.icacheMiss && io.icacheMissThread === thid.U),
       "Cannot stall a thread that is halted")
 
     // TODO There is actually an edge case where this can happen: if an instruction cache miss occurs
     // while fetching the next instruction and a previously fetched instruction is HALT, the
     // wakeup can occur later. Need to handle this case explicitly.
-    assert(!threadHalted(thid) || !io.icacheWakeThreads(thid), "Cannot wake a thread that is halted")
+    assert(threads(thid).running || !io.icacheWakeThreads(thid), "Cannot wake a thread that is halted")
 
     when (io.icacheWakeThreads(thid)) {
-      threadICacheWait(thid) := false.B
+      threads(thid).iCacheWait := false.B
     }
 
     when (io.icacheMiss && io.icacheMissThread === thid.U) {
-      threadICacheWait(thid) := true.B
+      threads(thid).iCacheWait := true.B
     }
   }
 
@@ -172,37 +175,38 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // Select the thread to issue.
   val threadIssueArbiter = Module(new RRArbiter(UInt(cfg.busAddressBits.W), cfg.shaderThreads))
   for (thid <- 0 until cfg.shaderThreads) {
+    val thread = threads(thid)
     threadIssueArbiter.io.in(thid).valid := (
-      !threadHalted(thid)
-      && !threadICacheWait(thid)
+      thread.running
+      && !thread.iCacheWait
       && !inRawWait(thid)
-      && !threadWaitingIo(thid)
+      && !thread.ioWait
       && !(io.rollback.valid && io.rollback.bits.thread === thid.U)
       && !((io.icacheMiss || io.icacheNearMiss) && io.icacheMissThread === thid.U))
-    threadIssueArbiter.io.in(thid).bits := programCounters(thid)
+    threadIssueArbiter.io.in(thid).bits := thread.programCounter
   }
 
   threadIssueArbiter.io.out.ready := true.B
 
   io.fetchRequest.valid := threadIssueArbiter.io.out.valid && !(io.halt.valid && io.halt.bits === threadIssueArbiter.io.chosen)
   io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
-  io.fetchRequest.bits.jobId := jobIds(threadIssueArbiter.io.chosen)
-  io.fetchRequest.bits.pc.raw := programCounters(threadIssueArbiter.io.chosen)
+  io.fetchRequest.bits.jobId := threads(threadIssueArbiter.io.chosen).jobId
+  io.fetchRequest.bits.pc.raw := threads(threadIssueArbiter.io.chosen).programCounter
 
   // Program counter update logic.
   for (thid <- 0 until cfg.shaderThreads) {
     when (io.rollback.valid && io.rollback.bits.thread === thid.U) {
       // Rollback a thread, due to a branch or other blocking condition.
-      programCounters(thid) := io.rollback.bits.pc
+      threads(thid).programCounter := io.rollback.bits.pc
     }.elsewhen ((io.icacheMiss && io.icacheMissThread === thid.U)
       || (io.ioWaitThread.valid && io.ioWaitThread.bits === thid.U)) {
       // Back up to previous instruction so we can restart there when the
       // wait condition is resolved.
-      programCounters(thid) := programCounters(thid) - 4.U
+      threads(thid).programCounter := threads(thid).programCounter - 4.U
     }.elsewhen (io.fetchRequest.valid && io.fetchRequest.bits.thread === thid.U) {
       // Advance the selected program counter. Note, because of the thread ready logic,
       // this will never occur when one of the above conditions is true.
-      programCounters(thid) := programCounters(thid) + 4.U
+      threads(thid).programCounter := threads(thid).programCounter + 4.U
     }
   }
 }
