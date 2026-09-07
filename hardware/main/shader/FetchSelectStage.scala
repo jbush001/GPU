@@ -41,6 +41,9 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
     // From InstructionDecodeStage: wait on texture cache fetches
     val ioWaitThread = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+
+    // From external units, wake a job that was waiting on a special register
+    //read
     val ioWakeJob = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
     // To InstructionFetchStage. Request an instruction fetch for a thread.

@@ -74,6 +74,9 @@ object OpCode extends ChiselEnum {
   private val _reserveWidth = Value(127.U)
 }
 
+/**
+  * Decoded instruction fields
+  */
 class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val pc = UInt(cfg.busAddressBits.W)
   val thread = UInt(log2Up(cfg.shaderThreads).W)
@@ -142,11 +145,12 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
   }
 
-  def isLoadConst(inst: UInt): Bool = {
-    val opcode = inst(6, 0)
+  def isLoadConst(opcode: OpCode.Type): Bool = {
+    opcode === OpCode.LoadLo || opcode === OpCode.LoadHi
+  }
 
-    opcode === 28.U || // loadlo
-    opcode === 29.U    // loadhi
+  def isBranch(opcode: OpCode.Type): Bool = {
+    opcode === OpCode.Bnz || opcode === OpCode.Bz || opcode === OpCode.Jump
   }
 
   val decodedMetadata = Wire(new InstructionMetadata)
@@ -204,9 +208,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val hasReg1Op = tableLookup(0)
   val hasReg1OpStage2 = RegNext(hasReg1Op, init = false.B)
 
-  when (decodedOpcode === OpCode.Bnz || decodedOpcode === OpCode.Bz || decodedOpcode === OpCode.Jump) {
-      decodedMetadata.immediateValue := Cat(io.fetchedInstruction.bits.instruction(31, 20),
-        io.fetchedInstruction.bits.instruction(13, 7))
+  when (isBranch(decodedOpcode)) {
+    decodedMetadata.immediateValue := Cat(io.fetchedInstruction.bits.instruction(31, 20),
+      io.fetchedInstruction.bits.instruction(13, 7))
   }.otherwise {
     decodedMetadata.immediateValue := io.fetchedInstruction.bits.instruction(31, 16).pad(19)
   }
@@ -242,7 +246,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   def broadcast(v: UInt): Vec[UInt] = VecInit(Seq.fill(cfg.shaderVectorLanes)(v))
 
-  val operand1Reg = Mux(isLoadConst(io.fetchedInstruction.bits.instruction),
+  val operand1Reg = Mux(isLoadConst(decodedOpcode),
     io.fetchedInstruction.bits.instruction(13, 7), // Dest reg is first operand for load const.
     io.fetchedInstruction.bits.instruction(20, 14)
   )
@@ -309,14 +313,12 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegStage2, scalarRead2, vectorRead2)
 
   io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && operand1RegStage2(6, 3) === 12.U && hasReg1OpStage2
-
   io.ioWaitThread.bits := io.decodedInstruction.bits.meta.thread
 
-  io.regWrite.valid := false.B
   io.regWrite.bits.jobId := io.writeback.bits.jobId
   io.regWrite.bits.addr := io.writeback.bits.destReg(2, 0)
   io.regWrite.bits.data := io.writeback.bits.value
-
+  io.regWrite.valid := false.B
   when (io.writeback.valid) {
     val destReg = io.writeback.bits.destReg
     val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))

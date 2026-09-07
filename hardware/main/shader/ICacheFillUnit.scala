@@ -145,27 +145,26 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     io.readPort.burst.valid := true.B
   }
 
-  // Invariant 1: if a cache line update is complete, icacheWakeThreads must be non-zero.
+  // Invariant 1: When a cache line update is complete, at least one thread must be woken.
   assert(!(io.updateCache.valid && io.updateCache.bits.last) || io.icacheWakeThreads.orR,
-    "updateCache is valid but icacheWakeThreads is zero")
+    "Must wake threads when cache line update is complete")
 
-  // Invariant 2: if updateCache.valid is true, then burstActive must also be true
+  // Invariant 2: The cache can only be updated during an active burst.
   assert(!io.updateCache.valid || burstActive,
-    "updateCache is valid but burstActive is false")
+    "Cannot update cache outside of a burst")
 
   for (thidA <- 0 until cfg.shaderThreads) {
-    // Invariant 3: If a pending miss is valid, it must have at least one
-    // waiting thread.
+    // Invariant 3: A valid pending miss must have at least one waiting thread.
     assert(!pendingMisses(thidA).valid || pendingMisses(thidA).waitingThreadBitmap.orR,
       "Pending miss is valid but has no waiting threads")
 
     for (thidB <- thidA + 1 until cfg.shaderThreads) {
-      // Invariant 4: Active pending misses cannot have the same address.
+      // Invariant 4: No two active pending misses can have the same address.
       assert(!(pendingMisses(thidA).valid && pendingMisses(thidB).valid
         && pendingMisses(thidA).address === pendingMisses(thidB).address),
         "Two pending misses for the same address")
 
-      // Invariant 5: No thread should be waiting on more than one pending miss.
+      // Invariant 5: A thread cannot be waiting on more than one pending miss.
       assert(!(pendingMisses(thidA).waitingThreadBitmap(thidB)
         && pendingMisses(thidB).waitingThreadBitmap(thidA)
         && pendingMisses(thidA).valid && pendingMisses(thidB).valid),
