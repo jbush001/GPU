@@ -107,8 +107,8 @@ object Simulation extends App {
 
     val vertices = Array((5, 7), (23, 110), (118, 49))
 
-    setUpVarying(dut, (vertices(0)._1.toFloat / 128.0f, vertices(1)._1.toFloat / 128.0f, vertices(2)._1.toFloat / 128.0f))
-    setUpVarying(dut, (vertices(0)._2.toFloat / 128.0f, vertices(1)._2.toFloat / 128.0f, vertices(2)._2.toFloat / 128.0f))
+    setUpVarying(dut, (vertices(0)._1.toFloat / 127.0f, vertices(1)._1.toFloat / 127.0f, vertices(2)._1.toFloat / 127.0f))
+    setUpVarying(dut, (vertices(0)._2.toFloat / 127.0f, vertices(1)._2.toFloat / 127.0f, vertices(2)._2.toFloat / 127.0f))
 
     for (tile <- 0 until 4) {
       val tileRow = tile / 2
