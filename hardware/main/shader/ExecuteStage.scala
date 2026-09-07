@@ -52,6 +52,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
       val pc = UInt(cfg.busAddressBits.W)
     })
 
+    // To external units
     val jobFinished = Valid(UInt(cfg.shaderJobIdBits.W))
   })
 
@@ -88,7 +89,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   // instructions, so hoist it explicitly.
   val fpGreater = vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)((_, a, b) => Float32(a) > Float32(b))
 
-  // This multiplier is shared between Muli and Mulih.
+  // This multiplier is shared between Muli, Mulih, Mulihu.
   val isUnsignedMul = io.decodedInstruction.bits.meta.opcode === OpCode.Mulihu
   def extendMultiplier(x: UInt): SInt = Cat(Mux(isUnsignedMul, 0.U(1.W), x(31)), x).asSInt
   val product = vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)((_, a, b) => (extendMultiplier(a) * extendMultiplier(b)).asUInt)
@@ -115,13 +116,11 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Recip -> ((_, a, _) => Float32(a).reciprocalEstimate().raw)
   )
 
-  val singleCycleResult = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
+  val singleCycleResult0 = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {
     case (op, f) => op -> vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)(f)
   })
 
-  val singleCycleResult1 = RegNext(singleCycleResult)
-  val singleCycleResult2 = RegNext(singleCycleResult1)
-  val singleCycleResult3 = RegNext(singleCycleResult2)
+  val singleCycleResult3 = ShiftRegister(singleCycleResult0, 3)
 
   // Comparison operations
   // Note the 'reverse' ensures each bit index corresponds to the lane index
@@ -139,13 +138,11 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Setne  -> ((_, a, b) => a =/= b),
   )
 
-  val comparisonResult = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
+  val comparisonResult0 = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(UInt(cfg.shaderVectorLanes.W), DontCare)) (
     cmpOps.map { case (op, f) => op -> vecCompare(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)(f) }
   )
 
-  val comparisonResult1 = RegNext(comparisonResult)
-  val comparisonResult2 = RegNext(comparisonResult1)
-  val comparisonResult3 = RegNext(comparisonResult2)
+  val comparisonResult3 = ShiftRegister(comparisonResult0, 3)
 
   val compareAsVec = WireInit(VecInit(Seq.fill(cfg.shaderVectorLanes)(0.U(32.W))))
   compareAsVec(0) := comparisonResult3
@@ -161,9 +158,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     }
   }
 
-  val branchTaken1 = RegNext(branchTaken0, init = false.B)
-  val branchTaken2 = RegNext(branchTaken1, init = false.B)
-  val branchTaken3 = RegNext(branchTaken2, init = false.B)
+  val branchTaken3 = ShiftRegister(branchTaken0, 3)
 
   // Final result multiplexer
   val resultTable: Seq[(OpCode.Type, Vec[UInt])] =
