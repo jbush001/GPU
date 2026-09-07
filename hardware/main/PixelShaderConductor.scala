@@ -35,6 +35,10 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   * It collects rasterized quads from the rasterizer, dispatches shading
   * jobs to the shader core, and sends shaded quads to the tile buffer, tracking
   * the state of all in-flight quads.
+  * @todo this should ensure each job has only quads with the same primitive ID,
+  *       filling dummy entries when the primitive ID changes. Current test
+  *       configurations only work on one triangle. Each primitive ID is associated
+  *       with its own unique varying coefficients.
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

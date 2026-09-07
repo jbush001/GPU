@@ -30,7 +30,7 @@ import gpu.shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val edgeCoeffs = Flipped(Decoupled(new EdgeCoeffs))
+    val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val index = UInt(5.W)
       val value = new Float32()

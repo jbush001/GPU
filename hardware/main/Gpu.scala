@@ -26,7 +26,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     val axiBus = new AxiBus
 
     // Hack: pass throughs for testing
-    val edgeCoeffs = Flipped(Decoupled(new EdgeCoeffs))
+    val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val index = UInt(5.W)
       val value = new Float32()
