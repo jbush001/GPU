@@ -36,13 +36,13 @@ class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
     val s = io.textureFetchRequest.bits.coord(0)(lane)
     val t = io.textureFetchRequest.bits.coord(1)(lane)
 
-    val sInt = s.toFixedPoint(4)  // 0-15
-    val tInt = t.toFixedPoint(4)  // 0-15
+    val sInt = s.toFixedPoint(3)  // 0-8
+    val tInt = t.toFixedPoint(3)  // 0-8
+    val checker = (sInt + tInt)(0)
 
-    val colorIndex = (sInt + tInt)(2, 0) // 0-7
-    responseNext.texels(0)(lane) := Mux(colorIndex(0), Float32.One, Float32.Zero) // R
-    responseNext.texels(1)(lane) := Mux(colorIndex(1), Float32.One, Float32.Zero) // G
-    responseNext.texels(2)(lane) := Mux(colorIndex(2), Float32.One, Float32.Zero) // B
+    responseNext.texels(0)(lane) := Mux(checker, Float32.One, s) // R
+    responseNext.texels(1)(lane) := Mux(checker, Float32.One, t) // G
+    responseNext.texels(2)(lane) := Mux(checker, Float32.One, Float32(0.2f)) // B
     responseNext.texels(3)(lane) := Float32.One // A
   }
 
