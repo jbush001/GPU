@@ -18,9 +18,11 @@ package gpu
 
 import chisel3.util._
 
-//
-// Global constants
-//
+object Consts {
+  final val triangleEdges = 3
+  final val pixelsPerQuad = 4
+}
+
 case class GpuConfig(
   // Configurable design parameters
   depthBufferBits: Int = 24,
@@ -50,9 +52,6 @@ case class GpuConfig(
   val icacheIndexBits = log2Up(icacheLines)
   val cacheLineOffsetBits = log2Up(cacheLineSizeBytes)
   val icacheTagBits = busAddressBits - icacheIndexBits - cacheLineOffsetBits
-}
 
-object Consts {
-  final val triangleEdges = 3
-  final val pixelsPerQuad = 4
+  val textureRequestIdBits = shaderJobIdBits + log2Up(shaderVectorLanes / Consts.pixelsPerQuad)
 }

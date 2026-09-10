@@ -32,21 +32,20 @@ class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
 
   // Create a 16x16 checkerboard where each square is one of 8 different colors.
   val responseNext = WireInit(0.U.asTypeOf(new TextureFetchResponse))
-  for (lane <- 0 until cfg.shaderVectorLanes) {
+  for (lane <- 0 until Consts.pixelsPerQuad) {
     val s = io.textureFetchRequest.bits.coord(0)(lane)
     val t = io.textureFetchRequest.bits.coord(1)(lane)
 
     val sInt = s.toFixedPoint(3)  // 0-8
     val tInt = t.toFixedPoint(3)  // 0-8
     val checker = (sInt + tInt)(0)
-
     responseNext.texels(0)(lane) := Mux(checker, Float32.One, s) // R
     responseNext.texels(1)(lane) := Mux(checker, Float32.One, t) // G
     responseNext.texels(2)(lane) := Mux(checker, Float32.One, Float32(0.2f)) // B
     responseNext.texels(3)(lane) := Float32.One // A
   }
 
-  responseNext.jobId := io.textureFetchRequest.bits.jobId
+  responseNext.requestId := io.textureFetchRequest.bits.requestId
 
   resultQueue.io.enq.valid := io.textureFetchRequest.valid
   io.textureFetchRequest.ready := resultQueue.io.enq.ready

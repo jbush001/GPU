@@ -20,13 +20,13 @@ import chisel3._
 import chisel3.util._
 
 class TextureFetchRequest(implicit cfg: GpuConfig) extends Bundle {
-  val jobId = UInt(cfg.shaderJobIdBits.W)
-  val coord = Vec(2, Vec(cfg.shaderVectorLanes, new Float32()))
+  val requestId = UInt(cfg.textureRequestIdBits.W)
+  val coord = Vec(2, Vec(Consts.pixelsPerQuad, new Float32()))
 }
 
 class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
-  val jobId = UInt(cfg.shaderJobIdBits.W)
-  val texels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
+  val requestId = UInt(cfg.textureRequestIdBits.W)
+  val texels = Vec(Color.numChannels, Vec(Consts.pixelsPerQuad, new Float32()))
 }
 
 /**
@@ -112,9 +112,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val varyingCoeffIndex = UInt(log2Up(maxVaryingCoeffs).W)
     val textureFetchRequestPending = Bool()
     val texelCoord = Vec(2, Vec(cfg.shaderVectorLanes, new Float32()))
-    val texelsValid = Bool()
     val fetchedTexels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
     val threadNeedsWake = Bool()
+    val returnedTexelBitmap = Bits(quadsPerJob.W)
   }
 
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
@@ -180,7 +180,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  // Send completed jobs to the shader engine
+  // Send fully populated jobs to the shader engine
   val nextShaderJob = Module(new RRArbiter(Bool(), totalPendingJobs))
   for (i <- 0 until totalPendingJobs) {
     nextShaderJob.io.in(i).valid := jobs(i).state === JobState.ReadyToProcess
@@ -205,7 +205,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     jobs(index).state := JobState.ReadyToDrain
   }
 
-  // Drain
+  // Drain shaded quads to the tile buffer
   val nextDrainJob = Module(new RRArbiter(Bool(), totalPendingJobs))
   for (i <- 0 until totalPendingJobs) {
     nextDrainJob.io.in(i).valid := jobs(i).state === JobState.ReadyToDrain
@@ -253,6 +253,10 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }
   }
 
+  val textureResponseId = io.textureFetchResponse.bits.requestId
+  val textureResponseJobId = textureResponseId(cfg.shaderJobIdBits - 1, 0)
+  val textureResponseQuad = textureResponseId(cfg.textureRequestIdBits - 1, cfg.shaderJobIdBits)
+
   // Register access from shader core. This has one cycle of latency, but we
   // register the request and perform the lookup in the second cycle so we can
   // cleanly bypass texture results that happen the same cycle.
@@ -262,6 +266,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val readJob = jobs(regReadJobIdStage2)
 
+  // This logic handles the second stage/cycle of the shader register read.
   io.shaderRegReadData.valid := false.B // default
   io.shaderRegReadData.bits := DontCare
   when (regReadValidStage2) {
@@ -290,12 +295,19 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       // Read fetched texel
       is (3.U, 4.U, 5.U, 6.U) {
         val colorChannel = regReadAddrStage2 - 3.U
-        // Bypass result if it arrives from texture cache the same cycle
-        when (io.textureFetchResponse.valid && io.textureFetchResponse.bits.jobId === regReadJobIdStage2) {
-          for (lane <- 0 until cfg.shaderVectorLanes) {
-            io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane).raw
+        // Bypass result if the last value arrives from texture cache the same cycle
+        when (io.textureFetchResponse.valid
+          && textureResponseJobId === regReadJobIdStage2
+          && (jobs(textureResponseJobId).returnedTexelBitmap | (1 << (quadsPerJob - 1)).U).andR) {
+          val lastTexelOffset = cfg.shaderVectorLanes - Consts.pixelsPerQuad
+          for (lane <- 0 until lastTexelOffset) {
+            io.shaderRegReadData.bits(lane) := jobs(textureResponseJobId).fetchedTexels(colorChannel)(lane).raw
           }
-        }.elsewhen (!readJob.texelsValid) {
+
+          for (lane <- lastTexelOffset until cfg.shaderVectorLanes) {
+            io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane - lastTexelOffset).raw
+          }
+        }.elsewhen (!readJob.returnedTexelBitmap.andR) {
           io.shaderRegReadData.valid := false.B  // Need to wait for result
           readJob.threadNeedsWake := true.B
         }.otherwise {
@@ -309,10 +321,6 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }.otherwise {
     io.shaderRegReadData.valid := false.B
   }
-
-  // Wake up reader when a texture result arrives.
-  io.ioWakeJob.valid := io.textureFetchResponse.valid && jobs(io.textureFetchResponse.bits.jobId).threadNeedsWake
-  io.ioWakeJob.bits := io.textureFetchResponse.bits.jobId
 
   when (io.shaderRegWrite.valid) {
     val writeJob = jobs(io.shaderRegWrite.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
@@ -333,36 +341,72 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       assert(!writeJob.textureFetchRequestPending,
         "Multiple texture requests from the same job")
       writeJob.textureFetchRequestPending := true.B
-      writeJob.texelsValid := false.B
+      writeJob.returnedTexelBitmap := 0.U
     }
   }
 
-  // Pick a texture fetch request to issue to the texture pipeline
-  val textureRequestArbiter = Module(new RRArbiter(new TextureFetchRequest,
-    totalPendingJobs))
+  // Pick a texture fetch request to issue to the texture pipeline. We issue
+  // one quad at a time, but fully issue all quads for a job before moving to the next one.
+  val nextTextureRequestJob = Module(new RRArbiter(Bool(), totalPendingJobs))
   for (i <- 0 until totalPendingJobs) {
-    textureRequestArbiter.io.in(i).valid := jobs(i).textureFetchRequestPending
-    textureRequestArbiter.io.in(i).bits.jobId := i.U
-    textureRequestArbiter.io.in(i).bits.coord := jobs(i).texelCoord
+    nextTextureRequestJob.io.in(i).valid := jobs(i).textureFetchRequestPending && !jobs(i).returnedTexelBitmap.orR
+    nextTextureRequestJob.io.in(i).bits := false.B
   }
 
-  io.textureFetchRequest.valid := textureRequestArbiter.io.out.valid
-  io.textureFetchRequest.bits := textureRequestArbiter.io.out.bits
-  textureRequestArbiter.io.out.ready := io.textureFetchRequest.ready
+  val textureRequestActive = RegInit(false.B)
+  val textureRequestIndex = RegInit(0.U(log2Up(totalPendingJobs).W))
+  val textureRequestQuad = RegInit(0.U((cfg.textureRequestIdBits - cfg.shaderJobIdBits).W))
+
+  io.textureFetchRequest.valid := nextTextureRequestJob.io.out.valid || textureRequestActive
+
+  val textureFetchSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
+  io.textureFetchRequest.bits.requestId := Cat(textureRequestQuad, textureFetchSelect)
+  val coordOffset = textureRequestQuad << 2
+  for (coordI <- 0 until 2) {
+    for (pixel <- 0 until Consts.pixelsPerQuad) {
+      io.textureFetchRequest.bits.coord(coordI)(pixel) := jobs(textureFetchSelect).texelCoord(coordI)(coordOffset + pixel.U(4.W))
+    }
+  }
+
+  nextTextureRequestJob.io.out.ready := io.textureFetchRequest.ready
 
   when (io.textureFetchRequest.fire) {
-    assert(jobs(io.textureFetchRequest.bits.jobId).textureFetchRequestPending,
-      "Texture fetch request fired for a job that was not valid")
-    jobs(io.textureFetchRequest.bits.jobId).textureFetchRequestPending := false.B
+    when (textureRequestActive) {
+      textureFetchSelect := textureRequestIndex
+      when (textureRequestQuad === (quadsPerJob - 1).U) {
+        textureRequestActive := false.B
+        jobs(textureRequestIndex).textureFetchRequestPending := false.B
+        textureRequestQuad := 0.U
+      }.otherwise {
+        textureRequestQuad := textureRequestQuad + 1.U
+      }
+    }.otherwise {
+      textureRequestActive := true.B
+      textureRequestIndex := nextTextureRequestJob.io.chosen
+      textureFetchSelect := nextTextureRequestJob.io.chosen
+      textureRequestQuad := 1.U
+    }
   }
 
   // Handle texture fetch response
+  io.ioWakeJob.valid := false.B
   when (io.textureFetchResponse.valid) {
-    val job = jobs(io.textureFetchResponse.bits.jobId)
+    val coordOffset = textureResponseQuad << 2
+    val job = jobs(textureResponseJobId)
+    for (i <- 0 until Color.numChannels) {
+      for (j <- 0 until Consts.pixelsPerQuad) {
+        job.fetchedTexels(i)(coordOffset + j.U) := io.textureFetchResponse.bits.texels(i)(j)
+      }
+    }
 
-    job.fetchedTexels := io.textureFetchResponse.bits.texels
-    job.texelsValid := true.B
+    job.returnedTexelBitmap := job.returnedTexelBitmap | (1.U << textureResponseQuad)
+    when ((job.returnedTexelBitmap | (1.U << textureResponseQuad)).andR && job.threadNeedsWake) {
+      io.ioWakeJob.valid := true.B
+      job.threadNeedsWake := false.B
+    }
   }
+
+  io.ioWakeJob.bits := textureResponseJobId
 
   // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
