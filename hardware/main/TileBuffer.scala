@@ -77,7 +77,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   // During a flush after cycle 0, there is an invariant that flushCounter
   // always corresponds to the data on the read port of the SRAMs.
   val flushCounter = Reg(UInt((memoryAddrBits + 2).W))
-  val flushCounterNext = Mux(io.flushData.valid && io.flushData.ready,
+  val flushCounterNext = Mux(io.flushData.fire,
     flushCounter + 1.U, flushCounter)
 
   // Memory is divided into four banks, one per pixel in the quad
@@ -116,7 +116,8 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val colorWriteVal = Wire(Vec(Consts.pixelsPerQuad, new Color))
   val depthWriteVal = Wire(Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W)))
 
-  // Clear writes are delayed one cycle after reads.
+  // Clear writes are delayed one cycle after reads, as memory is modeled
+  // as write first.
   val clearAddress = RegNext(flushAddress)
   writeAddress := Mux(flushActive, clearAddress, quadAddressStage2)
 

@@ -19,6 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
+/** Debug texture pattern generator. */
 class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // From PixelShaderConductor
@@ -30,7 +31,6 @@ class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
 
   val resultQueue = Module(new Queue(new TextureFetchResponse(), 4))
 
-  // Create a 16x16 checkerboard where each square is one of 8 different colors.
   val responseNext = WireInit(0.U.asTypeOf(new TextureFetchResponse))
   for (lane <- 0 until Consts.pixelsPerQuad) {
     val s = io.textureFetchRequest.bits.coord(0)(lane)
