@@ -238,6 +238,8 @@ object Simulation extends App {
       fbIndex += stride - cfg.tileSizePixels
     }
 
+    dut.clock.step() // Clear last pixel
+
     // Need to read the depth buffer in order to clear it.
     dut.io.startFlush.poke(true)
     dut.io.flushBufferSel.poke(RenderBufferId.Depth)
@@ -250,5 +252,7 @@ object Simulation extends App {
         dut.clock.step()
       }
     }
+
+    dut.clock.step() // Clear last pixel
   }
 }
