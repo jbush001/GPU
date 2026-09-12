@@ -60,11 +60,9 @@ class Color extends Bundle {
     clamped(7, 0)
   }
 
-  def toPackedArgb32: UInt = {
+  def toArgb32: UInt = {
     Cat(channel8Bit(3), channel8Bit(0), channel8Bit(1), channel8Bit(2))
   }
-
-  // Todo add toPackedSrgb that does gamma correction
 }
 
 object Color {

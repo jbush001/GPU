@@ -143,7 +143,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   // @todo configure output conversion here.
   io.flushData.bits := Mux(io.flushBufferSel === RenderBufferId.Depth,
     depthReadVal(flushBank).pad(32),
-    colorReadVal(flushBank).toPackedArgb32
+    colorReadVal(flushBank).toArgb32
   )
   val flushDataValid = RegInit(false.B)
   io.flushData.valid := flushDataValid

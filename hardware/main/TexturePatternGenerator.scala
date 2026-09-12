@@ -19,7 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** Debug texture pattern generator. */
+/** Debug texture cache mock that generates a fixed pattern */
 class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // From PixelShaderConductor
@@ -41,7 +41,7 @@ class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
     val checker = (sInt + tInt)(0)
     responseNext.texels(0)(lane) := Mux(checker, Float32.One, s) // R
     responseNext.texels(1)(lane) := Mux(checker, Float32.One, t) // G
-    responseNext.texels(2)(lane) := Mux(checker, Float32.One, Float32(0.2f)) // B
+    responseNext.texels(2)(lane) := Mux(checker, Float32.One, Float32(0.2)) // B
     responseNext.texels(3)(lane) := Float32.One // A
   }
 

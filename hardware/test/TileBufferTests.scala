@@ -23,6 +23,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Queue
 import scala.util.Random
 
+/** Used to compute expected values during simulation */
 case class ColorRef(r: Int, g: Int, b: Int, a: Int) {
   def scale(component: Int, scaleFactor: Int): Int = {
     val product = component * scaleFactor
@@ -48,7 +49,7 @@ case class ColorRef(r: Int, g: Int, b: Int, a: Int) {
   }
 
   // Pack downsampled 8-bit channels into 32-bit ARGB
-  def toPackedArgb32: Int = {
+  def toArgb32: Int = {
     val a8 = channel8Bit(a)
     val r8 = channel8Bit(r)
     val g8 = channel8Bit(g)
@@ -59,8 +60,6 @@ case class ColorRef(r: Int, g: Int, b: Int, a: Int) {
 }
 
 /** For testing, this tracks ground truth for what should be in the buffer.
-  * This works in RGBA8888 space, what is expected to be flushed from the buffer
-  * although the internal color space is different.
   */
 class TileBufferReference(implicit cfg: GpuConfig) {
   val colors = Array.fill(cfg.totalTilePixels)(ColorRef(0, 0, 0, 0))
@@ -93,7 +92,7 @@ class TileBufferReference(implicit cfg: GpuConfig) {
     for (y <- 0 until cfg.tileSizePixels) {
       for (x <- 0 until cfg.tileSizePixels) {
         val idx = y * cfg.tileSizePixels + x
-        val expected = if (select == 0) colors(idx).toPackedArgb32 else depths(idx)
+        val expected = if (select == 0) colors(idx).toArgb32 else depths(idx)
         assert(results(idx) == expected,
           s"Mismatch at ($x, $y): got ${Integer.toHexString(results(idx))}, expected ${Integer.toHexString(expected)}")
       }
@@ -122,6 +121,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
     dut.io.shadedQuad.bits.mask.poke(0)
   }
 
+  /** Read all data out of the tile buffer into a native Scala sequence. */
   def flush(dut: TileBuffer, select: RenderBufferId.Type): Seq[Int] = {
     val results = ArrayBuffer[Int]()
     dut.io.startFlush.poke(true)

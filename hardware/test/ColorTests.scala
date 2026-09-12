@@ -68,13 +68,13 @@ class ColorTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
     }
   }
 
-  test("Color toPackedArgb32") {
+  test("Color toArgb32") {
     simulate(new Module {
       val io = IO(new Bundle {
         val inColor = Input(new Color)
         val result = Output(UInt(32.W))
       })
-      io.result := io.inColor.toPackedArgb32
+      io.result := io.inColor.toArgb32
     }) { dut =>
       dut.io.inColor.poke(r = 0, g = 256, b = 512, a = 1023)
       dut.clock.step()

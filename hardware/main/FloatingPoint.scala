@@ -14,8 +14,6 @@
 //   limitations under the License.
 //
 
-// These functions do not support subnormals and only support round towards zero.
-
 package gpu
 
 import chisel3._
@@ -24,6 +22,8 @@ import chisel3.util._
 /** Represents a single precision floating point value, in IEEE754 binary32
   * format.
   * [[https://en.wikipedia.org/wiki/Single-precision_floating-point_format]]
+  * @note Subnormal numbers are not supported and are treated as zeroes.
+  * @note All arithmetic operations round towards zero.
   */
 class Float32 extends Bundle {
   val raw = Bits(32.W)
@@ -32,14 +32,14 @@ class Float32 extends Bundle {
   def exponent = raw(30, 23).asUInt
   def fraction = raw(22, 0).asUInt
 
+  // This adds the leading hidden bit
+  def fullFraction = (!this.isZero ## this.fraction).asUInt
+
   def isNaN = (this.exponent === 0xff.U && this.fraction =/= 0.U)
   def isInf = (this.exponent === 0xff.U && this.fraction === 0.U)
 
-  // Note: we don't support subnormal numbers, so treat them as zero.
+  // Note: this treats subnormal numbers as zero.
   def isZero = this.exponent === 0.U
-
-  // This adds the leading hidden bit
-  def fullFraction = (!this.isZero ## this.fraction).asUInt
 
   def abs = Float32(false.B, this.exponent, this.fraction)
 
@@ -144,22 +144,23 @@ object Float32 {
   def One = Float32(false.B, exponentBias, 0.U)
   def NaN = Float32(false.B, 0xff.U, 0x400000.U)
 
-  def apply() = new Float32()
+  def apply(): Float32 = new Float32()
 
-  def apply(raw: UInt) = {
-    val f = Wire(new Float32)
+  def apply(raw: UInt): Float32 = {
+    require(raw.getWidth == 32)
+    val f = Wire(new Float32())
     f.raw := raw
     f
   }
 
-  def apply(negative: Bool, exponent: UInt, fraction: UInt) = {
-    val f = Wire(new Float32)
-    f.raw := negative ## exponent.pad(exponentWidth)(exponentWidth-1, 0) ## fraction.pad(fractionWidth)(fractionWidth-1, 0)
-    f
+  def apply(negative: Bool, exponent: UInt, fraction: UInt): Float32 = {
+    apply(negative ## exponent.pad(exponentWidth)(exponentWidth-1, 0)
+      ## fraction.pad(fractionWidth)(fractionWidth-1, 0))
   }
 
-  def apply(fval: Float): Float32 = {
-    val bits = java.lang.Float.floatToIntBits(fval)
+  /** Create a constant Float32 */
+  def apply(fval: Double): Float32 = {
+    val bits = java.lang.Float.floatToIntBits(fval.toFloat)
     val raw = (bits.toLong & 0xFFFFFFFFL).U(32.W)
     apply(raw)
   }

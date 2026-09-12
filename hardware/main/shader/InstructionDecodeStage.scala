@@ -300,12 +300,12 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
         is(SpecialReg.ConstNeg1.U)    { result := broadcast((-1).S(32.W).asUInt) }
         is(SpecialReg.Const2.U)       { result := broadcast(2.U(32.W)) }
         is(SpecialReg.Const4.U)       { result := broadcast(4.U(32.W)) }
-        is(SpecialReg.Const0_5f.U)    { result := broadcast(Float32(0.5f).raw) }
-        is(SpecialReg.ConstNeg0_5f.U) { result := broadcast(Float32(-0.5f).raw) }
-        is(SpecialReg.Const1_0f.U)    { result := broadcast(Float32(1.0f).raw) }
-        is(SpecialReg.ConstNeg1_0f.U) { result := broadcast(Float32(-1.0f).raw) }
-        is(SpecialReg.Const2_0f.U)    { result := broadcast(Float32(2.0f).raw) }
-        is(SpecialReg.ConstNeg2_0f.U) { result := broadcast(Float32(-2.0f).raw) }
+        is(SpecialReg.Const0_5f.U)    { result := broadcast(Float32(0.5).raw) }
+        is(SpecialReg.ConstNeg0_5f.U) { result := broadcast(Float32(-0.5).raw) }
+        is(SpecialReg.Const1_0f.U)    { result := broadcast(Float32(1.0).raw) }
+        is(SpecialReg.ConstNeg1_0f.U) { result := broadcast(Float32(-1.0).raw) }
+        is(SpecialReg.Const2_0f.U)    { result := broadcast(Float32(2.0).raw) }
+        is(SpecialReg.ConstNeg2_0f.U) { result := broadcast(Float32(-2.0).raw) }
       }
     }
 

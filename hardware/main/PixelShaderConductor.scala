@@ -21,12 +21,12 @@ import chisel3.util._
 
 class TextureFetchRequest(implicit cfg: GpuConfig) extends Bundle {
   val requestId = UInt(cfg.textureRequestIdBits.W)
-  val coord = Vec(2, Vec(Consts.pixelsPerQuad, new Float32()))
+  val coord = Vec(2, Vec(Consts.pixelsPerQuad, Float32()))
 }
 
 class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   val requestId = UInt(cfg.textureRequestIdBits.W)
-  val texels = Vec(Color.numChannels, Vec(Consts.pixelsPerQuad, new Float32()))
+  val texels = Vec(Color.numChannels, Vec(Consts.pixelsPerQuad, Float32()))
 }
 
 /**
@@ -87,7 +87,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     // Program varying coefficients, from triangle setup
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val index = UInt(5.W)
-      val value = new Float32()
+      val value = Float32()
     }))
 
     // To TextureCache
@@ -108,17 +108,17 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   class JobInfo extends Bundle {
     val state = JobState()
     val rasterizedQuads = Vec(quadsPerJob, new RasterizedQuad)
-    val shadedColors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
+    val shadedColors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
     val varyingCoeffIndex = UInt(log2Up(maxVaryingCoeffs).W)
     val textureFetchRequestPending = Bool()
-    val texelCoord = Vec(2, Vec(cfg.shaderVectorLanes, new Float32()))
-    val fetchedTexels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, new Float32()))
+    val texelCoord = Vec(2, Vec(cfg.shaderVectorLanes, Float32()))
+    val fetchedTexels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
     val threadNeedsWake = Bool()
     val returnedTexelBitmap = Bits(quadsPerJob.W)
   }
 
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
-  val varyingCoeffs = RegInit(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(new Float32()))))
+  val varyingCoeffs = RegInit(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(Float32()))))
 
   io.idle := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.Idle).reduce(_&&_)
 
@@ -326,12 +326,12 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val writeJob = jobs(io.shaderRegWrite.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
     switch (io.shaderRegWrite.bits.addr) {
       is (0.U, 1.U, 2.U, 3.U) {
-        writeJob.shadedColors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
+        writeJob.shadedColors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, Float32()))
       }
 
       is (4.U, 5.U) {
         // S, T coordinates
-        writeJob.texelCoord(io.shaderRegWrite.bits.addr(0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, new Float32()))
+        writeJob.texelCoord(io.shaderRegWrite.bits.addr(0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, Float32()))
       }
     }
 

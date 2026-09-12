@@ -33,7 +33,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val index = UInt(5.W)
-      val value = new Float32()
+      val value = Float32()
     }))
     val startFlush = Input(Bool())
     val flushData = Decoupled(Bits(32.W))
