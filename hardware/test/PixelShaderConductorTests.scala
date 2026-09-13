@@ -23,11 +23,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def loadRasterizedQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
-    lambda: Seq[Seq[Int]]): Unit = {
+    lambda: Seq[Seq[Int]], primitiveId: Int = 0): Unit = {
     dut.io.rasterizedQuad.valid.poke(true)
     dut.io.rasterizedQuad.bits.location.x.poke(x)
     dut.io.rasterizedQuad.bits.location.y.poke(y)
     dut.io.rasterizedQuad.bits.mask.poke(mask)
+    dut.io.rasterizedQuad.bits.primitiveId.poke(primitiveId)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
         dut.io.rasterizedQuad.bits.lambda(i)(j).raw.poke(lambda(i)(j))
@@ -72,6 +73,15 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     }
     dut.clock.step()
     dut.io.shaderRegWrite.valid.poke(false)
+  }
+
+  def writeVaryingCoeff(dut: PixelShaderConductor, primitiveId: Int, index: Int, data: Float): Unit = {
+    dut.io.writeVaryingCoeff.valid.poke(true)
+    dut.io.writeVaryingCoeff.bits.primitiveId.poke(primitiveId)
+    dut.io.writeVaryingCoeff.bits.index.poke(index)
+    dut.io.writeVaryingCoeff.bits.value.raw.poke(java.lang.Float.floatToRawIntBits(data) & 0xffffffff)
+    dut.clock.step()
+    dut.io.writeVaryingCoeff.valid.poke(false)
   }
 
   test("PixelShaderConductor basic operation") {
@@ -431,6 +441,54 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes) {
         dut.io.shaderRegReadData.bits(i).expect(i + 300)
       }
+    }
+  }
+
+  test("PixelShaderConductor read varying") {
+    simulate(new PixelShaderConductor) { dut =>
+      // Write varyings
+      val coeffs = Seq(
+        Seq(1.0f, 2.0f),
+        Seq(3.0f, 4.0f),
+        Seq(5.0f, 6.0f),
+        Seq(7.0f, 8.0f)
+      )
+
+      for (primitive <- coeffs.indices) {
+        for (index <- coeffs(primitive).indices) {
+          writeVaryingCoeff(dut, primitive, index, coeffs(primitive)(index))
+        }
+      }
+
+      // Start a job
+      for (primitiveId <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        dut.io.rasterizedQuad.ready.expect(true)
+        loadRasterizedQuad(dut, 0, 0, 15,
+            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)), primitiveId)
+        dut.io.textureFetchRequest.valid.expect(false)
+      }
+
+      dut.io.startJob.valid.expect(true)
+      dut.io.startJob.ready.poke(true)
+      dut.io.rasterizedQuad.ready.expect(true)
+      val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
+      dut.clock.step()
+
+      // Now read the varying registers
+      val got1 = readRegister(dut, jobId, 2)
+      val expect1 = Seq(
+        1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 5.0f, 5.0f, 5.0f, 5.0f, 7.0f, 7.0f, 7.0f, 7.0f
+      )
+
+      dut.clock.step(10)
+      assert(got1 == expect1.map(x => java.lang.Float.floatToRawIntBits(x)))
+
+      val got2 = readRegister(dut, jobId, 2)
+      val expect2 = Seq(
+        2.0f, 2.0f, 2.0f, 2.0f, 4.0f, 4.0f, 4.0f, 4.0f, 6.0f, 6.0f, 6.0f, 6.0f, 8.0f, 8.0f, 8.0f, 8.0f
+      )
+
+      assert(got2 == expect2.map(x => java.lang.Float.floatToRawIntBits(x)))
     }
   }
 }

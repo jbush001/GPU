@@ -37,6 +37,7 @@ case class GpuConfig(
   shaderJobIdBits: Int = 4,
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
+  primitiveIdBits: Int = 2,
 
   traceEnable: Boolean = false
 ) {

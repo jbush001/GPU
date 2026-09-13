@@ -20,7 +20,7 @@ import chisel3._
 import chisel3.util._
 
 class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
-  val primitiveId = UInt(8.W)
+  val primitiveId = UInt(cfg.primitiveIdBits.W)
   val offset = Point2D()
   val boundingBox = BoundingBox()
   val initialValue = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
@@ -31,7 +31,7 @@ class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
 /** Contains coverage and interpolation data for a single 2x2 pixel quad. */
 class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   /** Uniquely associates this quad with a specific triangle. */
-  val primitiveId = UInt(8.W)
+  val primitiveId = UInt(cfg.primitiveIdBits.W)
 
   /** Coordinates of the upper left corner, relative to the left/top edges
     * of the current tile bounding box.

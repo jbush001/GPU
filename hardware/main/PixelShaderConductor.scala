@@ -35,10 +35,6 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   * It collects rasterized quads from the rasterizer, dispatches shading
   * jobs to the shader core, and sends shaded quads to the tile buffer, tracking
   * the state of all in-flight quads.
-  * @todo this should ensure each job has only quads with the same primitive ID,
-  *       filling dummy entries when the primitive ID changes. Current test
-  *       configurations only work on one triangle. Each primitive ID is associated
-  *       with its own unique varying coefficients.
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -86,6 +82,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
     // Program varying coefficients, from triangle setup
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
+      val primitiveId = UInt(cfg.primitiveIdBits.W)
       val index = UInt(5.W)
       val value = Float32()
     }))
@@ -118,7 +115,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
-  val varyingCoeffs = RegInit(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(Float32()))))
+  val varyingCoeffs = RegInit(VecInit(Seq.fill(1 << cfg.primitiveIdBits)(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(Float32()))))))
 
   io.idle := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.Idle).reduce(_&&_)
 
@@ -284,9 +281,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
       // Read varying coefficient memory
       is (2.U) {
-        val coeffVal = varyingCoeffs(readJob.varyingCoeffIndex)
-        for (i <- 0 until cfg.shaderVectorLanes) {
-          io.shaderRegReadData.bits(i) := coeffVal.raw
+        for (quadI <- 0 until quadsPerJob) {
+          val coeffVal = varyingCoeffs(readJob.rasterizedQuads(quadI).primitiveId)(readJob.varyingCoeffIndex)
+          for (pixelI <- 0 until Consts.pixelsPerQuad) {
+            io.shaderRegReadData.bits(quadI * Consts.pixelsPerQuad + pixelI) := coeffVal.raw
+          }
         }
 
         readJob.varyingCoeffIndex := readJob.varyingCoeffIndex + 1.U
@@ -410,6 +409,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
-    varyingCoeffs(io.writeVaryingCoeff.bits.index) := io.writeVaryingCoeff.bits.value
+    varyingCoeffs(io.writeVaryingCoeff.bits.primitiveId)(io.writeVaryingCoeff.bits.index) :=
+      io.writeVaryingCoeff.bits.value
   }
 }

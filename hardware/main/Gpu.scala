@@ -28,6 +28,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     // Hack: pass throughs for testing
     val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
+      val primitiveId = UInt(cfg.primitiveIdBits.W)
       val index = UInt(5.W)
       val value = Float32()
     }))

@@ -1,3 +1,19 @@
+//
+//   Copyright 2026 Jeff Bush
+//
+//   Licensed under the Apache License, Version 2.0 (the "License");
+//   you may not use this file except in compliance with the License.
+//   You may obtain a copy of the License at
+//
+//       http://www.apache.org/licenses/LICENSE-2.0
+//
+//   Unless required by applicable law or agreed to in writing, software
+//   distributed under the License is distributed on an "AS IS" BASIS,
+//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//   See the License for the specific language governing permissions and
+//   limitations under the License.
+//
+
 package gpu
 
 import chisel3._
@@ -14,6 +30,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val dap = new DirectAccessPort
     val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
+      val primitiveId = UInt(cfg.primitiveIdBits.W)
       val index = UInt(5.W)
       val value = Float32()
     }))
@@ -69,20 +86,18 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         .halt()
       val programBytes = asm.finish()
 
-      val vertices = Array((5, 7), (23, 110), (118, 49))
-      val varying1 = (vertices(0)._1.toFloat / 127.0f,
-        vertices(1)._1.toFloat / 127.0f, vertices(2)._1.toFloat / 127.0f)
-      val varying2 = (vertices(0)._2.toFloat / 127.0f,
-        vertices(1)._2.toFloat / 127.0f, vertices(2)._2.toFloat / 127.0f)
-      val varyings = Seq(varying1, varying2)
+      val vertices = Seq((5, 7), (33, 121), (110, 119), (117, 15))
+      val varyings: Seq[Seq[Float]] = vertices.map { case (x, y) =>
+        Seq(x.toFloat / 127.0f, y.toFloat / 127.0f)
+      }
 
-      runRenderTest(dut, programBytes, vertices, varyings)
+      runRenderTest(dut, programBytes, vertices, varyings, Seq(0, 1, 2, 0, 2, 3))
     }
   }
 
-  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Array[(Int, Int)],
-                    varyings: Seq[(Float, Float, Float)]): Unit = {
-    val imageData = renderBuffer(dut, programBytes, vertices, varyings)
+  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int)],
+                    varyings: Seq[Seq[Float]], indices: Seq[Int]): Unit = {
+    val imageData = renderBuffer(dut, programBytes, vertices, varyings, indices)
     val reference = loadReferenceImage(getReferenceImageName())
     reference match {
       case Some(ref) =>
@@ -97,8 +112,8 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Array[(Int, Int)],
-    varyings: Seq[(Float, Float, Float)]): Array[Int] = {
+  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int)],
+    varyings: Seq[Seq[Float]], indices: Seq[Int]): Array[Int] = {
     // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
@@ -108,28 +123,35 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val fbSize = 128
     val fbData = new Array[Int](fbSize * fbSize)
 
-    // Set up attributes
-    for (i <- varyings.indices) {
-      setUpVarying(dut, i * 3, varyings(i))
-    }
+    for (tileRow <- 0 until 2) {
+      for (tileColumn <- 0 until 2) {
+        val tileLeft = tileColumn * cfg.tileSizePixels
+        val tileTop = tileRow * cfg.tileSizePixels
 
-    for (tile <- 0 until 4) {
-      val tileRow = tile / 2
-      val tileColumn = tile % 2
+        var primIndex = 0
+        while (!dut.io.complete.peek().litToBoolean || primIndex * 3 < indices.length) {
+          if (dut.io.edgeCoeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
+            val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
+            val triangleVerts = triangleIndices.map(i => vertices(i))
+            val primitiveId = (primIndex % (1 << cfg.primitiveIdBits))
+            setUpRasterizer(dut, primitiveId, triangleVerts, tileLeft, tileTop)
+            val triangleVaryings = triangleIndices.map(i => varyings(i))
+            for (i <- varyings(0).indices) {
+              setUpVarying(dut, primitiveId,
+                i * 3, (triangleVaryings(0)(i), triangleVaryings(1)(i), triangleVaryings(2)(i)))
+            }
 
-      // Set up a triangle
-      val tileLeft = tileColumn * cfg.tileSizePixels
-      val tileTop = tileRow * cfg.tileSizePixels
-      setUpRasterizer(dut, vertices, tileLeft, tileTop)
+            primIndex += 1
+          }
 
-      while (!dut.io.complete.peek().litToBoolean) {
-        dut.clock.step()
+          dut.clock.step()
+        }
+
+        // Read out the final data
+        val offset = (fbSize * cfg.tileSizePixels * tileRow) +
+          (cfg.tileSizePixels * tileColumn)
+        flushBuffer(dut, Some(fbData), offset, fbSize)
       }
-
-      // Read out the final data
-      val offset = (fbSize * cfg.tileSizePixels * tileRow) +
-        (cfg.tileSizePixels * tileColumn)
-      flushBuffer(dut, Some(fbData), offset, fbSize)
     }
 
     fbData
@@ -139,8 +161,9 @@ class RenderTests extends AnyFunSuite with ChiselSim {
 
   var nextVaryingCoeffWrite = 0
 
-  def setUpVarying(dut: SimTop, index: Int, values: (Float, Float, Float)): Unit = {
+  def setUpVarying(dut: SimTop, primitiveId: Int, index: Int, values: (Float, Float, Float)): Unit = {
     dut.io.writeVaryingCoeff.valid.poke(true)
+    dut.io.writeVaryingCoeff.bits.primitiveId.poke(primitiveId)
     dut.io.writeVaryingCoeff.bits.index.poke(index)
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._2 - values._1)) // dQ1
     dut.clock.step()
@@ -152,10 +175,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.clock.step()
   }
 
-  def setUpRasterizer(dut: SimTop, vertices: Array[(Int, Int)], tileLeft: Int, tileTop: Int): Unit = {
+  def setUpRasterizer(dut: SimTop, primitiveId: Int, vertices: Seq[(Int, Int)], tileLeft: Int, tileTop: Int): Unit = {
     dut.io.edgeCoeffs.valid.poke(true)
     dut.io.edgeCoeffs.bits.offset.x.poke(tileLeft)
     dut.io.edgeCoeffs.bits.offset.y.poke(tileTop)
+    dut.io.edgeCoeffs.bits.primitiveId.poke(primitiveId)
 
     // Compute minimal bounding box that contains the triangle (but is inside the tile)
     val bbLeft = math.max(vertices.map(_._1).min & ~1, tileLeft)
