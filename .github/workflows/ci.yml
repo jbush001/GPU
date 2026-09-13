@@ -49,4 +49,3 @@ jobs:
         run: |
           scala-cli test hardware
           python3 -m unittest discover tools
-          scala-cli run hardware --test

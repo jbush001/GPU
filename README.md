@@ -21,12 +21,6 @@ https://www.chisel-lang.org/docs/installation
 
 The output waveform will be written to build/chiselsim/.../workdir-verilator/trace.vcd
 
-**To run the full design in simulation**
-
-    ./run sim
-
-This will write the rendered framebuffer into "output.png"
-
 **Generating API documentation**
 
     ./run doc

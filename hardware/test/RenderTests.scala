@@ -1,32 +1,14 @@
-//
-//   Copyright 2026 Jeff Bush
-//
-//   Licensed under the Apache License, Version 2.0 (the "License");
-//   you may not use this file except in compliance with the License.
-//   You may obtain a copy of the License at
-//
-//       http://www.apache.org/licenses/LICENSE-2.0
-//
-//   Unless required by applicable law or agreed to in writing, software
-//   distributed under the License is distributed on an "AS IS" BASIS,
-//   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-//   See the License for the specific language governing permissions and
-//   limitations under the License.
-//
-
-package simulate
+package gpu
 
 import chisel3._
 import chisel3.util._
-import chisel3.simulator.EphemeralSimulator._
+import chisel3.simulator.scalatest.ChiselSim
 import java.awt.image.BufferedImage
-import java.io.File
+import java.io.FileInputStream
 import javax.imageio.ImageIO
-import gpu._
-import gpu.shader._
+import org.scalatest.funsuite.AnyFunSuite
+import shader._
 
-// This is a bit of a hack, as the components won't connect exactly like this
-// in a real configuration, but demonstrates things working end-to-end.
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
@@ -55,45 +37,61 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   memory.dap <> io.dap
 }
 
-object Simulation extends App {
+class RenderTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  simulate(new SimTop()) { dut =>
-    dut.reset.poke(true.B)
-    dut.io.startFlush.poke(false)
-    dut.io.edgeCoeffs.valid.poke(false)
-    dut.clock.step(5)
-    dut.reset.poke(false.B)
-    dut.clock.step(1)
+  test("triangle1") {
+    simulate(new SimTop()) { dut =>
+      val asm = new ShaderAssembler()
+      asm
+        // Compute s
+        .move(64, SpecialReg.Lambda0)
+        .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
+        .move(65, SpecialReg.Lambda1)
+        .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
+        .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
+        .rInst(OpCode.Addf, SpecialReg.TexelS, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
-    val asm = new ShaderAssembler()
-    asm
-      // Compute s
-      .move(64, SpecialReg.Lambda0)
-      .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
-      .move(65, SpecialReg.Lambda1)
-      .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
-      .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
-      .rInst(OpCode.Addf, SpecialReg.TexelS, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+        // Compute t
+        // The last instruction will kick off the texture fetch
+        .move(64, SpecialReg.Lambda0)
+        .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
+        .move(65, SpecialReg.Lambda1)
+        .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
+        .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
+        .rInst(OpCode.Addf, SpecialReg.TexelT, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
-      // Compute t
-      // The last instruction will kick off the texture fetch
-      .move(64, SpecialReg.Lambda0)
-      .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
-      .move(65, SpecialReg.Lambda1)
-      .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
-      .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
-      .rInst(OpCode.Addf, SpecialReg.TexelT, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+        // Read back texture data, store in output registers
+        .move(SpecialReg.OutputR, SpecialReg.TexelR) // red
+        .move(SpecialReg.OutputG, SpecialReg.TexelG) // green
+        .move(SpecialReg.OutputB, SpecialReg.TexelB) // blue
+        .move(SpecialReg.OutputA, SpecialReg.Const1_0f) // alpha = 1.0
+        .halt()
+      val programBytes = asm.finish()
 
-      // Read back texture data, store in output registers
-      .move(SpecialReg.OutputR, SpecialReg.TexelR) // red
-      .move(SpecialReg.OutputG, SpecialReg.TexelG) // green
-      .move(SpecialReg.OutputB, SpecialReg.TexelB) // blue
-      .move(SpecialReg.OutputA, SpecialReg.Const1_0f) // alpha = 1.0
-      .halt()
-    val programBytes = asm.finish()
+      val vertices = Array((5, 7), (23, 110), (118, 49))
+      val varying1 = (vertices(0)._1.toFloat / 127.0f,
+        vertices(1)._1.toFloat / 127.0f, vertices(2)._1.toFloat / 127.0f)
+      val varying2 = (vertices(0)._2.toFloat / 127.0f,
+        vertices(1)._2.toFloat / 127.0f, vertices(2)._2.toFloat / 127.0f)
+      val varyings = Seq(varying1, varying2)
 
-    // Fill in memory
+      val imageData = renderBuffer(dut, programBytes, vertices, varyings)
+      val reference = loadReferenceImage(getReferenceImageName())
+      reference match {
+        case Some(ref) =>
+          // Compare the rendered image with the reference image
+          assert(imageData.sameElements(ref), "Rendered image does not match reference image")
+        case None =>
+          println(s"No reference image available ${getReferenceImageName()}, writing output image.")
+          writeOutputImage("output.png", 128, imageData)
+      }
+    }
+  }
+
+  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Array[(Int, Int)],
+    varyings: Seq[(Float, Float, Float)]): Array[Int] = {
+    // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
     // Run a flush to clear out the buffer initially
@@ -102,10 +100,10 @@ object Simulation extends App {
     val fbSize = 128
     val fbData = new Array[Int](fbSize * fbSize)
 
-    val vertices = Array((5, 7), (23, 110), (118, 49))
-
-    setUpVarying(dut, (vertices(0)._1.toFloat / 127.0f, vertices(1)._1.toFloat / 127.0f, vertices(2)._1.toFloat / 127.0f))
-    setUpVarying(dut, (vertices(0)._2.toFloat / 127.0f, vertices(1)._2.toFloat / 127.0f, vertices(2)._2.toFloat / 127.0f))
+    // Set up attributes
+    for (i <- varyings.indices) {
+      setUpVarying(dut, i * 3, varyings(i))
+    }
 
     for (tile <- 0 until 4) {
       val tileRow = tile / 2
@@ -116,13 +114,9 @@ object Simulation extends App {
       val tileTop = tileRow * cfg.tileSizePixels
       setUpRasterizer(dut, vertices, tileLeft, tileTop)
 
-      var totalCycles = 0
       while (!dut.io.complete.peek().litToBoolean) {
         dut.clock.step()
-        totalCycles += 1
       }
-
-      println(s"Completed tile in $totalCycles cycles")
 
       // Read out the final data
       val offset = (fbSize * cfg.tileSizePixels * tileRow) +
@@ -130,31 +124,23 @@ object Simulation extends App {
       flushBuffer(dut, Some(fbData), offset, fbSize)
     }
 
-    // Write an image file
-    val canvas = new BufferedImage(fbSize, fbSize, BufferedImage.TYPE_INT_ARGB)
-    canvas.setRGB(0, 0, fbSize, fbSize, fbData.toArray, 0, fbSize)
-    val outputFile = new File("output.png")
-    ImageIO.write(canvas, "png", outputFile)
-    println("wrote output file to output.png")
+    fbData
   }
 
   def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
 
   var nextVaryingCoeffWrite = 0
 
-  def setUpVarying(dut: SimTop, values: (Float, Float, Float)): Unit = {
+  def setUpVarying(dut: SimTop, index: Int, values: (Float, Float, Float)): Unit = {
     dut.io.writeVaryingCoeff.valid.poke(true)
-    dut.io.writeVaryingCoeff.bits.index.poke(nextVaryingCoeffWrite)
-    nextVaryingCoeffWrite += 1
+    dut.io.writeVaryingCoeff.bits.index.poke(index)
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._2 - values._1)) // dQ1
     dut.clock.step()
-    dut.io.writeVaryingCoeff.bits.index.poke(nextVaryingCoeffWrite)
-    nextVaryingCoeffWrite += 1
+    dut.io.writeVaryingCoeff.bits.index.poke(index + 1)
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._3 - values._1)) // dQ2
     dut.clock.step()
-    dut.io.writeVaryingCoeff.bits.index.poke(nextVaryingCoeffWrite)
-    nextVaryingCoeffWrite += 1
-    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._1))
+    dut.io.writeVaryingCoeff.bits.index.poke(index + 2)
+    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._1)) // Q0
     dut.clock.step()
   }
 
@@ -254,5 +240,32 @@ object Simulation extends App {
     }
 
     dut.clock.step() // Clear last pixel
+  }
+
+  def getReferenceImageName(): String = {
+    "hardware/test/resources/" + implementation.getDirectory.getFileName.toString + ".png"
+  }
+
+  def loadReferenceImage(name: String): Option[Array[Int]] = {
+    val inputStream = new FileInputStream(name)
+    if (inputStream == null) {
+      return None
+    }
+
+    val bufferedImage: BufferedImage = ImageIO.read(inputStream)
+    val width = bufferedImage.getWidth
+    val height = bufferedImage.getHeight
+    val pixels = new Array[Int](width * height)
+    bufferedImage.getRGB(0, 0, width, height, pixels, 0, width)
+    Some(pixels)
+  }
+
+  def writeOutputImage(fileName: String, fbSize: Int, fbData: Array[Int]): Unit = {
+    // Write an image file
+    val canvas = new BufferedImage(fbSize, fbSize, BufferedImage.TYPE_INT_ARGB)
+    canvas.setRGB(0, 0, fbSize, fbSize, fbData.toArray, 0, fbSize)
+    val outputFile = implementation.getDirectory.resolve(fileName).toFile
+    ImageIO.write(canvas, "png", outputFile)
+    println(s"wrote output file to ${outputFile.getAbsolutePath}")
   }
 }
