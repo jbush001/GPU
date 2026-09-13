@@ -76,16 +76,24 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         vertices(1)._2.toFloat / 127.0f, vertices(2)._2.toFloat / 127.0f)
       val varyings = Seq(varying1, varying2)
 
-      val imageData = renderBuffer(dut, programBytes, vertices, varyings)
-      val reference = loadReferenceImage(getReferenceImageName())
-      reference match {
-        case Some(ref) =>
-          // Compare the rendered image with the reference image
-          assert(imageData.sameElements(ref), "Rendered image does not match reference image")
-        case None =>
-          println(s"No reference image available ${getReferenceImageName()}, writing output image.")
+      runRenderTest(dut, programBytes, vertices, varyings)
+    }
+  }
+
+  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Array[(Int, Int)],
+                    varyings: Seq[(Float, Float, Float)]): Unit = {
+    val imageData = renderBuffer(dut, programBytes, vertices, varyings)
+    val reference = loadReferenceImage(getReferenceImageName())
+    reference match {
+      case Some(ref) =>
+        // Compare the rendered image with the reference image
+        if (!imageData.sameElements(ref)) {
           writeOutputImage("output.png", 128, imageData)
-      }
+          fail("Rendered image does not match reference image")
+        }
+      case None =>
+        println(s"No reference image available ${getReferenceImageName()}, writing output image.")
+        writeOutputImage("output.png", 128, imageData)
     }
   }
 
