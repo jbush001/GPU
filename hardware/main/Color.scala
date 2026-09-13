@@ -36,6 +36,7 @@ class Color extends Bundle {
     * result = (product + (product >> W)) + (1 << (W - 1))) >> W
     */
   def scale(factor: UInt) = Color(channels.map { ch =>
+    require(factor.getWidth == Color.channelBits)
     val product = ch * factor
     ((product +% (product >> Color.channelBits)) +% (1.U << (Color.channelBits - 1))) >> Color.channelBits
   })
@@ -75,12 +76,14 @@ object Color {
   def apply(channels: Seq[UInt]): Color = {
     val result = Wire(new Color)
     for (i <- 0 until numChannels) {
+      require(channels(i).getWidth == Color.channelBits)
       result.channels(i) := channels(i)
     }
     result
   }
 
   def fromArgb32(bits: Bits): Color = {
+    require(bits.getWidth == 32)
     val result = Wire(new Color)
 
     // We replicate the high bits into the low bits to

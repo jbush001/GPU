@@ -267,6 +267,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   io.shaderRegReadData.valid := false.B // default
   io.shaderRegReadData.bits := DontCare
   when (regReadValidStage2) {
+    assert(readJob.state === JobState.Processing)
     io.shaderRegReadData.valid := true.B
     switch (regReadAddrStage2) {
       // Read barycentric coordinates
@@ -323,6 +324,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   when (io.shaderRegWrite.valid) {
     val writeJob = jobs(io.shaderRegWrite.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
+    assert(writeJob.state === JobState.Processing)
     switch (io.shaderRegWrite.bits.addr) {
       is (0.U, 1.U, 2.U, 3.U) {
         writeJob.shadedColors(io.shaderRegWrite.bits.addr(1, 0)) := io.shaderRegWrite.bits.data.asTypeOf(Vec(cfg.shaderVectorLanes, Float32()))
@@ -375,6 +377,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       when (textureRequestQuad === (quadsPerJob - 1).U) {
         textureRequestActive := false.B
         jobs(textureRequestIndex).textureFetchRequestPending := false.B
+        assert(jobs(textureRequestIndex).state === JobState.Processing)
         textureRequestQuad := 0.U
       }.otherwise {
         textureRequestQuad := textureRequestQuad + 1.U
@@ -392,6 +395,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   when (io.textureFetchResponse.valid) {
     val coordOffset = textureResponseQuad << 2
     val job = jobs(textureResponseJobId)
+    assert(job.state === JobState.Processing)
     for (i <- 0 until Color.numChannels) {
       for (j <- 0 until Consts.pixelsPerQuad) {
         job.fetchedTexels(i)(coordOffset + j.U) := io.textureFetchResponse.bits.texels(i)(j)
