@@ -49,9 +49,7 @@ class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
   *     read-back operation.
   *
   * @todo Stencil buffers
-  * @todo How does early-Z connect with this module?
   * @todo Implement configurable blend modes and depth check modes
-  * @todo On flush, support different formats, e.g. abgr, bgra, rgba
   */
 class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -59,7 +57,10 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
-    val flushData = Decoupled(Bits(32.W))
+    val flushData = Decoupled(new Bundle {
+      val depth = Bits(cfg.depthBufferBits.W)
+      val color = Color()
+    })
     val clearColor = Input(Color())
     val clearDepth = Input(UInt(cfg.depthBufferBits.W))
 
@@ -140,11 +141,10 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  // @todo configure output conversion here.
-  io.flushData.bits := Mux(io.flushBufferSel === RenderBufferId.Depth,
-    depthReadVal(flushBank).pad(32),
-    colorReadVal(flushBank).toArgb32
-  )
+  // Only one of these will be valid depending on flushBufferSel.
+  io.flushData.bits.depth := depthReadVal(flushBank)
+  io.flushData.bits.color := colorReadVal(flushBank)
+
   val flushDataValid = RegInit(false.B)
   io.flushData.valid := flushDataValid
 

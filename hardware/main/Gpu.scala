@@ -34,7 +34,11 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     }))
 
     val startFlush = Input(Bool())
-    val flushData = Decoupled(Bits(32.W))
+    val flushData = Decoupled(new Bundle {
+      val depth = Bits(cfg.depthBufferBits.W)
+      val color = Color()
+    })
+
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val complete = Output(Bool())
   })

@@ -35,7 +35,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
       val value = Float32()
     }))
     val startFlush = Input(Bool())
-    val flushData = Decoupled(Bits(32.W))
+    val flushColor = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val complete = Output(Bool())
   })
@@ -48,7 +48,10 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   gpu.io.edgeCoeffs <> io.edgeCoeffs
   io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
   gpu.io.startFlush := io.startFlush
-  gpu.io.flushData <> io.flushData
+  gpu.io.flushData.ready := io.flushColor.ready
+  io.flushColor.valid := gpu.io.flushData.valid
+  io.flushColor.bits := gpu.io.flushData.bits.color.toArgb32
+
   gpu.io.flushBufferSel := io.flushBufferSel
   gpu.io.axiBus <> memory.io
   memory.dap <> io.dap
@@ -226,10 +229,12 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.clock.step() // Wait for rasterizer to start to complete is false.
   }
 
+  // XXX placeholder until we implement proper memory interface for TileBuffer
+  // flushes.
   def flushBuffer(dut: SimTop, out: Option[Array[Int]], start: Int, stride: Int) = {
     dut.io.startFlush.poke(true)
     dut.io.flushBufferSel.poke(RenderBufferId.Color)
-    dut.io.flushData.ready.poke(true)
+    dut.io.flushColor.ready.poke(true)
 
     var fbIndex = start
 
@@ -237,15 +242,14 @@ class RenderTests extends AnyFunSuite with ChiselSim {
       for (_ <- 0 until cfg.tileSizePixels) {
         dut.clock.step()
         dut.io.startFlush.poke(false)
-        while (dut.io.flushData.valid.peek().litValue.toLong == 0 ||
-          dut.io.flushData.ready.peek().litValue.toLong == 0) {
+        while (dut.io.flushColor.valid.peek().litValue.toLong == 0 ||
+          dut.io.flushColor.ready.peek().litValue.toLong == 0) {
           dut.clock.step()
         }
 
         out match {
           case Some(arr) => {
-            // Set alpha channel
-            arr(fbIndex) = (dut.io.flushData.bits.peek().litValue.toLong | 0xff000000L).toInt
+            arr(fbIndex) = (dut.io.flushColor.bits.peek().litValue.toLong | 0xff000000L).toInt
           }
           case None => {}
         }
@@ -265,8 +269,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     for (_ <- 0 until cfg.totalTilePixels) {
       dut.clock.step()
       dut.io.startFlush.poke(false)
-      while (dut.io.flushData.valid.peek().litValue.toLong == 0 ||
-        dut.io.flushData.ready.peek().litValue.toLong == 0) {
+
+      // Bit of a hack here, the flush color handshaking signals
+      // are valid for depth info, even though we're not flushing that.
+      while (dut.io.flushColor.valid.peek().litValue.toLong == 0 ||
+        dut.io.flushColor.ready.peek().litValue.toLong == 0) {
         dut.clock.step()
       }
     }
