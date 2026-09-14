@@ -48,7 +48,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val pixelShaderConductor = Module(new PixelShaderConductor)
   val shaderCore = Module(new ShaderCore)
   val memoryArbiter = Module(new MemoryArbiter(1, 1))
-  val floatArrayToColor = Module(new FloatArrayToColor)
+  val floatArrayToColor = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
 
   io.complete := pixelShaderConductor.io.idle && rasterizer.io.complete
