@@ -121,6 +121,11 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
     dut.io.shadedQuad.bits.mask.poke(0)
   }
 
+  def convertChannel(value: Int): Int = {
+      val rounded = ((value & 0x3ff) + 2) >> 2
+      Math.max(0, Math.min(255, rounded))
+  }
+
   /** Read all data out of the tile buffer into a native Scala sequence. */
   def flush(dut: TileBuffer, select: RenderBufferId.Type): Seq[Int] = {
     val results = ArrayBuffer[Int]()
@@ -138,7 +143,16 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
       dut.clock.step()
       if (dut.io.flushData.valid.peek().litValue.toLong != 0 &&
         dut.io.flushData.ready.peek().litValue.toLong != 0) {
-        results += dut.io.flushData.bits.peek().litValue.toInt
+        if (select == RenderBufferId.Depth) {
+          results += dut.io.flushData.bits.depth.peek().litValue.toInt
+        } else {
+          val color = convertChannel(dut.io.flushData.bits.color.channels(0).peek().litValue.toInt) << 16 |
+                      convertChannel(dut.io.flushData.bits.color.channels(1).peek().litValue.toInt) << 8 |
+                      convertChannel(dut.io.flushData.bits.color.channels(2).peek().litValue.toInt) |
+                      convertChannel(dut.io.flushData.bits.color.channels(3).peek().litValue.toInt) << 24
+
+          results += color
+        }
       }
     }
 
