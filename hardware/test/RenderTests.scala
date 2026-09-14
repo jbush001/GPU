@@ -209,7 +209,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
 
     val det = math.abs(rawCoeffs.map(_._3).sum)
 
-    rawCoeffs.zipWithIndex.foreach { case ((xs, ys, _, biasedIv), i) =>
+    for (((xs, ys, _, biasedIv), i) <- rawCoeffs.zipWithIndex) {
       val normXs = (xs * 0xffffL / det).toInt
       val normYs = (ys * 0xffffL / det).toInt
       val normIv = (biasedIv * 0xffffL / det).toInt

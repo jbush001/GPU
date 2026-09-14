@@ -125,8 +125,7 @@ class MemoryArbiter(
       }
     }
 
-    for (i <- 0 until numReadPorts) {
-      val port = io.readPorts(i)
+    for ((port, i) <- io.readPorts.zipWithIndex) {
       port.data.valid := io.axiBus.readData.valid && readBurstActive && (readActiveClient === i.U)
       port.data.bits  := io.axiBus.readData.bits.data
     }
@@ -181,8 +180,8 @@ class MemoryArbiter(
       writeBurstActive := false.B
     }
 
-    for (i <- 0 until numWritePorts) {
-      io.writePorts(i).data.ready := (io.axiBus.writeData.ready && writeBurstActive &&
+    for ((port, i) <- io.writePorts.zipWithIndex) {
+      port.data.ready := (io.axiBus.writeData.ready && writeBurstActive &&
         (writeActiveClient === i.U))
     }
 

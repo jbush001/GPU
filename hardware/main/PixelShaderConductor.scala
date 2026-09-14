@@ -117,13 +117,13 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
   val varyingCoeffs = RegInit(VecInit(Seq.fill(1 << cfg.primitiveIdBits)(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(Float32()))))))
 
-  io.idle := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.Idle).reduce(_&&_)
+  io.idle := jobs.map(_.state === JobState.Idle).reduce(_&&_)
 
   // Fill jobs
   val nextFillJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for (i <- 0 until totalPendingJobs) {
-    nextFillJob.io.in(i).valid := jobs(i).state === JobState.Idle
-    nextFillJob.io.in(i).bits := false.B
+  for ((in, job) <- nextFillJob.io.in.zip(jobs)) {
+    in.valid := job.state === JobState.Idle
+    in.bits := DontCare
   }
 
   val fillActive = RegInit(false.B)
@@ -131,8 +131,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val fillQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
 
   // Indicate ready if there are any available jobs to fill.
-  io.rasterizedQuad.ready := ((0 until totalPendingJobs).map(
-    i => jobs(i).state === JobState.Idle).reduce(_||_) || fillActive
+  io.rasterizedQuad.ready := (jobs.map(
+    _.state === JobState.Idle).reduce(_||_) || fillActive
   )
 
   assert(!(io.flush && io.rasterizedQuad.valid),
@@ -179,9 +179,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Send fully populated jobs to the shader engine
   val nextShaderJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for (i <- 0 until totalPendingJobs) {
-    nextShaderJob.io.in(i).valid := jobs(i).state === JobState.ReadyToProcess
-    nextShaderJob.io.in(i).bits := false.B
+  for ((in, job) <- nextShaderJob.io.in.zip(jobs)) {
+    in.valid := job.state === JobState.ReadyToProcess
+    in.bits := DontCare
   }
 
   nextShaderJob.io.out.ready := io.startJob.ready
@@ -204,16 +204,16 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Drain shaded quads to the tile buffer
   val nextDrainJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for (i <- 0 until totalPendingJobs) {
-    nextDrainJob.io.in(i).valid := jobs(i).state === JobState.ReadyToDrain
-    nextDrainJob.io.in(i).bits := false.B
+  for ((in, job) <- nextDrainJob.io.in.zip(jobs)) {
+    in.valid := job.state === JobState.ReadyToDrain
+    in.bits := DontCare
   }
 
   val drainActive = RegInit(false.B)
   val drainIndex = RegInit(0.U(log2Up(totalPendingJobs).W))
   val drainQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
 
-  io.shadedQuad.valid := (0 until totalPendingJobs).map(i => jobs(i).state === JobState.ReadyToDrain).reduce(_ || _) || drainActive
+  io.shadedQuad.valid := (jobs.map(_.state === JobState.ReadyToDrain).reduce(_ || _)) || drainActive
 
   val drainSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
   nextDrainJob.io.out.ready := false.B
@@ -300,9 +300,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
           && textureResponseJobId === regReadJobIdStage2
           && (jobs(textureResponseJobId).returnedTexelBitmap | (1 << (quadsPerJob - 1)).U).andR) {
           val lastTexelOffset = cfg.shaderVectorLanes - Consts.pixelsPerQuad
-          for (lane <- 0 until lastTexelOffset) {
-            io.shaderRegReadData.bits(lane) := jobs(textureResponseJobId).fetchedTexels(colorChannel)(lane).raw
-          }
+          io.shaderRegReadData.bits := jobs(textureResponseJobId).fetchedTexels(colorChannel).map(_.raw)
 
           for (lane <- lastTexelOffset until cfg.shaderVectorLanes) {
             io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane - lastTexelOffset).raw
@@ -312,9 +310,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
           readJob.threadNeedsWake := true.B
         }.otherwise {
           val texelVal = readJob.fetchedTexels(colorChannel(1, 0))
-          for (lane <- 0 until cfg.shaderVectorLanes) {
-            io.shaderRegReadData.bits(lane) := texelVal(lane).raw
-          }
+          io.shaderRegReadData.bits := texelVal.map(_.raw)
         }
       }
     }
@@ -349,9 +345,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   // Pick a texture fetch request to issue to the texture pipeline. We issue
   // one quad at a time, but fully issue all quads for a job before moving to the next one.
   val nextTextureRequestJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for (i <- 0 until totalPendingJobs) {
-    nextTextureRequestJob.io.in(i).valid := jobs(i).textureFetchRequestPending && !jobs(i).returnedTexelBitmap.orR
-    nextTextureRequestJob.io.in(i).bits := false.B
+  for ((in, job) <- nextTextureRequestJob.io.in.zip(jobs)) {
+    in.valid := job.textureFetchRequestPending && !job.returnedTexelBitmap.orR
+    in.bits := DontCare
   }
 
   val textureRequestActive = RegInit(false.B)

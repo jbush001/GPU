@@ -75,10 +75,11 @@ object Color {
 
   def apply(channels: Seq[UInt]): Color = {
     val result = Wire(new Color)
-    for (i <- 0 until numChannels) {
-      require(channels(i).getWidth == Color.channelBits)
-      result.channels(i) := channels(i)
+    for ((ch, i) <- channels.zipWithIndex) {
+      require(ch.getWidth == Color.channelBits)
+      result.channels(i) := ch
     }
+
     result
   }
 

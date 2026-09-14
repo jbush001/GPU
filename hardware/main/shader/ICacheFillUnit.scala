@@ -99,9 +99,9 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
 
   // The arbiter selects the next pending miss.
   val nextFillArbiter = Module(new RRArbiter(new ICacheAddress, cfg.shaderThreads))
-  for (i <- 0 until cfg.shaderThreads) {
-    nextFillArbiter.io.in(i).valid := pendingMisses(i).valid
-    nextFillArbiter.io.in(i).bits := pendingMisses(i).address
+  for ((in, miss) <- nextFillArbiter.io.in.zip(pendingMisses)) {
+    in.valid := miss.valid
+    in.bits := miss.address
   }
 
   val cacheLineBeats = cfg.cacheLineSizeBytes * 8 / cfg.busDataBits

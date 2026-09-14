@@ -48,10 +48,9 @@ class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
       io.shadedQuad.bits.colors(pixel).channels(channel) :=
         clampChannel(io.floatQuad.bits.colors(pixel)(channel).toFixedPoint(Color.channelBits))
     }
-
-    io.shadedQuad.bits.depths(pixel) := io.floatQuad.bits.depths(pixel)
   }
 
+  io.shadedQuad.bits.depths := io.floatQuad.bits.depths
   io.shadedQuad.valid := io.floatQuad.valid
 }
 

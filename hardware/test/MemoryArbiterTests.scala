@@ -56,10 +56,10 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
       dut.io.readPorts(0).data.ready.poke(true.B)
 
       dut.io.axiBus.readData.valid.poke(true.B)
-      for (i <- 0 until testData.length) {
-        dut.io.axiBus.readData.bits.data.poke(testData(i).U)
+      for (datum <- testData) {
+        dut.io.axiBus.readData.bits.data.poke(datum)
         dut.io.readPorts(0).data.valid.expect(true.B)
-        dut.io.readPorts(0).data.bits.expect(testData(i).U)
+        dut.io.readPorts(0).data.bits.expect(datum)
         dut.clock.step()
       }
 
@@ -95,11 +95,11 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
 
       dut.io.writePorts(0).data.valid.poke(true.B)
 
-      for (i <- 0 until 7) {
+      for (datum <- testData) {
         dut.io.writePorts(0).data.valid.poke(true.B)
-        dut.io.writePorts(0).data.bits.poke(testData(i).U)
+        dut.io.writePorts(0).data.bits.poke(datum)
         dut.io.axiBus.writeData.ready.poke(true.B)
-        dut.io.axiBus.writeData.bits.data.expect(testData(i).U)
+        dut.io.axiBus.writeData.bits.data.expect(datum)
         dut.clock.step()
       }
 
