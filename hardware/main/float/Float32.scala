@@ -182,13 +182,13 @@ object ReciprocalLut {
   val numEntries = 1 << entryWidth
 
   val numerator = numEntries * numEntries * 2
-  val romValues: Seq[UInt] =
-    ~(0.U(entryWidth.W)) +: // special case, as described above
+  val romValues: Seq[Int] =
+    ((1 << entryWidth) - 1) +: // special case, as described above
     (1 until numEntries).map(i =>
-      ((numerator / (numEntries + i)) & (numEntries - 1)).U(entryWidth.W))
+      ((numerator / (numEntries + i)) & (numEntries - 1)))
 
   def apply(index: UInt): UInt = {
     require(index.getWidth == entryWidth)
-    VecInit(romValues)(index)
+    VecInit(romValues.map(_.U(entryWidth.W)))(index)
   }
 }
