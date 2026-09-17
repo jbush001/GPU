@@ -27,8 +27,8 @@ import chisel3.util._
  *   x_{n+1} = x_n * (2 - d * x_n)
  *
  * [[https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division]]
+ *
  * This has 5 cycles of latency.
- * @todo Does not handle NaN or Inf.
  */
 class FpReciprocal extends Module {
   val io = IO(new Bundle {
@@ -41,6 +41,9 @@ class FpReciprocal extends Module {
     val sign = RegNext(io.divisor.negative)
     val exponent = RegNext(253.U - io.divisor.exponent)
     val divisor = RegNext(io.divisor.fullFraction) // 24 bits
+    val resultIsInf = RegNext(io.divisor.isZero)
+    val resultIsNaN = RegNext(io.divisor.isNaN)
+    val resultIsZero = RegNext(io.divisor.isInf)
   }
 
   val stage2 = new {
@@ -55,6 +58,10 @@ class FpReciprocal extends Module {
 
     // This is equivalent to 2 - product
     val error = RegNext((~productRounded + 1.U))
+
+    val resultIsInf = RegNext(stage1.resultIsInf)
+    val resultIsNaN = RegNext(stage1.resultIsNaN)
+    val resultIsZero = RegNext(stage1.resultIsZero)
   }
 
   val stage3 = new {
@@ -65,6 +72,9 @@ class FpReciprocal extends Module {
     val product = stage2.estimate * stage2.error // 7 + 24 = 31 bits
     val productRounded = product(30, 7) + product(6)
     val estimate = RegNext(productRounded) // 24 bits
+    val resultIsInf = RegNext(stage2.resultIsInf)
+    val resultIsNaN = RegNext(stage2.resultIsNaN)
+    val resultIsZero = RegNext(stage2.resultIsZero)
   }
 
   val stage4 = new {
@@ -75,6 +85,9 @@ class FpReciprocal extends Module {
     val productRounded = (product(46, 23) + product(22))(23, 0)
 
     val error = RegNext((~productRounded + 1.U))
+    val resultIsInf = RegNext(stage3.resultIsInf)
+    val resultIsNaN = RegNext(stage3.resultIsNaN)
+    val resultIsZero = RegNext(stage3.resultIsZero)
   }
 
   val stage5 = new {
@@ -83,6 +96,9 @@ class FpReciprocal extends Module {
     val product = stage4.estimate * stage4.error // 24 + 24 = 48 bits
     val productRounded = (product(46, 23) + product(22))(23, 0)
     val estimate = RegNext(productRounded)
+    val resultIsInf = RegNext(stage4.resultIsInf)
+    val resultIsNaN = RegNext(stage4.resultIsNaN)
+    val resultIsZero = RegNext(stage4.resultIsZero)
   }
 
   // Special case: when the estimate is exactly 1.0, need to adjust
@@ -92,7 +108,13 @@ class FpReciprocal extends Module {
   val finalFraction = Mux(isOne, stage5.estimate(22, 0),
     Cat(stage5.estimate(21, 0), 0.U))
 
-  io.reciprocal := Float32(stage5.sign, finalExponent, finalFraction)
+  when (stage5.resultIsNaN) {
+    io.reciprocal := Float32.NaN
+  }.elsewhen (stage5.resultIsInf) {
+    io.reciprocal := Float32(stage5.sign, 0xff.U, 0.U)
+  }.elsewhen (stage5.resultIsZero) {
+    io.reciprocal := Float32(stage5.sign, 0.U, 0.U)
+  }.otherwise {
+    io.reciprocal := Float32(stage5.sign, finalExponent, finalFraction)
+  }
 }
-
-

@@ -201,8 +201,9 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (0.333333f, this.fpTruncate(3.0f)),
         (1000.0f, this.fpTruncate(0.001f)),
         (0.99999f, 1.0f), // Last table entry
-        (0.0f, Float.NaN), // Division by zero
-        (Float.NaN, Float.NaN),
+        (0.0f, Float.PositiveInfinity), // Division by zero
+        (-0.0f, Float.NegativeInfinity),
+        (Float.NaN, Float.NaN), // Divison by NaN
         (Float.NegativeInfinity, -0.0f), // Division by inf
         (Float.PositiveInfinity, 0.0f), // Division by inf
       )
@@ -424,6 +425,11 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (0.65f, 1.5384618f),
         (0.001f, 1000.0f),
         (1.234f, 0.8103729f),
+        (-0.0f, Float.NegativeInfinity),
+        (0.0f, Float.PositiveInfinity),
+        (Float.PositiveInfinity, 0.0f),
+        (Float.NegativeInfinity, -0.0f),
+        (Float.NaN, Float.NaN)
       )
 
       runFpPipelineTest(

@@ -101,8 +101,10 @@ class Float32 extends Bundle {
     val exponent = 253.U - this.exponent
 
     val result = Wire(Float32())
-    when (this.isZero || this.isNaN) {
-      result := Float32.NaN // Division by zero or NaN = NaN
+    when (this.isZero) {
+      result := Float32(this.negative, 0xff.U, 0.U) // Division by zero = +inf
+    }.elsewhen (this.isNaN) {
+      result := Float32.NaN // Division by NaN = NaN
     }.elsewhen (this.isInf) {
       result := Float32(this.negative, 0.U, 0.U) // Division by +/-inf = +/-0.0
     }.otherwise {
@@ -174,9 +176,6 @@ object Float32 {
 // exponent adjustment. Rather than special-case it, we hardcode that table
 // entry to 0xff, which introduces 1 part in 256 of error at that entry,
 // (but this is only an estimate anyway).
-//
-// 6 bits of precision allow us to get a full (24-bit) precision with two
-// Newton-Raphson iterations.
 object ReciprocalLut {
   val entryWidth = 6
   val numEntries = 1 << entryWidth
