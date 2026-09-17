@@ -182,7 +182,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("Float32 reciprocal") {
+  test("Float32 reciprocalEstimate") {
     simulate(new Module {
       val io = IO(new Bundle {
         val operand = Input(Float32())
@@ -193,16 +193,16 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }) { dut =>
       type TestVector = (Float, Float)
       val testVectors: Seq[TestVector] = Seq(
-        (1.0f, 1.0f),
-        (2.0f, 0.5f),
-        (0.5f, 2.0f),
-        (4.0f, 0.25f),
+        (1.0f, 0.9921875f), // A bit of a hack, see ReciprocalLut
+        (2.0f, 0.49609375f),
+        (0.5f, 1.984375f),
         (3.0f, this.fpTruncate(0.333333f)),
         (1.5f, this.fpTruncate(0.666666f)),
         (0.333333f, this.fpTruncate(3.0f)),
         (1000.0f, this.fpTruncate(0.001f)),
         (0.99999f, 1.0f), // Last table entry
         (0.0f, Float.NaN), // Division by zero
+        (Float.NaN, Float.NaN),
         (Float.NegativeInfinity, -0.0f), // Division by inf
         (Float.PositiveInfinity, 0.0f), // Division by inf
       )
@@ -215,7 +215,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         val expectedBits = this.floatToRawBits(expected)
         val actualBits: Long = dut.io.result.raw.peek().litValue.toLong & 0xffffffffL
         if (math.abs(expectedBits - actualBits) > 1) {
-          println(f"mismatch: $a%.3f reciprocal, expected $expected actual ${dut.io.result.raw.peek().litValue.toInt}")
+          println(f"mismatch: $a%.3f reciprocal, expected $expected%.3f actual ${java.lang.Float.intBitsToFloat(dut.io.result.raw.peek().litValue.toInt)} (0x${dut.io.result.raw.peek().litValue.toInt}%08x)")
           fail()
         }
       }
@@ -334,7 +334,6 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-
   test("Float32 greaterThan") {
     simulate(new Module {
       val io = IO(new Bundle {
@@ -408,6 +407,41 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
           fail()
         }
       }
+    }
+  }
+
+  test("FpReciprocal") {
+    simulate(new FpReciprocal) { dut =>
+      type TestVector = (Float, Float)
+      val testVectors: Seq[TestVector] = Seq(
+        (1.0f, 1.0f),
+        (-1.0f, -1.0f),
+        (0.5f, 2.0f),
+        (2.0f, 0.5f),
+        (10.0f, 0.1f),
+        (0.1f, 10.0f),
+        (0.33f, 3.030303f),
+        (0.65f, 1.5384618f),
+        (0.001f, 1000.0f),
+        (1.234f, 0.8103729f),
+      )
+
+      runFpPipelineTest(
+        dut,
+        5,
+        testVectors,
+        (dut: FpReciprocal, test: TestVector) => {
+          dut.io.divisor.raw.poke(this.floatToRawBits(test._1))
+        },
+        (dut: FpReciprocal, test: TestVector, _) => {
+          val expectedBits = this.floatToRawBits(test._2)
+          val actualBits: Long = dut.io.reciprocal.raw.peek().litValue.toLong & 0xffffffffL
+          if (math.abs(expectedBits - actualBits) > 2) {
+            println(f"mismatch: ${test._1}%.3f reciprocal, expected ${test._2} actual ${java.lang.Float.intBitsToFloat(dut.io.reciprocal.raw.peek().litValue.toInt)} (0x${dut.io.reciprocal.raw.peek().litValue.toInt}%08x)")
+            fail()
+          }
+        }
+      )
     }
   }
 }

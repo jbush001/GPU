@@ -97,39 +97,16 @@ class Float32 extends Bundle {
   }
 
   def reciprocalEstimate(): Float32 = {
-    // Generate the fraction lookup table.
-    // Because the floating point significand is normalized, its value ranges
-    // from [1.0, 2.0). The reciprocal of this range therefore spans (0.5, 1.0].
-    // We treat table entries as 1.6 fixed point numbers for the calculation,
-    // so the numerator for our calculations is 64 * 64. However, 0.5 is not
-    // representable as a normalized value, so we need to also multiply by
-    // two (we compensate by shifting and adjusting the exponent to renormalize)
-    val numEntries = 64 // Must be a power of two
-    val entryWidth = log2Up(numEntries)
-    val numerator = (numEntries * numEntries * 2)
-    val romValues = Array.tabulate[UInt](numEntries)(i =>
-      ((numerator / (numEntries + i)) & (numEntries - 1)).U(entryWidth.W))
-
-    val reciprocalRom = VecInit(romValues.toIndexedSeq)
-
-    // Read value out of lookup table
-    val fractionNext = reciprocalRom(this.fraction(22, 17))
-
-    // Adjust the exponent. Note we subtract 1-2 extra values out of the exponent
-    // to compensate for the normalization shift that occurs below.
-    // In the case of zero, there's nothing to normalize.
-    val normalizationCorrection = this.fraction(22, 17) === 0.U
-    val exponentNext = 253.U - this.exponent + normalizationCorrection.asUInt
+    val fraction = ReciprocalLut(this.fraction(22, 17))
+    val exponent = 253.U - this.exponent
 
     val result = Wire(Float32())
     when (this.isZero || this.isNaN) {
-      // Division by zero or NaN = NaN
-      result := Float32(false.B, 0xff.U, 0x400000.U)
+      result := Float32.NaN // Division by zero or NaN = NaN
     }.elsewhen (this.isInf) {
-      // Division by +/- inf = 0.0
-      result := Float32(this.negative, 0.U, 0.U)
+      result := Float32(this.negative, 0.U, 0.U) // Division by +/-inf = +/-0.0
     }.otherwise {
-      result := Float32(this.negative, exponentNext, (fractionNext << 17))
+      result := Float32(this.negative, exponent, (fraction << 17))
     }
 
     result
@@ -182,5 +159,36 @@ object Float32 {
     }
 
     result
+  }
+}
+
+// Lookup table for an initial reciprocal fraction estimate.
+//
+// The normalized significand lies in [1.0, 2.0), so its reciprocal lies in
+// (0.5, 1.0]. Table entries use a 1.6 fixed-point format with an implied
+// leading one, so each reciprocal is multiplied by 2 to fit this format
+// and the exponent must be adjusted to compensate.
+//
+// The exception is a significand of exactly 1.0 (fraction bits all zero),
+// whose reciprocal is also 1.0. This is already normalized, so it needs no
+// exponent adjustment. Rather than special-case it, we hardcode that table
+// entry to 0xff, which introduces 1 part in 256 of error at that entry,
+// (but this is only an estimate anyway).
+//
+// 6 bits of precision allow us to get a full (24-bit) precision with two
+// Newton-Raphson iterations.
+object ReciprocalLut {
+  val entryWidth = 6
+  val numEntries = 1 << entryWidth
+
+  val numerator = numEntries * numEntries * 2
+  val romValues: Seq[UInt] =
+    ~(0.U(entryWidth.W)) +: // special case, as described above
+    (1 until numEntries).map(i =>
+      ((numerator / (numEntries + i)) & (numEntries - 1)).U(entryWidth.W))
+
+  def apply(index: UInt): UInt = {
+    require(index.getWidth == entryWidth)
+    VecInit(romValues)(index)
   }
 }
