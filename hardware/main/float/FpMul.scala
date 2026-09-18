@@ -19,86 +19,107 @@ package gpu
 import chisel3._
 
 /**
- * This has 3 cycles of latency
+ * This has 2 cycles of latency
  */
 class FpMul extends Module {
   val io = IO(new Bundle {
-    val result = Output(Float32())
-    val operand1 = Input(Float32())
-    val operand2 = Input(Float32())
+    val product = Output(Float32())
+    val multiplier = Input(Float32())
+    val multiplicand = Input(Float32())
   })
 
-  //
-  // Add exponents, multiply fractions
-  //
-  val stage1 = new {
-    val isNanNext = (io.operand1.isNaN || io.operand2.isNaN
-      || (io.operand1.isInf && io.operand2.isZero)
-      || (io.operand1.isZero && io.operand2.isInf))
+  val multiply = Module(new FpMulMultiply())
+  val normalize = Module(new FpMulNormalize())
 
-    val mulExpSum = io.operand1.exponent.pad(10) + io.operand2.exponent.pad(10) -
-      Float32.exponentBias
-    val mulExponentUnderflow = mulExpSum(Float32.exponentWidth + 1)
-    val mulExponentCarry = mulExpSum(Float32.exponentWidth)
-    val mulExponentNext = mulExpSum(Float32.exponentWidth - 1, 0)
+  multiply.io.multiplier := io.multiplier
+  multiply.io.multiplicand := io.multiplicand
 
-    val isInfNext = (io.operand1.isInf || io.operand2.isInf
-      || (mulExponentCarry && !mulExponentUnderflow))
-    val isZeroNext = io.operand1.isZero || io.operand2.isZero || mulExponentUnderflow
+  normalize.io.fractionProduct := multiply.io.fractionProduct
+  normalize.io.mulExponent := multiply.io.exponent
+  normalize.io.isNaN := multiply.io.isNaN
+  normalize.io.isInf := multiply.io.isInf
+  normalize.io.isZero := multiply.io.isZero
+  normalize.io.isNegative := multiply.io.isNegative
 
-    val fractionProductNext = (io.operand1.fullFraction * io.operand2.fullFraction)(47, 23)
+  io.product := normalize.io.product
+}
 
-    val isZero = RegNext(isZeroNext, false.B)
-    val isNaN = RegNext(isNanNext, false.B)
-    val isInf = RegNext(isInfNext, false.B)
-    val isNegative = RegNext(io.operand1.negative ^ io.operand2.negative, false.B)
-    val mulExponent = RegNext(mulExponentNext, 0.U)
-    val fractionProduct = RegNext(fractionProductNext, 0.U)
+/**
+ * Add exponents, multiply fractions
+ */
+class FpMulMultiply extends Module {
+  val io = IO(new Bundle {
+    val multiplier = Input(Float32())
+    val multiplicand = Input(Float32())
+    val exponent = Output(UInt(Float32.exponentWidth.W))
+    val fractionProduct = Output(UInt((Float32.fractionWidth + 2).W))
+    val isZero = Output(Bool())
+    val isNaN = Output(Bool())
+    val isInf = Output(Bool())
+    val isNegative = Output(Bool())
+  })
+
+  val isNanNext = (io.multiplier.isNaN || io.multiplicand.isNaN
+    || (io.multiplier.isInf && io.multiplicand.isZero)
+    || (io.multiplier.isZero && io.multiplicand.isInf))
+
+  val mulExpSum = io.multiplier.exponent.pad(10) + io.multiplicand.exponent.pad(10) -
+    Float32.exponentBias
+  val mulExponentUnderflow = mulExpSum(Float32.exponentWidth + 1)
+  val mulExponentCarry = mulExpSum(Float32.exponentWidth)
+  val mulExponentNext = mulExpSum(Float32.exponentWidth - 1, 0)
+
+  val isInfNext = (io.multiplier.isInf || io.multiplicand.isInf
+    || (mulExponentCarry && !mulExponentUnderflow))
+  val isZeroNext = io.multiplier.isZero || io.multiplicand.isZero || mulExponentUnderflow
+
+  val fractionProductNext = (io.multiplier.fullFraction * io.multiplicand.fullFraction)(47, 23)
+
+  io.isZero := RegNext(isZeroNext, false.B)
+  io.isNaN := RegNext(isNanNext, false.B)
+  io.isInf := RegNext(isInfNext, false.B)
+  io.isNegative := RegNext(io.multiplier.negative ^ io.multiplicand.negative, false.B)
+  io.exponent := RegNext(mulExponentNext, 0.U)
+  io.fractionProduct := RegNext(fractionProductNext, 0.U)
+}
+
+class FpMulNormalize extends Module {
+  val io = IO(new Bundle {
+    val fractionProduct = Input(UInt((Float32.fractionWidth + 2).W))
+    val mulExponent = Input(UInt(Float32.exponentWidth.W))
+    val isNaN = Input(Bool())
+    val isInf = Input(Bool())
+    val isZero = Input(Bool())
+    val isNegative = Input(Bool())
+    val product = Output(Float32())
+  })
+
+  // One position shift to normalize if the product has overflown
+  val normShift = io.fractionProduct(24)
+  val normalizedFraction = Mux(normShift,
+    io.fractionProduct(Float32.fractionWidth, 1),
+    io.fractionProduct(Float32.fractionWidth - 1, 0))
+  val adjustedExponent = Mux(normShift, io.mulExponent + 1.U, io.mulExponent)
+
+  val productNext = Wire(Float32())
+  when (io.isNaN) {
+    productNext := Float32.NaN
+  }.elsewhen (io.isInf) {
+    productNext := Float32(io.isNegative, 0xff.U, 0.U)
+  }.elsewhen (io.isZero) {
+    productNext := Float32(io.isNegative, 0.U, 0.U)
+  }.otherwise {
+    productNext := Float32(io.isNegative, adjustedExponent, normalizedFraction)
   }
 
-  //
-  // This stage is a passthrough. Synthesis tools like Vivado can absorb
-  // registers (specifically fractionProduct in this case) into the DSP
-  // multiplier blocks to take advantage of their pipelining capabilities.
-  // (e.g. Vivado Design Suite User Guide UG901, chapter 4)
-  //
-  val stage2  = new {
-    val isZero = RegNext(stage1.isZero, false.B)
-    val isNaN = RegNext(stage1.isNaN, false.B)
-    val isInf = RegNext(stage1.isInf, false.B)
-    val isNegative = RegNext(stage1.isNegative, false.B)
-    val mulExponent = RegNext(stage1.mulExponent, 0.U)
-    val fractionProduct = RegNext(stage1.fractionProduct, 0.U)
-  }
-
-  val stage3 = new {
-    // One position shift to normalize if the product has overflown
-    val normShift = stage2.fractionProduct(24)
-    val normalizedFraction = Mux(normShift,
-      stage2.fractionProduct(Float32.fractionWidth, 1),
-      stage2.fractionProduct(Float32.fractionWidth - 1, 0))
-    val adjustedExponent = Mux(normShift, stage2.mulExponent + 1.U, stage2.mulExponent)
-
-    val resultNext = Wire(Float32())
-    when (stage2.isNaN) {
-      resultNext := Float32.NaN
-    }.elsewhen (stage2.isInf) {
-      resultNext := Float32(stage2.isNegative, 0xff.U, 0.U)
-    }.elsewhen (stage2.isZero) {
-      resultNext := Float32(stage2.isNegative, 0.U, 0.U)
-    }.otherwise {
-      resultNext := Float32(stage2.isNegative, adjustedExponent, normalizedFraction)
-    }
-
-    io.result := RegNext(resultNext)
-  }
+  io.product := RegNext(productNext)
 }
 
 object FpMul {
-  def apply(operand1: Float32, operand2: Float32): Float32 = {
-    val multiplier = Module(new FpMul())
-    multiplier.io.operand1 := operand1
-    multiplier.io.operand2 := operand2
-    multiplier.io.result
+  def apply(multiplier: Float32, operand2: Float32): Float32 = {
+    val mul = Module(new FpMul())
+    mul.io.multiplier := multiplier
+    mul.io.multiplicand := operand2
+    mul.io.product
   }
 }

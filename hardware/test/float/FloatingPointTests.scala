@@ -53,7 +53,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     println(f"  actual   = $actual%.6f  (0x${this.floatToRawBits(actual)}%08x)")
   }
 
-  test("Float32 add/sub") {
+  test("FpAddSub") {
    simulate(new FpAddSub()) { dut =>
       type TestVector = (Boolean, Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
@@ -102,8 +102,8 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (true, -2.0f, 3.0f, -5.0f)
       )
 
-      dut.io.operand1.raw.poke(0)
-      dut.io.operand2.raw.poke(0)
+      dut.io.addend1.raw.poke(0)
+      dut.io.addend2.raw.poke(0)
       dut.clock.step() // Wait for reset to complete
 
       runFpPipelineTest(
@@ -112,8 +112,8 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         testVectors,
         (dut:FpAddSub, test: TestVector) => {
           dut.io.subtract.poke(test._1)
-          dut.io.operand1.raw.poke(this.floatToRawBits(test._2))
-          dut.io.operand2.raw.poke(this.floatToRawBits(test._3))
+          dut.io.addend1.raw.poke(this.floatToRawBits(test._2))
+          dut.io.addend2.raw.poke(this.floatToRawBits(test._3))
         },
         (dut: FpAddSub, test: TestVector, index: Int) => {
           val expectedBits = this.floatToRawBits(test._4)
@@ -128,7 +128,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("Float32 multiply") {
+  test("FpMul") {
     simulate(new FpMul()) { dut =>
       type TestVector = (Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
@@ -163,15 +163,15 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
 
       runFpPipelineTest(
         dut,
-        3,
+        2,
         testVectors,
         (dut: FpMul, test: TestVector) => {
-          dut.io.operand1.raw.poke(this.floatToRawBits(test._1))
-          dut.io.operand2.raw.poke(this.floatToRawBits(test._2))
+          dut.io.multiplier.raw.poke(this.floatToRawBits(test._1))
+          dut.io.multiplicand.raw.poke(this.floatToRawBits(test._2))
         },
         (dut: FpMul, test: TestVector, index: Int) => {
           val expectedBits = this.floatToRawBits(test._3)
-          val actualBits: Long = dut.io.result.raw.peek().litValue.toLong & 0xffffffffL
+          val actualBits: Long = dut.io.product.raw.peek().litValue.toLong & 0xffffffffL
           if (math.abs(expectedBits - actualBits) > 1) {
             reportTestFailure(index, test._1, test._2, test._3,
               java.lang.Float.intBitsToFloat(actualBits.toInt))
