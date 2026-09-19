@@ -22,21 +22,19 @@ import chisel3.util._
 /**
   * This has 3 cycles of latency
   */
-class FpAddSub extends Module {
+class FpAdd extends Module {
   val io = IO(new Bundle {
     val result = Output(Float32())
     val addend1 = Input(Float32())
     val addend2 = Input(Float32())
-    val subtract = Input(Bool())
   })
 
-  val align = Module(new FpAddSubAlign)
-  val sum = Module(new FpAddSubSum)
-  val normalize = Module(new FpAddSubNormalize)
+  val align = Module(new FpAddAlign)
+  val sum = Module(new FpAddSum)
+  val normalize = Module(new FpAddNormalize)
 
   align.io.addend1 := io.addend1
   align.io.addend2 := io.addend2
-  align.io.subtract := io.subtract
 
   sum.io.logicalSubtract := align.io.logicalSubtract
   sum.io.largerFraction := align.io.largerFraction
@@ -62,11 +60,10 @@ class FpAddSub extends Module {
   *   points.
   * - Check for special cases: Inf/NaN
   */
-class FpAddSubAlign extends Module {
+class FpAddAlign extends Module {
   val io = IO(new Bundle {
     val addend1 = Input(Float32())
     val addend2 = Input(Float32())
-    val subtract = Input(Bool())
 
     val isNaN1 = Output(Bool())
     val isInf1 = Output(Bool())
@@ -89,7 +86,7 @@ class FpAddSubAlign extends Module {
   val smallerFraction = Mux(op1IsLarger, io.addend2.fullFraction, io.addend1.fullFraction)
   val smallerFractionAlignedNext = smallerFraction >> alignShift
 
-  val logicalSubtractNext = io.addend1.isNegative ^ io.addend2.isNegative ^ io.subtract
+  val logicalSubtractNext = io.addend1.isNegative ^ io.addend2.isNegative
   val isNanNext = (io.addend1.isNaN || io.addend2.isNaN
     || (io.addend1.isInf && io.addend2.isInf && logicalSubtractNext))
   io.isNaN1 := RegNext(isNanNext, false.B)
@@ -98,7 +95,7 @@ class FpAddSubAlign extends Module {
   io.resultExponent1 := RegNext(Mux(op1IsLarger, io.addend1.exponent, io.addend2.exponent), 0.U)
 
   // Value with larger magnitude wins
-  io.resultNegative1 := RegNext(Mux(op1IsLarger, io.addend1.isNegative, io.addend2.isNegative ^ io.subtract), false.B)
+  io.resultNegative1 := RegNext(Mux(op1IsLarger, io.addend1.isNegative, io.addend2.isNegative), false.B)
   io.largerFraction := RegNext(largerFractionNext, 0.U)
   io.smallerFractionAligned := RegNext(smallerFractionAlignedNext, 0.U(24.W))
 }
@@ -106,7 +103,7 @@ class FpAddSubAlign extends Module {
 /**
   * Add/subtract aligned fractions
   */
-class FpAddSubSum extends Module {
+class FpAddSum extends Module {
   val io = IO(new Bundle {
     val logicalSubtract = Input(Bool())
     val largerFraction = Input(UInt((Float32.fractionWidth + 1).W))
@@ -138,7 +135,7 @@ class FpAddSubSum extends Module {
 /**
   * Find leading zero, shift to renormalize
   */
-class FpAddSubNormalize extends Module {
+class FpAddNormalize extends Module {
   val io = IO(new Bundle {
     val sumResult = Input(UInt((Float32.fractionWidth + 2).W))
     val resultExponent2 = Input(UInt(Float32.exponentWidth.W))
@@ -176,12 +173,11 @@ class FpAddSubNormalize extends Module {
   io.result := RegNext(Float32(resultNegative, resultExponent, resultFraction))
 }
 
-object FpAddSub {
-  def apply(addend1: Float32, addend2: Float32, subtract: Bool): Float32 = {
-    val addSub = Module(new FpAddSub())
-    addSub.io.addend1 := addend1
-    addSub.io.addend2 := addend2
-    addSub.io.subtract := subtract
-    addSub.io.result
+object FpAdd {
+  def apply(addend1: Float32, addend2: Float32): Float32 = {
+    val add = Module(new FpAdd())
+    add.io.addend1 := addend1
+    add.io.addend2 := addend2
+    add.io.result
   }
 }

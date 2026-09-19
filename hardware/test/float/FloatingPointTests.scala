@@ -53,53 +53,45 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     println(f"  actual   = $actual%.6f  (0x${this.floatToRawBits(actual)}%08x)")
   }
 
-  test("FpAddSub") {
-   simulate(new FpAddSub()) { dut =>
-      type TestVector = (Boolean, Float, Float, Float)
+  test("FpAdd") {
+   simulate(new FpAdd()) { dut =>
+      type TestVector = (Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
-        (false, 3.0f, 2.0f, 5.0f), // pos + pos
-        (false, -4.0f, -5.0f, -9.0f), // neg + neg
-        (false, 7.7f, -3.5f, 4.2f), // pos + smaller neg
-        (false, 7.0f, -13.0f, -6.0f), // pos + larger neg
-        (false, -40.0f, 37.0f, -3.0f), // neg + smaller pos
-        (false, -27.0f, 35.0f, 8.0f), // neg + larger pos
-        (false, 5.0f, -5.0f, 0.0f), // Exact cancellation
-        (false, -5.0f, 5.0f, 0.0f),
-        (false, 17.79f, 19.32f, 37.11f), // Exponents equal. Will carry into next significand bit
-        (false, 0.34f, 44.23f, 44.57f), // Exponent 2 larger
-        (false, 44.23f, 0.034f, 44.264f), // Exponent 1 larger
-        (false, -1.0f, 5.0f, 4.0f), // First element is negative and has smaller exponent
-        (false, -5.0f, 1.0f, -4.0f), // First element is negative and has larger exponent
-        (false, 5.0f, -1.0f, 4.0f), // Second element is negative and has smaller exponent
-        (false, 1.0f, -5.0f, -4.0f), // Second element is negative and has larger exponent
-        (false, 5.0f, 0.0f, 5.0f), // Zero identity
-        (false, 0.0f, 5.0f, 5.0f), // " "
-        (false, 0.0f, 0.0f, 0.0f), // " "
-        (false, 7.0f, -7.0f, 0.0f), // Sum is zero, positive first operand
-        (false, -7.0f, 7.0f, 0.0f), // Sum is zero, negative first operand
-        (false, 1000000.0f, 0.0000001f, 1000000.0f), //  Second op is lost because of precision
-        (false, 0.0000001f, 0.00000001f, 0.00000011f), // Very small number
-        (false, 1000000.0f, 10000000.0f, 11000000.0f), // Large number
-        (false, -0.0f, 2.323f, 2.323f), // negative zero
-        (false, 2.323f, -0.0f, 2.323f), // negative zero
-        (false, Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
-        (false, Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
-        (false, Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
-        (false, 0.0f, Float.NegativeInfinity, Float.NegativeInfinity),
-        (false, 1.0f, Float.PositiveInfinity, Float.PositiveInfinity),
-        (false, 1.0f, Float.NegativeInfinity, Float.NegativeInfinity),
-        (false, Float.PositiveInfinity, Float.NegativeInfinity, Float.NaN),
-        (false, Float.NaN, 1.0f, Float.NaN),
-        (false, 1.0f, Float.NaN, Float.NaN),
-        (false, Float.NaN, Float.NaN, Float.NaN),
-
-        // Subtraction
-        (true, 3.0f, 2.0f, 1.0f),
-        (true, -3.0f, -2.0f, -1.0f),
-        (true, 3.0f, -2.0f, 5.0f),
-        (true, -3.0f, 2.0f, -5.0f),
-        (true, 2.0f, -3.0f, 5.0f),
-        (true, -2.0f, 3.0f, -5.0f)
+        (3.0f, 2.0f, 5.0f), // pos + pos
+        (-4.0f, -5.0f, -9.0f), // neg + neg
+        (7.7f, -3.5f, 4.2f), // pos + smaller neg
+        (7.0f, -13.0f, -6.0f), // pos + larger neg
+        (-40.0f, 37.0f, -3.0f), // neg + smaller pos
+        (-27.0f, 35.0f, 8.0f), // neg + larger pos
+        (5.0f, -5.0f, 0.0f), // Exact cancellation
+        (-5.0f, 5.0f, 0.0f),
+        (17.79f, 19.32f, 37.11f), // Exponents equal. Will carry into next significand bit
+        (0.34f, 44.23f, 44.57f), // Exponent 2 larger
+        (44.23f, 0.034f, 44.264f), // Exponent 1 larger
+        (-1.0f, 5.0f, 4.0f), // First element is negative and has smaller exponent
+        (-5.0f, 1.0f, -4.0f), // First element is negative and has larger exponent
+        (5.0f, -1.0f, 4.0f), // Second element is negative and has smaller exponent
+        (1.0f, -5.0f, -4.0f), // Second element is negative and has larger exponent
+        (5.0f, 0.0f, 5.0f), // Zero identity
+        (0.0f, 5.0f, 5.0f), // " "
+        (0.0f, 0.0f, 0.0f), // " "
+        (7.0f, -7.0f, 0.0f), // Sum is zero, positive first operand
+        (-7.0f, 7.0f, 0.0f), // Sum is zero, negative first operand
+        (1000000.0f, 0.0000001f, 1000000.0f), //  Second op is lost because of precision
+        (0.0000001f, 0.00000001f, 0.00000011f), // Very small number
+        (1000000.0f, 10000000.0f, 11000000.0f), // Large number
+        (-0.0f, 2.323f, 2.323f), // negative zero
+        (2.323f, -0.0f, 2.323f), // negative zero
+        (Float.PositiveInfinity, Float.PositiveInfinity, Float.PositiveInfinity), // Infinity and NaN cases...
+        (Float.PositiveInfinity, 1.0f, Float.PositiveInfinity),
+        (Float.NegativeInfinity, 1.0f, Float.NegativeInfinity),
+        (0.0f, Float.NegativeInfinity, Float.NegativeInfinity),
+        (1.0f, Float.PositiveInfinity, Float.PositiveInfinity),
+        (1.0f, Float.NegativeInfinity, Float.NegativeInfinity),
+        (Float.PositiveInfinity, Float.NegativeInfinity, Float.NaN),
+        (Float.NaN, 1.0f, Float.NaN),
+        (1.0f, Float.NaN, Float.NaN),
+        (Float.NaN, Float.NaN, Float.NaN),
       )
 
       dut.io.addend1.raw.poke(0)
@@ -110,16 +102,15 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         dut,
         3,
         testVectors,
-        (dut:FpAddSub, test: TestVector) => {
-          dut.io.subtract.poke(test._1)
-          dut.io.addend1.raw.poke(this.floatToRawBits(test._2))
-          dut.io.addend2.raw.poke(this.floatToRawBits(test._3))
+        (dut:FpAdd, test: TestVector) => {
+          dut.io.addend1.raw.poke(this.floatToRawBits(test._1))
+          dut.io.addend2.raw.poke(this.floatToRawBits(test._2))
         },
-        (dut: FpAddSub, test: TestVector, index: Int) => {
-          val expectedBits = this.floatToRawBits(test._4)
+        (dut: FpAdd, test: TestVector, index: Int) => {
+          val expectedBits = this.floatToRawBits(test._3)
           val actualBits: Long = dut.io.result.raw.peek().litValue.toLong & 0xffffffffL
           if (math.abs(expectedBits - actualBits) > 1) {
-            reportTestFailure(index, test._2, test._3, test._4,
+            reportTestFailure(index, test._1, test._2, test._3,
               java.lang.Float.intBitsToFloat(actualBits.toInt))
             fail()
           }

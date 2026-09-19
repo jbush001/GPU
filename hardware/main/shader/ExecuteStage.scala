@@ -71,7 +71,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val operand1 = Float32(io.decodedInstruction.bits.operand1(lane))
     val operand2 = Float32(io.decodedInstruction.bits.operand2(lane))
     val isSub = io.decodedInstruction.bits.meta.opcode === OpCode.Subf
-    fpAddSubResult(lane) := FpAddSub(operand1, operand2, isSub).raw
+    val invOperand2 = Float32(isSub ^ operand2.isNegative, operand2.exponent, operand2.fraction)
+    fpAddSubResult(lane) := FpAdd(operand1, invOperand2).raw
     fpMulResult(lane) := RegNext(FpMul(operand1, operand2).raw) // Pad extra cycle of latency
   }
 

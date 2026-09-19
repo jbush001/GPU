@@ -99,17 +99,18 @@ class Float32 extends Bundle {
     * This differs from the fixed point conversion in that 1.0 is represented
     * by (2^N - 1). This formally is floor(M * (2^N - 1)), but we can save
     * hardware by approximating it using ((M << N) - M) >> N.
+    * the value will be clamped into the target range [0, 2^width - 1]
     */
   def toUnorm(width: Int): UInt = {
-    require(width >= 0 && width <= 30,
-      "width must be in range [0, 30]")
+    require(width >= 0 && width <= 24,
+      "width must be in range [0, 24]")
 
     val result = Wire(UInt(width.W))
     when (this.isNegative || this.exponent < Float32.exponentBias - Float32.fractionWidth.U) {
-      // This also handles zero
+      // Value is <= 0
       result := 0.U
     }.elsewhen (this.exponent >= Float32.exponentBias) {
-      // This also handles 1.0 and Infinity (NaN also gets pulled in here)
+      // Value is >= 1.0 or is NaN
       result := ~0.U(width.W)
     }.otherwise {
       val scaledProduct = (this.fullFraction << 24) - this.fullFraction
@@ -197,10 +198,10 @@ object Float32 {
 // and the exponent must be adjusted to compensate.
 //
 // The exception is a significand of exactly 1.0 (fraction bits all zero),
-// whose reciprocal is also 1.0. This is already normalized, so it needs no
-// exponent adjustment. Rather than special-case it, we hardcode that table
-// entry to 0xff, which introduces 1 part in 256 of error at that entry,
-// (but this is only an estimate anyway).
+// whose reciprocal is also 1.0. This is already normalized, so it
+// doesn't need a shift. However, rather than special-case it, we shift anyway
+// and hardcode that table entry to 0xff, which introduces a 1 part in 64
+// error at that entry (but this is only an estimate anyway).
 object ReciprocalLut {
   val entryWidth = 6
   val numEntries = 1 << entryWidth
