@@ -29,7 +29,7 @@ import chisel3.util._
 class Float32 extends Bundle {
   val raw = Bits(32.W)
 
-  def negative = raw(31)
+  def isNegative = raw(31)
   def exponent = raw(30, 23).asUInt
   def fraction = raw(22, 0).asUInt
 
@@ -43,27 +43,25 @@ class Float32 extends Bundle {
   def isZero = this.exponent === 0.U
 
   def abs = Float32(false.B, this.exponent, this.fraction)
+  def neg = Float32(!this.isNegative, this.exponent, this.fraction)
 
   def absGreaterThan(that: Float32): Bool = {
-    ((this.exponent > that.exponent)
-      || ((this.exponent === that.exponent)
-      && this.fullFraction > that.fullFraction))
+    this.abs.raw > that.abs.raw
+  }
+
+  private def toOrderable: UInt = {
+    Cat(!this.isNegative, this.raw(30, 0) ^ Fill(31, this.isNegative))
   }
 
   def >(that: Float32): Bool = {
-    val result = WireInit(false.B)
-    when (this.negative === that.negative) {
-      when (this.negative) {
-        result := that.absGreaterThan(this)
-      }.otherwise {
-        result := this.absGreaterThan(that)
-      }
-    }.otherwise {
-      result := that.negative
-    }
-
-    when (this.isNaN || that.isNaN || (this.isZero && that.isZero)) {
+    // IEEE754 dictates +0.0 should be equal to -0.0, we need to check
+    // explicitly here because the comparison below does not handle that.
+    // Also, if either value is NaN, all comparisons should return false.
+    val result = Wire(Bool())
+    when ((this.isZero && that.isZero) || this.isNaN || that.isNaN) {
       result := false.B
+    }.otherwise {
+      result := this.toOrderable > that.toOrderable
     }
 
     result
@@ -80,7 +78,7 @@ class Float32 extends Bundle {
       result := 0.S
     }.elsewhen (this.isInf || unbiasedExponent > (30 - fractionalBits).S) {
       // Infinity or exponent overflow -> Saturate
-      result := Mux(this.negative, Int.MinValue.S, Int.MaxValue.S)
+      result := Mux(this.isNegative, Int.MinValue.S, Int.MaxValue.S)
     }.elsewhen (unbiasedExponent < -fractionalBits.S) {
       // Underflow -> 0
       result := 0.S
@@ -90,7 +88,34 @@ class Float32 extends Bundle {
       val shifted = paddedFraction >> shiftAmount
 
       val magnitude = shifted(31, 0).asSInt
-      result := Mux(this.negative, -magnitude, magnitude)
+      result := Mux(this.isNegative, -magnitude, magnitude)
+    }
+
+    result
+  }
+
+  /**
+    * Convert to unsigned normalized fixed-point representation
+    * This differs from the fixed point conversion in that 1.0 is represented
+    * by (2^N - 1). This formally is floor(M * (2^N - 1)), but we can save
+    * hardware by approximating it using ((M << N) - M) >> N.
+    */
+  def toUnorm(width: Int): UInt = {
+    require(width >= 0 && width <= 30,
+      "width must be in range [0, 30]")
+
+    val result = Wire(UInt(width.W))
+    when (this.isNegative || this.exponent < Float32.exponentBias - Float32.fractionWidth.U) {
+      // This also handles zero
+      result := 0.U
+    }.elsewhen (this.exponent >= Float32.exponentBias) {
+      // This also handles 1.0 and Infinity (NaN also gets pulled in here)
+      result := ~0.U(width.W)
+    }.otherwise {
+      val scaledProduct = (this.fullFraction << 24) - this.fullFraction
+      val denormShift = Float32.exponentBias - this.exponent
+      val shifted = scaledProduct >> denormShift
+      result := shifted(47, 47 - width)
     }
 
     result
@@ -102,13 +127,13 @@ class Float32 extends Bundle {
 
     val result = Wire(Float32())
     when (this.isZero) {
-      result := Float32(this.negative, 0xff.U, 0.U) // Division by zero = +inf
+      result := Float32(this.isNegative, 0xff.U, 0.U) // Division by zero = +inf
     }.elsewhen (this.isNaN) {
       result := Float32.NaN // Division by NaN = NaN
     }.elsewhen (this.isInf) {
-      result := Float32(this.negative, 0.U, 0.U) // Division by +/-inf = +/-0.0
+      result := Float32(this.isNegative, 0.U, 0.U) // Division by +/-inf = +/-0.0
     }.otherwise {
-      result := Float32(this.negative, exponent, (fraction << 17))
+      result := Float32(this.isNegative, exponent, (fraction << 17))
     }
 
     result

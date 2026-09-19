@@ -78,7 +78,7 @@ class FpMulMultiply extends Module {
   io.isZero := RegNext(isZeroNext, false.B)
   io.isNaN := RegNext(isNanNext, false.B)
   io.isInf := RegNext(isInfNext, false.B)
-  io.isNegative := RegNext(io.multiplier.negative ^ io.multiplicand.negative, false.B)
+  io.isNegative := RegNext(io.multiplier.isNegative ^ io.multiplicand.isNegative, false.B)
   io.exponent := RegNext(mulExponentNext, 0.U)
   io.fractionProduct := RegNext(fractionProductNext, 0.U)
 }

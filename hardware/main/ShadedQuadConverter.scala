@@ -35,18 +35,12 @@ class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
     }))
   })
 
-  def clampChannel(in: SInt): UInt = {
-    Mux(in < 0.S, 0.U(Color.channelBits.W),
-    Mux(in > ((1.S << Color.channelBits) - 1.S),
-    0xffff.U, in.asUInt(Color.channelBits - 1, 0)))
-  }
-
   io.shadedQuad.bits.location := io.floatQuad.bits.location
   io.shadedQuad.bits.mask := io.floatQuad.bits.mask
   for (pixel <- 0 until Consts.pixelsPerQuad) {
     for (channel <- 0 until Color.numChannels) {
       io.shadedQuad.bits.colors(pixel).channels(channel) :=
-        clampChannel(io.floatQuad.bits.colors(pixel)(channel).toFixedPoint(Color.channelBits))
+        io.floatQuad.bits.colors(pixel)(channel).toUnorm(Color.channelBits)
     }
   }
 

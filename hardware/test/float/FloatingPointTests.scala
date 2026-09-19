@@ -269,6 +269,39 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
     }
   }
 
+  test("Float32 toUnorm") {
+    simulate(new Module {
+      val io = IO(new Bundle {
+        val a = Input(UInt(32.W))
+        val result = Output(UInt(32.W))
+      })
+
+      io.result := io.a.asTypeOf(Float32()).toUnorm(12)
+    }) { dut =>
+      val testVectors = Seq(
+        (0.0f, 0x000),
+        (0.25f, 0x3ff),
+        (0.5f, 0x7ff),
+        (0.75f, 0xbff),
+        (1.0f, 0xfff),
+        (2.0f, 0xfff),
+        (-1.0f, 0x000),
+        (Float.NaN, 0xfff),
+        (Float.PositiveInfinity, 0xfff),
+        (Float.NegativeInfinity, 0x000)
+      )
+
+      for ((a, expected) <- testVectors) {
+        dut.io.a.poke(floatToRawBits(a).U)
+        dut.clock.step()
+        if (dut.io.result.peek().litValue.toInt != expected) {
+          println(f"mismatch: $a%.3f to unorm, expected $expected actual ${dut.io.result.peek().litValue.toInt}")
+          fail()
+        }
+      }
+    }
+  }
+
   test("Float32 fromFixedPoint") {
     simulate(new Module {
       val io = IO(new Bundle {

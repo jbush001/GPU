@@ -38,7 +38,7 @@ class FpReciprocal extends Module {
 
   val stage1 = new {
     val estimate = RegNext(Cat(1.U, ReciprocalLut(io.divisor.fraction(22, 17)))) // 7 bits
-    val sign = RegNext(io.divisor.negative)
+    val sign = RegNext(io.divisor.isNegative)
     val exponent = RegNext(253.U - io.divisor.exponent)
     val divisor = RegNext(io.divisor.fullFraction) // 24 bits
     val resultIsInf = RegNext(io.divisor.isZero)

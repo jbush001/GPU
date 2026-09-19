@@ -89,7 +89,7 @@ class FpAddSubAlign extends Module {
   val smallerFraction = Mux(op1IsLarger, io.addend2.fullFraction, io.addend1.fullFraction)
   val smallerFractionAlignedNext = smallerFraction >> alignShift
 
-  val logicalSubtractNext = io.addend1.negative ^ io.addend2.negative ^ io.subtract
+  val logicalSubtractNext = io.addend1.isNegative ^ io.addend2.isNegative ^ io.subtract
   val isNanNext = (io.addend1.isNaN || io.addend2.isNaN
     || (io.addend1.isInf && io.addend2.isInf && logicalSubtractNext))
   io.isNaN1 := RegNext(isNanNext, false.B)
@@ -98,7 +98,7 @@ class FpAddSubAlign extends Module {
   io.resultExponent1 := RegNext(Mux(op1IsLarger, io.addend1.exponent, io.addend2.exponent), 0.U)
 
   // Value with larger magnitude wins
-  io.resultNegative1 := RegNext(Mux(op1IsLarger, io.addend1.negative, io.addend2.negative ^ io.subtract), false.B)
+  io.resultNegative1 := RegNext(Mux(op1IsLarger, io.addend1.isNegative, io.addend2.isNegative ^ io.subtract), false.B)
   io.largerFraction := RegNext(largerFractionNext, 0.U)
   io.smallerFractionAligned := RegNext(smallerFractionAlignedNext, 0.U(24.W))
 }
