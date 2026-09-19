@@ -44,6 +44,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   })
 
   val rasterizer = Module(new Rasterizer)
+  val depthInterpolator = Module(new DepthInterpolator)
   val tileBuffer = Module(new TileBuffer)
   val pixelShaderConductor = Module(new PixelShaderConductor)
   val shaderCore = Module(new ShaderCore)
@@ -53,8 +54,13 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
 
   io.complete := pixelShaderConductor.io.idle && rasterizer.io.complete
 
-  rasterizer.io.quad <> pixelShaderConductor.io.rasterizedQuad
-  pixelShaderConductor.io.flush := rasterizer.io.complete
+  rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
+  depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
+
+  // Hack: wait to flush the pixel shader conductor until a couple cycles after the
+  // rasterizer completes, as there will be pixels in the DepthInterpolator pipeline.
+  // This will go away when we have proper a proper command processor and synchronization.
+  pixelShaderConductor.io.flush := rasterizer.io.complete && ShiftRegister(rasterizer.io.complete, 2)
   pixelShaderConductor.io.startJob <> shaderCore.io.startJob
   shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
   shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead

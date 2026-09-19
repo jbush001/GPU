@@ -22,24 +22,29 @@ import org.scalatest.funsuite.AnyFunSuite
 class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  def loadRasterizedQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
-    lambda: Seq[Seq[Int]], primitiveId: Int = 0): Unit = {
-    dut.io.rasterizedQuad.valid.poke(true)
-    dut.io.rasterizedQuad.bits.location.x.poke(x)
-    dut.io.rasterizedQuad.bits.location.y.poke(y)
-    dut.io.rasterizedQuad.bits.mask.poke(mask)
-    dut.io.rasterizedQuad.bits.primitiveId.poke(primitiveId)
+  def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
+    lambda: Seq[Seq[Int]], depths: Seq[Float],primitiveId: Int = 0): Unit = {
+    dut.io.sourceQuad.valid.poke(true)
+    dut.io.sourceQuad.bits.quad.location.x.poke(x)
+    dut.io.sourceQuad.bits.quad.location.y.poke(y)
+    dut.io.sourceQuad.bits.quad.mask.poke(mask)
+    dut.io.sourceQuad.bits.quad.primitiveId.poke(primitiveId)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
-        dut.io.rasterizedQuad.bits.lambda(i)(j).raw.poke(lambda(i)(j))
+        dut.io.sourceQuad.bits.quad.lambda(i)(j).raw.poke(lambda(i)(j))
       }
     }
+
+    for (i <- depths.indices) {
+      dut.io.sourceQuad.bits.depths(i).raw.poke(java.lang.Float.floatToRawIntBits(depths(i)))
+    }
+
     dut.clock.step()
-    dut.io.rasterizedQuad.valid.poke(false)
+    dut.io.sourceQuad.valid.poke(false)
   }
 
   def drainShadedQuad(dut: PixelShaderConductor, expectedX: Int,
-    expectedY: Int, expectedMask: Int, colors: Seq[Seq[Int]]): Unit = {
+    expectedY: Int, expectedMask: Int, colors: Seq[Seq[Int]], depths: Seq[Float]): Unit = {
     dut.io.shadedQuad.bits.location.x.expect(expectedX)
     dut.io.shadedQuad.bits.location.y.expect(expectedY)
     dut.io.shadedQuad.bits.mask.expect(expectedMask)
@@ -49,6 +54,11 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         dut.io.shadedQuad.bits.colors(i)(j).raw.expect(colors(i)(j))
       }
     }
+
+    for (i <- depths.indices) {
+      dut.io.shadedQuad.bits.depths(i).raw.expect(java.lang.Float.floatToRawIntBits(depths(i)))
+    }
+
     dut.clock.step()
   }
 
@@ -92,17 +102,18 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       val masks = Seq.tabulate(cfg.shaderVectorLanes / Consts.pixelsPerQuad)(i => 10 + i)
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.startJob.valid.expect(false)
-        dut.io.rasterizedQuad.ready.expect(true)
+        dut.io.sourceQuad.ready.expect(true)
         val base = i * Consts.pixelsPerQuad
-        loadRasterizedQuad(dut, i + 3, i + 4, masks(i),
-          Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)))
+        loadSourceQuad(dut, i + 3, i + 4, masks(i),
+          Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)),
+          Seq(1.0f, 2.0f, 3.0f, 4.0f))
         dut.io.idle.expect(false)
       }
 
       // Process
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
-      dut.io.rasterizedQuad.ready.expect(true)
+      dut.io.sourceQuad.ready.expect(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
       dut.io.startJob.valid.expect(false)
@@ -128,9 +139,10 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.idle.expect(false)
         dut.io.startJob.valid.expect(false)
-        dut.io.rasterizedQuad.ready.expect(true)
+        dut.io.sourceQuad.ready.expect(true)
         drainShadedQuad(dut, i + 3, i + 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
-          Seq(i * 4 + j + 100, i * 4 + j + 200, i * 4 + j + 300, i * 4 + j + 400)))
+          Seq(i * 4 + j + 100, i * 4 + j + 200, i * 4 + j + 300, i * 4 + j + 400)),
+          Seq(1.0f, 2.0f, 3.0f, 4.0f))
       }
 
       dut.io.idle.expect(true)
@@ -143,8 +155,9 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.io.startJob.ready.poke(true)
 
       // Load one valid quad
-      loadRasterizedQuad(dut, 3, 4, 15,
-        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)))
+      loadSourceQuad(dut, 3, 4, 15,
+        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)),
+        Seq.fill(Consts.pixelsPerQuad)(0.0f))
 
       // Flush
       dut.io.flush.poke(true)
@@ -215,20 +228,20 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
         // Check on loading new rasterized quads
         if (cycle < maxCycles - flushCycles &&
-          dut.io.rasterizedQuad.ready.peek().litToBoolean) {
+          dut.io.sourceQuad.ready.peek().litToBoolean) {
           tilex += 1
           if (tilex >= WIDTH) {
             tilex = 0
             tiley += 1
           }
 
-          dut.io.rasterizedQuad.valid.poke(true)
-          dut.io.rasterizedQuad.bits.location.x.poke(tilex)
-          dut.io.rasterizedQuad.bits.location.y.poke(tiley)
-          dut.io.rasterizedQuad.bits.mask.poke(15)
+          dut.io.sourceQuad.valid.poke(true)
+          dut.io.sourceQuad.bits.quad.location.x.poke(tilex)
+          dut.io.sourceQuad.bits.quad.location.y.poke(tiley)
+          dut.io.sourceQuad.bits.quad.mask.poke(15)
           outstandingQuads += ((tilex, tiley))
         } else {
-          dut.io.rasterizedQuad.valid.poke(false)
+          dut.io.sourceQuad.valid.poke(false)
         }
 
         for (job <- activeJobs) {
@@ -278,15 +291,16 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     simulate(new PixelShaderConductor) { dut =>
       // Start a job
       for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
-        dut.io.rasterizedQuad.ready.expect(true)
-        loadRasterizedQuad(dut, 0, 0, 15,
-            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)))
+        dut.io.sourceQuad.ready.expect(true)
+        loadSourceQuad(dut, 0, 0, 15,
+            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
+            Seq.fill(Consts.pixelsPerQuad)(0.0f))
         dut.io.textureFetchRequest.valid.expect(false)
       }
 
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
-      dut.io.rasterizedQuad.ready.expect(true)
+      dut.io.sourceQuad.ready.expect(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
 
@@ -392,15 +406,16 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     simulate(new PixelShaderConductor) { dut =>
       // Start a job
       for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
-        dut.io.rasterizedQuad.ready.expect(true)
-        loadRasterizedQuad(dut, 0, 0, 15,
-            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)))
+        dut.io.sourceQuad.ready.expect(true)
+        loadSourceQuad(dut, 0, 0, 15,
+            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
+            Seq.fill(Consts.pixelsPerQuad)(0.0f))
         dut.io.textureFetchRequest.valid.expect(false)
       }
 
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
-      dut.io.rasterizedQuad.ready.expect(true)
+      dut.io.sourceQuad.ready.expect(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
 
@@ -462,15 +477,17 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
       // Start a job
       for (primitiveId <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
-        dut.io.rasterizedQuad.ready.expect(true)
-        loadRasterizedQuad(dut, 0, 0, 15,
-            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)), primitiveId)
+        dut.io.sourceQuad.ready.expect(true)
+        loadSourceQuad(dut, 0, 0, 15,
+            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
+            Seq.fill(Consts.pixelsPerQuad)(0.0f),
+            primitiveId)
         dut.io.textureFetchRequest.valid.expect(false)
       }
 
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
-      dut.io.rasterizedQuad.ready.expect(true)
+      dut.io.sourceQuad.ready.expect(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
 

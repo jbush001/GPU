@@ -38,8 +38,8 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // From Rasterizer.
-    val rasterizedQuad = Flipped(Decoupled(new RasterizedQuad))
+    // From DepthInterpolator
+    val sourceQuad = Flipped(Decoupled(new InterpolatedQuad))
     val flush = Input(Bool())
 
     // To/From ShaderCore
@@ -104,7 +104,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   class JobInfo extends Bundle {
     val state = JobState()
-    val rasterizedQuads = Vec(quadsPerJob, new RasterizedQuad)
+    val sourceQuads = Vec(quadsPerJob, new InterpolatedQuad)
     val shadedColors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
     val varyingCoeffIndex = UInt(log2Up(maxVaryingCoeffs).W)
     val textureFetchRequestPending = Bool()
@@ -131,18 +131,18 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val fillQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
 
   // Indicate ready if there are any available jobs to fill.
-  io.rasterizedQuad.ready := (jobs.map(
+  io.sourceQuad.ready := (jobs.map(
     _.state === JobState.Idle).reduce(_||_) || fillActive
   )
 
-  assert(!(io.flush && io.rasterizedQuad.valid),
+  assert(!(io.flush && io.sourceQuad.valid),
     "Cannot have a valid rasterized quad while flushing")
 
   nextFillJob.io.out.ready := false.B
   when (io.flush && fillActive) {
     assert(fillQuadCount != 0.U)
     // Push empty quads to complete any pending entries.
-    jobs(fillIndex).rasterizedQuads(fillQuadCount).mask := 0.U
+    jobs(fillIndex).sourceQuads(fillQuadCount).quad.mask := 0.U
     when (fillQuadCount === (quadsPerJob - 1).U) {
       // Finished filling, ready for processing
       fillQuadCount := 0.U
@@ -151,12 +151,12 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }.otherwise {
       fillQuadCount := fillQuadCount + 1.U
     }
-  }.elsewhen (io.rasterizedQuad.fire) {
+  }.elsewhen (io.sourceQuad.fire) {
     when (fillActive) {
       assert(fillQuadCount != 0.U)
 
       // Fill existing partially readyToProcess job entry
-      jobs(fillIndex).rasterizedQuads(fillQuadCount) := io.rasterizedQuad.bits
+      jobs(fillIndex).sourceQuads(fillQuadCount) := io.sourceQuad.bits
 
       when (fillQuadCount === (quadsPerJob - 1).U) {
         // Finished filling, ready for processing
@@ -173,7 +173,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       fillIndex := nextFillJob.io.chosen
       nextFillJob.io.out.ready := true.B
       jobs(nextFillJob.io.chosen).state := JobState.Filling
-      jobs(nextFillJob.io.chosen).rasterizedQuads(0) := io.rasterizedQuad.bits
+      jobs(nextFillJob.io.chosen).sourceQuads(0) := io.sourceQuad.bits
     }
   }
 
@@ -217,9 +217,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val drainSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
   nextDrainJob.io.out.ready := false.B
-  io.shadedQuad.bits.location := jobs(drainSelect).rasterizedQuads(drainQuadCount).location
-  io.shadedQuad.bits.mask := jobs(drainSelect).rasterizedQuads(drainQuadCount).mask
-  io.shadedQuad.bits.depths := VecInit(Seq.fill(Consts.pixelsPerQuad)(Float32(0.0f))) // XXX not implemented
+  io.shadedQuad.bits.location := jobs(drainSelect).sourceQuads(drainQuadCount).quad.location
+  io.shadedQuad.bits.mask := jobs(drainSelect).sourceQuads(drainQuadCount).quad.mask
+  io.shadedQuad.bits.depths := jobs(drainSelect).sourceQuads(drainQuadCount).depths
   for (pixelI <- 0 until Consts.pixelsPerQuad) {
     for (channelI <- 0 until Color.numChannels) {
       val pixelIndex = drainQuadCount * Consts.pixelsPerQuad.U + pixelI.U
@@ -275,7 +275,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
         for (i <- 0 until cfg.shaderVectorLanes) {
           val quadIndex = (i / Consts.pixelsPerQuad)
           val pixelIndex = (i % Consts.pixelsPerQuad)
-          io.shaderRegReadData.bits(i) := readJob.rasterizedQuads(quadIndex).lambda(pixelIndex)(
+          io.shaderRegReadData.bits(i) := readJob.sourceQuads(quadIndex).quad.lambda(pixelIndex)(
             regReadAddrStage2(0)).asUInt
         }
       }
@@ -283,7 +283,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       // Read varying coefficient memory
       is (2.U) {
         for (quadI <- 0 until quadsPerJob) {
-          val coeffVal = varyingCoeffs(readJob.rasterizedQuads(quadI).primitiveId)(readJob.varyingCoeffIndex)
+          val coeffVal = varyingCoeffs(readJob.sourceQuads(quadI).quad.primitiveId)(readJob.varyingCoeffIndex)
           for (pixelI <- 0 until Consts.pixelsPerQuad) {
             io.shaderRegReadData.bits(quadI * Consts.pixelsPerQuad + pixelI) := coeffVal.raw
           }
