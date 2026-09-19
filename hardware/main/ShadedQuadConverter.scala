@@ -25,14 +25,14 @@ import chisel3.util._
   */
 class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
+    val shadedQuad = Valid(new ShadedQuad)
+
     val floatQuad = Flipped(Valid(new Bundle {
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
-      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
+      val depths = Vec(Consts.pixelsPerQuad, Float32())
     }))
-
-    val shadedQuad = Valid(new ShadedQuad)
   })
 
   def clampChannel(in: SInt): UInt = {

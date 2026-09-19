@@ -35,7 +35,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
 
     val startFlush = Input(Bool())
     val flushData = Decoupled(new Bundle {
-      val depth = Bits(cfg.depthBufferBits.W)
+      val depth = Float32()
       val color = Color()
     })
 
@@ -75,7 +75,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.clearColor.channels(1) := 0.U
   tileBuffer.io.clearColor.channels(2) := 0.U
   tileBuffer.io.clearColor.channels(3) := 0.U
-  tileBuffer.io.clearDepth := 0xffffff.U(cfg.depthBufferBits.W)
+  tileBuffer.io.clearDepth := Float32(1.0f)
   tileBuffer.io.startFlush := io.startFlush
   tileBuffer.io.flushBufferSel := io.flushBufferSel
   tileBuffer.io.enableDepthCheck := false.B

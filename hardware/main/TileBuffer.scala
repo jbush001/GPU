@@ -27,7 +27,7 @@ class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
   val location = Point2D()
   val mask = Bits(Consts.pixelsPerQuad.W)
   val colors = Vec(Consts.pixelsPerQuad, Color())
-  val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
+  val depths = Vec(Consts.pixelsPerQuad, Float32())
 }
 
 /** Stores rendered depth, and color information for square subset of the
@@ -38,6 +38,8 @@ class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
   * 2x2 quad per cycle. It stores all information in on-chip SRAM. When
   * rendering completes for a tile, a flush copies the buffer contents to
   * external memory.
+  * This stores color and depth values in a native format; conversions only
+  * occur in other blocks when flushing.
   *
   * Constraints:
   *
@@ -58,11 +60,11 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
     val startFlush = Input(Bool())
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val flushData = Decoupled(new Bundle {
-      val depth = Bits(cfg.depthBufferBits.W)
+      val depth = Float32()
       val color = Color()
     })
     val clearColor = Input(Color())
-    val clearDepth = Input(UInt(cfg.depthBufferBits.W))
+    val clearDepth = Input(Float32())
 
     // Configuration
     val enableDepthWrite = Input(Bool())
@@ -83,7 +85,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
   // Memory is divided into four banks, one per pixel in the quad
   val colorMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, Color()))
-  val depthMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, UInt(cfg.depthBufferBits.W)))
+  val depthMemory = Seq.fill(Consts.pixelsPerQuad)(SyncReadMem(memorySize, Float32()))
 
   // Each quad stores its pixels across four banks, but during a flush, we
   // need to send them to memory in linear raster order. These do the shuffling
@@ -115,7 +117,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val quadWriteLanes = Wire(Vec(Consts.pixelsPerQuad, Bool())) // Set by pixel processing pipelines
   val writeAddress = Wire(UInt(memoryAddrBits.W))
   val colorWriteVal = Wire(Vec(Consts.pixelsPerQuad, new Color))
-  val depthWriteVal = Wire(Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W)))
+  val depthWriteVal = Wire(Vec(Consts.pixelsPerQuad, Float32()))
 
   // Clear writes are delayed one cycle after reads, as memory is modeled
   // as write first.
@@ -178,7 +180,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
       val newColor = RegNext(stage1.newColor)
       val newDepth = RegNext(stage1.newDepth)
       val mask = RegNext(stage1.mask &&
-        (!io.enableDepthCheck || stage1.newDepth < depthReadVal(pixel)), false.B)
+        (!io.enableDepthCheck || depthReadVal(pixel) > stage1.newDepth), false.B)
     }
 
     // Stage 3: Blend, flush.

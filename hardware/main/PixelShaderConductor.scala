@@ -74,7 +74,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
-      val depths = Vec(Consts.pixelsPerQuad, UInt(cfg.depthBufferBits.W))
+      val depths = Vec(Consts.pixelsPerQuad, Float32())
     })
 
     // True when there are no jobs pending
@@ -219,7 +219,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   nextDrainJob.io.out.ready := false.B
   io.shadedQuad.bits.location := jobs(drainSelect).rasterizedQuads(drainQuadCount).location
   io.shadedQuad.bits.mask := jobs(drainSelect).rasterizedQuads(drainQuadCount).mask
-  io.shadedQuad.bits.depths := VecInit(Seq.fill(Consts.pixelsPerQuad)(0.U(cfg.depthBufferBits.W))) // XXX not implemented
+  io.shadedQuad.bits.depths := VecInit(Seq.fill(Consts.pixelsPerQuad)(Float32(0.0f))) // XXX not implemented
   for (pixelI <- 0 until Consts.pixelsPerQuad) {
     for (channelI <- 0 until Color.numChannels) {
       val pixelIndex = drainQuadCount * Consts.pixelsPerQuad.U + pixelI.U
