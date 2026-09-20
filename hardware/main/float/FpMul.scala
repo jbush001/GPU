@@ -17,12 +17,14 @@
 package gpu
 
 import chisel3._
+import chisel3.util._
 
 /**
  * This has 2 cycles of latency
  */
 class FpMul extends Module {
   val io = IO(new Bundle {
+    val en = Input(Bool())
     val product = Output(Float32())
     val multiplier = Input(Float32())
     val multiplicand = Input(Float32())
@@ -31,15 +33,19 @@ class FpMul extends Module {
   val multiply = Module(new FpMulMultiply())
   val normalize = Module(new FpMulNormalize())
 
+  multiply.io.en := io.en
   multiply.io.multiplier := io.multiplier
   multiply.io.multiplicand := io.multiplicand
+  multiply.io.en := io.en
 
+  normalize.io.en := io.en
   normalize.io.fractionProduct := multiply.io.fractionProduct
   normalize.io.mulExponent := multiply.io.exponent
   normalize.io.isNaN := multiply.io.isNaN
   normalize.io.isInf := multiply.io.isInf
   normalize.io.isZero := multiply.io.isZero
   normalize.io.isNegative := multiply.io.isNegative
+
 
   io.product := normalize.io.product
 }
@@ -49,6 +55,7 @@ class FpMul extends Module {
  */
 class FpMulMultiply extends Module {
   val io = IO(new Bundle {
+    val en = Input(Bool())
     val multiplier = Input(Float32())
     val multiplicand = Input(Float32())
     val exponent = Output(UInt(Float32.exponentWidth.W))
@@ -75,16 +82,17 @@ class FpMulMultiply extends Module {
 
   val fractionProductNext = (io.multiplier.fullFraction * io.multiplicand.fullFraction)(47, 23)
 
-  io.isZero := RegNext(isZeroNext, false.B)
-  io.isNaN := RegNext(isNanNext, false.B)
-  io.isInf := RegNext(isInfNext, false.B)
-  io.isNegative := RegNext(io.multiplier.isNegative ^ io.multiplicand.isNegative, false.B)
-  io.exponent := RegNext(mulExponentNext, 0.U)
-  io.fractionProduct := RegNext(fractionProductNext, 0.U)
+  io.isZero := RegEnable(isZeroNext, false.B, io.en)
+  io.isNaN := RegEnable(isNanNext, false.B, io.en)
+  io.isInf := RegEnable(isInfNext, false.B, io.en)
+  io.isNegative := RegEnable(io.multiplier.isNegative ^ io.multiplicand.isNegative, false.B, io.en)
+  io.exponent := RegEnable(mulExponentNext, 0.U, io.en)
+  io.fractionProduct := RegEnable(fractionProductNext, 0.U, io.en)
 }
 
 class FpMulNormalize extends Module {
   val io = IO(new Bundle {
+    val en = Input(Bool())
     val fractionProduct = Input(UInt((Float32.fractionWidth + 2).W))
     val mulExponent = Input(UInt(Float32.exponentWidth.W))
     val isNaN = Input(Bool())
@@ -112,14 +120,17 @@ class FpMulNormalize extends Module {
     productNext := Float32(io.isNegative, adjustedExponent, normalizedFraction)
   }
 
-  io.product := RegNext(productNext)
+  io.product := RegEnable(productNext, Float32.Zero, io.en)
 }
 
 object FpMul {
-  def apply(multiplier: Float32, operand2: Float32): Float32 = {
+  val latency = 2
+
+  def apply(multiplier: Float32, operand2: Float32, en: Bool = true.B): Float32 = {
     val mul = Module(new FpMul())
     mul.io.multiplier := multiplier
     mul.io.multiplicand := operand2
+    mul.io.en := en
     mul.io.product
   }
 }

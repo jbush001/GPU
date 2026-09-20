@@ -98,7 +98,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
     dut.clock.step()
 
-    while (!dut.io.complete.peek().litToBoolean) {
+    while (!dut.io.idle.peek().litToBoolean) {
       rng match {
         case Some(rng) => dut.io.quad.ready.poke(rng.nextBoolean())
         case None => {}

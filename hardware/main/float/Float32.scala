@@ -146,7 +146,7 @@ object Float32 {
   final val fractionWidth = 23 // As encoded (not including hidden bit)
   final def exponentBias = 127.U(exponentWidth.W) // This is an exponent of zero
 
-  def Zero = Float32(0.U)
+  def Zero = Float32(0.U(32.W))
   def One = Float32(false.B, exponentBias, 0.U)
   def NaN = Float32(false.B, 0xff.U, 0x400000.U)
 

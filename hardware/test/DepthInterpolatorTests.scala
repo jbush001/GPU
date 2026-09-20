@@ -24,68 +24,67 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
 
   val oneRawBits = java.lang.Float.floatToRawIntBits(1.0f)
 
-  test("DepthInterpolator basic operation") {
-    simulate(new DepthInterpolator) { dut =>
-      dut.io.interpolatedQuad.ready.poke(true)
-      dut.io.rasterizedQuad.valid.poke(true)
-      dut.io.rasterizedQuad.bits.location.x.poke(3)
-      dut.io.rasterizedQuad.bits.location.y.poke(4)
-      dut.io.rasterizedQuad.bits.mask.poke(0xb)
-      dut.io.rasterizedQuad.bits.primitiveId.poke(2)
-      for (i <- 0 until Consts.pixelsPerQuad) {
-        for (j <- 0 until 2) {
-          dut.io.rasterizedQuad.bits.lambda(i)(j).raw.poke(i * 2 + j)
-        }
-      }
-      dut.io.rasterizedQuad.ready.expect(true)
-      dut.clock.step()
-      dut.io.rasterizedQuad.valid.poke(false)
+  def floatToRawBits(value: Float) = java.lang.Float.floatToIntBits(value)
 
-      dut.io.interpolatedQuad.valid.expect(true)
-      dut.io.interpolatedQuad.bits.quad.location.x.expect(3)
-      dut.io.interpolatedQuad.bits.quad.location.y.expect(4)
-      dut.io.interpolatedQuad.bits.quad.mask.expect(0xb)
-      dut.io.interpolatedQuad.bits.quad.primitiveId.expect(2)
-      for (i <- 0 until Consts.pixelsPerQuad) {
-        for (j <- 0 until 2) {
-          dut.io.interpolatedQuad.bits.quad.lambda(i)(j).raw.expect(i * 2 + j)
-        }
-      }
-      for (i <- 0 until Consts.pixelsPerQuad) {
-        dut.io.interpolatedQuad.bits.depths(i).raw.expect(oneRawBits)
-      }
+  def writeCoefficients(
+    dut: DepthInterpolator,
+    primitiveId: Int,
+    coefficients: (Float, Float, Float)
+  ) = {
+    dut.io.writeCoeffs.bits.primitiveId.poke(primitiveId)
+    val invW0 = 1.0f / coefficients._1
+    val invW1 = 1.0f / coefficients._2
+    val invW2 = 1.0f / coefficients._3
+    dut.io.writeCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
+    dut.io.writeCoeffs.bits.coeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
+    dut.io.writeCoeffs.bits.coeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
+    dut.io.writeCoeffs.valid.poke(true)
+    dut.clock.step()
+    dut.io.writeCoeffs.valid.poke(false)
+  }
+
+  def pokeQuad(
+    dut: DepthInterpolator,
+    primitiveId: Int,
+    lambdas: Seq[(Float, Float)]
+  ) = {
+    dut.io.rasterizedQuad.bits.primitiveId.poke(primitiveId)
+    for (i <- 0 until Consts.pixelsPerQuad) {
+      dut.io.rasterizedQuad.bits.lambda(i)(0).raw.poke(floatToRawBits(lambdas(i)._1))
+      dut.io.rasterizedQuad.bits.lambda(i)(1).raw.poke(floatToRawBits(lambdas(i)._2))
+    }
+    dut.io.rasterizedQuad.valid.poke(true)
+    dut.clock.step()
+    dut.io.rasterizedQuad.valid.poke(false)
+
+    for (i <- 0 until Consts.pixelsPerQuad) {
+      dut.io.rasterizedQuad.bits.lambda(i)(0).raw.poke(0)
+      dut.io.rasterizedQuad.bits.lambda(i)(1).raw.poke(0)
     }
   }
 
-  test("DepthInterpolator handshaking") {
+  def expectDepths(dut: DepthInterpolator, expected: Seq[Float]): Unit = {
+    for (i <- 0 until Consts.pixelsPerQuad) {
+      val actual = java.lang.Float.intBitsToFloat(
+        dut.io.interpolatedQuad.bits.depths(i).raw.peek().litValue.toInt)
+      assert(
+        math.abs(actual - expected(i)) < 0.00001f,
+        s"pixel $i: expected depth ${expected(i)}, got $actual")
+    }
+  }
+
+  test("DepthInterpolator basic operation") {
     simulate(new DepthInterpolator) { dut =>
-      dut.io.interpolatedQuad.ready.poke(false)
-      dut.io.rasterizedQuad.valid.poke(true)
-      dut.io.rasterizedQuad.bits.location.x.poke(1)
-      dut.io.rasterizedQuad.bits.location.y.poke(1)
-      dut.io.rasterizedQuad.bits.mask.poke(0xf)
-      dut.io.rasterizedQuad.bits.primitiveId.poke(0)
-      for (i <- 0 until Consts.pixelsPerQuad) {
-        for (j <- 0 until 2) {
-          dut.io.rasterizedQuad.bits.lambda(i)(j).raw.poke(0)
-        }
-      }
-      dut.io.rasterizedQuad.ready.expect(true)
-      dut.clock.step()
-
-      // Upstream must stall.
-      dut.io.rasterizedQuad.ready.expect(false)
-      dut.io.interpolatedQuad.valid.expect(true)
-      dut.io.rasterizedQuad.valid.poke(false)
-      dut.clock.step()
-
-      // Downstream is ready, buffered quad drains and upstream reopens.
       dut.io.interpolatedQuad.ready.poke(true)
-      dut.io.interpolatedQuad.valid.expect(true)
-      dut.io.interpolatedQuad.bits.quad.location.x.expect(1)
-      dut.clock.step()
-      dut.io.rasterizedQuad.ready.expect(true)
-      dut.io.interpolatedQuad.valid.expect(false)
+      writeCoefficients(dut, 0, (0.2f, 0.6f, 0.8f))
+      pokeQuad(dut, 0, Seq(
+        (0.0f, 0.0f),
+        (1.0f, 0.0f),
+        (0.0f, 1.0f),
+        (0.333333f, 0.333333f)))
+      dut.clock.step(12) // one cycle of latency was consumed by pokeQuad
+
+      expectDepths(dut, Seq(0.2f, 0.6f, 0.8f, 0.37894696f))
     }
   }
 }

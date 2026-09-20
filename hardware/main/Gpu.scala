@@ -33,6 +33,11 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
       val value = Float32()
     }))
 
+    val writeDepthCoeffs = Flipped(Valid(new Bundle {
+      val primitiveId = UInt(cfg.primitiveIdBits.W)
+      val coeffs = new DepthInterpolatorCoeffs()
+    }))
+
     val startFlush = Input(Bool())
     val flushData = Decoupled(new Bundle {
       val depth = Float32()
@@ -52,7 +57,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val floatArrayToColor = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
 
-  io.complete := pixelShaderConductor.io.idle && rasterizer.io.complete
+  io.complete := pixelShaderConductor.io.idle && rasterizer.io.idle && depthInterpolator.io.idle
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
@@ -60,7 +65,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   // Hack: wait to flush the pixel shader conductor until a couple cycles after the
   // rasterizer completes, as there will be pixels in the DepthInterpolator pipeline.
   // This will go away when we have proper a proper command processor and synchronization.
-  pixelShaderConductor.io.flush := rasterizer.io.complete && ShiftRegister(rasterizer.io.complete, 2)
+  pixelShaderConductor.io.flush := rasterizer.io.idle && depthInterpolator.io.idle
   pixelShaderConductor.io.startJob <> shaderCore.io.startJob
   shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
   shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
@@ -84,11 +89,12 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.clearDepth := Float32(1.0f)
   tileBuffer.io.startFlush := io.startFlush
   tileBuffer.io.flushBufferSel := io.flushBufferSel
-  tileBuffer.io.enableDepthCheck := false.B
+  tileBuffer.io.enableDepthCheck := true.B
   tileBuffer.io.enableDepthWrite := true.B
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
   rasterizer.io.edgeCoeffs <> io.edgeCoeffs
+  depthInterpolator.io.writeCoeffs <> io.writeDepthCoeffs
 
   io.writeVaryingCoeff <> pixelShaderConductor.io.writeVaryingCoeff
 

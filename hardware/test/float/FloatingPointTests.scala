@@ -96,7 +96,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
 
       dut.io.addend1.raw.poke(0)
       dut.io.addend2.raw.poke(0)
-      dut.clock.step() // Wait for reset to complete
+      dut.io.en.poke(1)
 
       runFpPipelineTest(
         dut,
@@ -151,6 +151,8 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         ( Float.NegativeInfinity, Float.NaN, Float.NaN),
         ( Float.NaN, Float.NegativeInfinity, Float.NaN),
       )
+
+      dut.io.en.poke(1)
 
       runFpPipelineTest(
         dut,
@@ -455,6 +457,8 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (Float.NegativeInfinity, -0.0f),
         (Float.NaN, Float.NaN)
       )
+
+      dut.io.en.poke(1)
 
       runFpPipelineTest(
         dut,

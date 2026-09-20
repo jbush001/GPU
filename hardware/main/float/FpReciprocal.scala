@@ -32,73 +32,74 @@ import chisel3.util._
  */
 class FpReciprocal extends Module {
   val io = IO(new Bundle {
+    val en = Input(Bool())
     val divisor = Input(Float32())
     val reciprocal = Output(Float32())
   })
 
   val stage1 = new {
-    val estimate = RegNext(Cat(1.U, ReciprocalLut(io.divisor.fraction(22, 17)))) // 7 bits
-    val sign = RegNext(io.divisor.isNegative)
-    val exponent = RegNext(253.U - io.divisor.exponent)
-    val divisor = RegNext(io.divisor.fullFraction) // 24 bits
-    val resultIsInf = RegNext(io.divisor.isZero)
-    val resultIsNaN = RegNext(io.divisor.isNaN)
-    val resultIsZero = RegNext(io.divisor.isInf)
+    val estimate = RegEnable(Cat(1.U, ReciprocalLut(io.divisor.fraction(22, 17))), 0.U, io.en) // 7 bits
+    val sign = RegEnable(io.divisor.isNegative, false.B, io.en)
+    val exponent = RegEnable(253.U - io.divisor.exponent, 0.U, io.en)
+    val divisor = RegEnable(io.divisor.fullFraction, 0.U, io.en) // 24 bits
+    val resultIsInf = RegEnable(io.divisor.isZero, false.B, io.en)
+    val resultIsNaN = RegEnable(io.divisor.isNaN, false.B, io.en)
+    val resultIsZero = RegEnable(io.divisor.isInf, false.B, io.en)
   }
 
   val stage2 = new {
-    val sign = RegNext(stage1.sign)
-    val exponent = RegNext(stage1.exponent)
-    val divisor = RegNext(stage1.divisor)
-    val estimate = RegNext(stage1.estimate) // 7 bits
+    val sign = RegEnable(stage1.sign, false.B, io.en)
+    val exponent = RegEnable(stage1.exponent, 0.U, io.en)
+    val divisor = RegEnable(stage1.divisor, 0.U, io.en)
+    val estimate = RegEnable(stage1.estimate, 0.U, io.en) // 7 bits
 
     // Note: we do a reduced precision multiply here to save gates.
     val product = (stage1.estimate * stage1.divisor) // 31 bits
     val productRounded = product(30, 7) + product(6)
 
     // This is equivalent to 2 - product
-    val error = RegNext((~productRounded + 1.U))
+    val error = RegEnable((~productRounded + 1.U), 0.U, io.en)
 
-    val resultIsInf = RegNext(stage1.resultIsInf)
-    val resultIsNaN = RegNext(stage1.resultIsNaN)
-    val resultIsZero = RegNext(stage1.resultIsZero)
+    val resultIsInf = RegEnable(stage1.resultIsInf, false.B, io.en)
+    val resultIsNaN = RegEnable(stage1.resultIsNaN, false.B, io.en)
+    val resultIsZero = RegEnable(stage1.resultIsZero, false.B, io.en)
   }
 
   val stage3 = new {
-    val sign = RegNext(stage2.sign)
-    val exponent = RegNext(stage2.exponent)
-    val divisor = RegNext(stage2.divisor)
+    val sign = RegEnable(stage2.sign, false.B, io.en)
+    val exponent = RegEnable(stage2.exponent, 0.U, io.en)
+    val divisor = RegEnable(stage2.divisor, 0.U, io.en)
 
     val product = stage2.estimate * stage2.error // 7 + 24 = 31 bits
     val productRounded = product(30, 7) + product(6)
-    val estimate = RegNext(productRounded) // 24 bits
-    val resultIsInf = RegNext(stage2.resultIsInf)
-    val resultIsNaN = RegNext(stage2.resultIsNaN)
-    val resultIsZero = RegNext(stage2.resultIsZero)
+    val estimate = RegEnable(productRounded, 0.U, io.en) // 24 bits
+    val resultIsInf = RegEnable(stage2.resultIsInf, false.B, io.en)
+    val resultIsNaN = RegEnable(stage2.resultIsNaN, false.B, io.en)
+    val resultIsZero = RegEnable(stage2.resultIsZero, false.B, io.en)
   }
 
   val stage4 = new {
-    val sign = RegNext(stage3.sign)
-    val exponent = RegNext(stage3.exponent)
-    val estimate = RegNext(stage3.estimate)
+    val sign = RegEnable(stage3.sign, false.B, io.en)
+    val exponent = RegEnable(stage3.exponent, 0.U, io.en)
+    val estimate = RegEnable(stage3.estimate, 0.U, io.en)
     val product = stage3.estimate * stage3.divisor // 24 + 24 = 48 bits
     val productRounded = (product(46, 23) + product(22))(23, 0)
 
-    val error = RegNext((~productRounded + 1.U))
-    val resultIsInf = RegNext(stage3.resultIsInf)
-    val resultIsNaN = RegNext(stage3.resultIsNaN)
-    val resultIsZero = RegNext(stage3.resultIsZero)
+    val error = RegEnable((~productRounded + 1.U), 0.U, io.en)
+    val resultIsInf = RegEnable(stage3.resultIsInf, false.B, io.en)
+    val resultIsNaN = RegEnable(stage3.resultIsNaN, false.B, io.en)
+    val resultIsZero = RegEnable(stage3.resultIsZero, false.B, io.en)
   }
 
   val stage5 = new {
-    val sign = RegNext(stage4.sign)
-    val exponent = RegNext(stage4.exponent)
+    val sign = RegEnable(stage4.sign, false.B, io.en)
+    val exponent = RegEnable(stage4.exponent, 0.U, io.en)
     val product = stage4.estimate * stage4.error // 24 + 24 = 48 bits
     val productRounded = (product(46, 23) + product(22))(23, 0)
-    val estimate = RegNext(productRounded)
-    val resultIsInf = RegNext(stage4.resultIsInf)
-    val resultIsNaN = RegNext(stage4.resultIsNaN)
-    val resultIsZero = RegNext(stage4.resultIsZero)
+    val estimate = RegEnable(productRounded, 0.U, io.en)
+    val resultIsInf = RegEnable(stage4.resultIsInf, false.B, io.en)
+    val resultIsNaN = RegEnable(stage4.resultIsNaN, false.B, io.en)
+    val resultIsZero = RegEnable(stage4.resultIsZero, false.B, io.en)
   }
 
   // Special case: when the estimate is exactly 1.0, need to adjust
@@ -116,5 +117,16 @@ class FpReciprocal extends Module {
     io.reciprocal := Float32(stage5.sign, 0.U, 0.U)
   }.otherwise {
     io.reciprocal := Float32(stage5.sign, finalExponent, finalFraction)
+  }
+}
+
+object FpReciprocal {
+  val latency = 5
+
+  def apply(divisor: Float32, en: Bool = true.B): Float32 = {
+    val recip = Module(new FpReciprocal())
+    recip.io.divisor := divisor
+    recip.io.en := en
+    recip.io.reciprocal
   }
 }

@@ -34,6 +34,12 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
       val index = UInt(5.W)
       val value = Float32()
     }))
+
+    val writeDepthCoeffs = Flipped(Valid(new Bundle {
+      val primitiveId = UInt(cfg.primitiveIdBits.W)
+      val coeffs = new DepthInterpolatorCoeffs()
+    }))
+
     val startFlush = Input(Bool())
     val flushColor = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
@@ -47,10 +53,15 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 
   gpu.io.edgeCoeffs <> io.edgeCoeffs
   io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
+  gpu.io.writeDepthCoeffs <> io.writeDepthCoeffs
   gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
   io.flushColor.valid := gpu.io.flushData.valid
-  io.flushColor.bits := gpu.io.flushData.bits.color.toArgb32
+  when (io.flushBufferSel === RenderBufferId.Color) {
+    io.flushColor.bits := gpu.io.flushData.bits.color.toArgb32
+  }.otherwise {
+    io.flushColor.bits := Fill(4, gpu.io.flushData.bits.depth.toUnorm(8))
+  }
 
   gpu.io.flushBufferSel := io.flushBufferSel
   gpu.io.axiBus <> memory.io
@@ -89,8 +100,8 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         .halt()
       val programBytes = asm.finish()
 
-      val vertices = Seq((5, 7), (33, 121), (110, 119), (117, 15))
-      val varyings: Seq[Seq[Float]] = vertices.map { case (x, y) =>
+      val vertices = Seq((5, 7, 0.5f), (33, 121, 0.5f), (110, 119, 0.5f), (117, 15, 0.5f))
+      val varyings: Seq[Seq[Float]] = vertices.map { case (x, y, _) =>
         Seq(x.toFloat / 127.0f, y.toFloat / 127.0f)
       }
 
@@ -98,7 +109,43 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int)],
+  test("intersecting triangles") {
+    simulate(new SimTop()) { dut =>
+      val asm = new ShaderAssembler()
+      asm
+        .move(SpecialReg.Const1_0f, SpecialReg.Varying)
+        .move(SpecialReg.Const1_0f, SpecialReg.Varying)
+        .move(SpecialReg.OutputR, SpecialReg.Varying)
+        .move(SpecialReg.Const1_0f, SpecialReg.Varying)
+        .move(SpecialReg.Const1_0f, SpecialReg.Varying)
+        .move(SpecialReg.OutputG, SpecialReg.Varying)
+        .move(SpecialReg.OutputA, SpecialReg.Const1_0f)
+        .halt()
+      val programBytes = asm.finish()
+      val vertices = Seq(
+        (4, 24, 0.1f),
+        (64, 124, 0.9f),
+        (124, 4, 0.1f),
+
+        (64, 4, 0.9f),
+        (4, 104, 0.3f),
+        (124, 124, 0.1f),
+      )
+
+      val varyings: Seq[Seq[Float]] = Seq(
+        Seq(0.0f, 0.9f),
+        Seq(0.0f, 0.9f),
+        Seq(0.0f, 0.9f),
+        Seq(0.9f, 0.0f),
+        Seq(0.9f, 0.0f),
+        Seq(0.9f, 0.0f),
+      )
+
+      runRenderTest(dut, programBytes, vertices, varyings, Seq(0, 1, 2, 3, 4, 5))
+    }
+  }
+
+  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int, Float)],
                     varyings: Seq[Seq[Float]], indices: Seq[Int]): Unit = {
     val imageData = renderBuffer(dut, programBytes, vertices, varyings, indices)
     val reference = loadReferenceImage(getReferenceImageName())
@@ -115,7 +162,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int)],
+  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int, Float)],
     varyings: Seq[Seq[Float]], indices: Seq[Int]): Array[Int] = {
     // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
@@ -137,7 +184,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
             val primitiveId = (primIndex % (1 << cfg.primitiveIdBits))
-            setUpRasterizer(dut, primitiveId, triangleVerts, tileLeft, tileTop)
+            setUpPrimitive(dut, primitiveId, triangleVerts, tileLeft, tileTop)
             val triangleVaryings = triangleIndices.map(i => varyings(i))
             for (i <- varyings(0).indices) {
               setUpVarying(dut, primitiveId,
@@ -178,7 +225,25 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.clock.step()
   }
 
-  def setUpRasterizer(dut: SimTop, primitiveId: Int, vertices: Seq[(Int, Int)], tileLeft: Int, tileTop: Int): Unit = {
+  def setUpDepthCoeffs(dut: SimTop, primitiveId: Int, w0: Float, w1: Float, w2: Float) = {
+    val invW0 = 1.0f / w0
+    val invW1 = 1.0f / w1
+    val invW2 = 1.0f / w2
+    dut.io.writeDepthCoeffs.bits.primitiveId.poke(primitiveId)
+    dut.io.writeDepthCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
+    dut.io.writeDepthCoeffs.bits.coeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
+    dut.io.writeDepthCoeffs.bits.coeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
+    dut.io.writeDepthCoeffs.valid.poke(true)
+    dut.clock.step()
+    dut.io.writeDepthCoeffs.valid.poke(false)
+  }
+
+  def setUpPrimitive(dut: SimTop, primitiveId: Int, vertices: Seq[(Int, Int, Float)],
+    tileLeft: Int, tileTop: Int): Unit = {
+
+    setUpDepthCoeffs(dut, primitiveId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
+
+    // Set up rasterizer coefficients
     dut.io.edgeCoeffs.valid.poke(true)
     dut.io.edgeCoeffs.bits.offset.x.poke(tileLeft)
     dut.io.edgeCoeffs.bits.offset.y.poke(tileTop)
@@ -195,8 +260,8 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.edgeCoeffs.bits.boundingBox.right.poke(bbRight)
     dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(bbBottom)
     val rawCoeffs = (0 until 3).map { i =>
-      val (startX, startY) = vertices(i)
-      val (endX, endY) = vertices((i + 1) % 3)
+      val (startX, startY, _) = vertices(i)
+      val (endX, endY, _) = vertices((i + 1) % 3)
       val dx = endY - startY
       val dy = endX - startX
 
@@ -286,11 +351,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
   }
 
   def loadReferenceImage(name: String): Option[Array[Int]] = {
-    val inputStream = new FileInputStream(name)
-    if (inputStream == null) {
+    if (!new java.io.File(name).exists()) {
       return None
     }
 
+    val inputStream = new FileInputStream(name)
     val bufferedImage: BufferedImage = ImageIO.read(inputStream)
     val width = bufferedImage.getWidth
     val height = bufferedImage.getHeight
