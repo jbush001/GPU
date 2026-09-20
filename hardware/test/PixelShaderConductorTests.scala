@@ -74,7 +74,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     result
   }
 
-  def writeRegister(dut: PixelShaderConductor, jobId: Int, addr: Int, data: Seq[Int]): Unit = {
+  def pokeShaderReg(dut: PixelShaderConductor, jobId: Int, addr: Int, data: Seq[Int]): Unit = {
     dut.io.shaderRegWrite.valid.poke(true)
     dut.io.shaderRegWrite.bits.jobId.poke(jobId)
     dut.io.shaderRegWrite.bits.addr.poke(addr)
@@ -125,10 +125,10 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       assert(readRegister(dut, jobId, 1) ==
         Seq.tabulate(cfg.shaderVectorLanes)(i => 2000 + i)) // lambda 1
 
-      writeRegister(dut, jobId, 0, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // red
-      writeRegister(dut, jobId, 1, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // blue
-      writeRegister(dut, jobId, 2, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300)) // green
-      writeRegister(dut, jobId, 3, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 400)) // alpha
+      pokeShaderReg(dut, jobId, 0, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // red
+      pokeShaderReg(dut, jobId, 1, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // blue
+      pokeShaderReg(dut, jobId, 2, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300)) // green
+      pokeShaderReg(dut, jobId, 3, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 400)) // alpha
 
       dut.io.jobFinished.valid.poke(true)
       dut.io.jobFinished.bits.poke(jobId)
@@ -307,8 +307,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.io.textureFetchRequest.valid.expect(false)
 
       // Initiate a texture fetch by writing coordinates
-      writeRegister(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
-      writeRegister(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      pokeShaderReg(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
+      pokeShaderReg(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
       dut.clock.step()
 
       // Ensure the texel requests are delivered to the interface
@@ -350,8 +350,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
       // Case 2: the texel is read before the texture fetch response arrives. The
       // caller needs to block.
-      writeRegister(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
-      writeRegister(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      pokeShaderReg(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
+      pokeShaderReg(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
       dut.clock.step()
 
       // Initiate a register read
@@ -420,8 +420,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
 
       // Initiate a texture fetch by writing coordinates
-      writeRegister(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
-      writeRegister(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      pokeShaderReg(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
+      pokeShaderReg(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
       dut.clock.step()
 
       dut.io.textureFetchRequest.ready.poke(true)

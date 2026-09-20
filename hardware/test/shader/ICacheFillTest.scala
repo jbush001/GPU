@@ -139,7 +139,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ICacheFillUnit random") {
+  test("ICacheFillUnit stress") {
     // 32 cache lines. We use 8 threads, so there is a 25% change of a collision each miss.
     val memorySize = 2048
 

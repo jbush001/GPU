@@ -352,7 +352,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
     }
   }
 
-  test("TileBuffer random tile write") {
+  test("TileBuffer stress") {
     simulate(new TileBuffer()) { dut =>
       val reference = new TileBufferReference
 

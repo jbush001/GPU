@@ -14,8 +14,6 @@
 //   limitations under the License.
 //
 
-// TODO: does not check lambda outputs.
-
 package gpu
 
 import scala.util.Random
@@ -48,6 +46,30 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     coeffs.initialValue(2) = (startX - x2) * (y0 - y2) - (startY - y2) * (x0 - x2)
 
     return coeffs
+  }
+
+  def rawToFloat(raw: BigInt): Float = java.lang.Float.intBitsToFloat(raw.toInt)
+
+  def edgeValueAt(coeffs: ComputedCoeffs, edge: Int, x: Int, y: Int): Int =
+    coeffs.initialValue(edge) + coeffs.xStep(edge) * x + coeffs.yStep(edge) * y
+
+  def computeExpectedLambda(coeffs: ComputedCoeffs, x: Int, y: Int): (Float, Float) = (
+    edgeValueAt(coeffs, 2, x, y) / 65536.0f,
+    edgeValueAt(coeffs, 0, x, y) / 65536.0f
+  )
+
+  def expectLambdas(dut: Rasterizer, coeffs: ComputedCoeffs, x: Int, y: Int): Unit = {
+    val pixelOffsets = Seq((0, 0), (1, 0), (0, 1), (1, 1))
+    for (pixel <- 0 until Consts.pixelsPerQuad) {
+      val (dx, dy) = pixelOffsets(pixel)
+      val (expectedLambda0, expectedLambda1) = computeExpectedLambda(coeffs, x + dx, y + dy)
+      val actualLambda0 = rawToFloat(dut.io.quad.bits.lambda(pixel)(0).raw.peek().litValue)
+      val actualLambda1 = rawToFloat(dut.io.quad.bits.lambda(pixel)(1).raw.peek().litValue)
+      assert(math.abs(actualLambda0 - expectedLambda0) < 0.00001f,
+        s"pixel $pixel lambda 0: expected $expectedLambda0, got $actualLambda0")
+      assert(math.abs(actualLambda1 - expectedLambda1) < 0.00001f,
+        s"pixel $pixel lambda 1: expected $expectedLambda1, got $actualLambda1")
+    }
   }
 
   def rasterizeTriangle(dut: Rasterizer,
@@ -112,6 +134,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
         val y = dut.io.quad.bits.location.y.peek().litValue.toInt
         assert(x <= (bbRight - bbLeft))
         assert(y <= (bbBottom - bbTop))
+        expectLambdas(dut, coeffs, x, y)
         val mask = dut.io.quad.bits.mask.peek().litValue.toLong
         if ((mask & 1) != 0) outputBuffer(y)(x) = true
         if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
@@ -190,7 +213,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("Rasterizer random") {
+  test("Rasterizer stress") {
     simulate(new Rasterizer()) { dut =>
       val rng = new Random(42)
       val blockSize = 32
