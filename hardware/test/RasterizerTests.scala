@@ -25,6 +25,7 @@ class ComputedCoeffs {
   val xStep = Array.ofDim[Int](edges)
   val yStep = Array.ofDim[Int](edges)
   val initialValue = Array.ofDim[Int](edges)
+  val vertices = Array.ofDim[(Int, Int)](3)
 }
 
 class RasterizerTests extends AnyFunSuite with ChiselSim {
@@ -33,6 +34,9 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   def computeEdgeCoefficient(x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int,
   startX: Int, startY: Int): ComputedCoeffs = {
     val coeffs = new ComputedCoeffs()
+    coeffs.vertices(0) = (x0, y0)
+    coeffs.vertices(1) = (x1, y1)
+    coeffs.vertices(2) = (x2, y2)
     coeffs.xStep(0) = y1 - y0
     coeffs.yStep(0) = x0 - x1
     coeffs.initialValue(0) = (startX - x0) * (y1 - y0) - (startY - y0) * (x1 - x0)
@@ -50,19 +54,21 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
   def rawToFloat(raw: BigInt): Float = java.lang.Float.intBitsToFloat(raw.toInt)
 
-  def edgeValueAt(coeffs: ComputedCoeffs, edge: Int, x: Int, y: Int): Int =
-    coeffs.initialValue(edge) + coeffs.xStep(edge) * x + coeffs.yStep(edge) * y
+  def computeExpectedLambda(vertices: Array[(Int, Int)], x: Int, y: Int): (Float, Float) = {
+    val (x0, y0) = vertices(0)
+    val (x1, y1) = vertices(1)
+    val (x2, y2) = vertices(2)
+    val lambda0 = (x - x2) * (y0 - y2) - (y - y2) * (x0 - x2)
+    val lambda1 = (x - x0) * (y1 - y0) - (y - y0) * (x1 - x0)
 
-  def computeExpectedLambda(coeffs: ComputedCoeffs, x: Int, y: Int): (Float, Float) = (
-    edgeValueAt(coeffs, 2, x, y) / 65536.0f,
-    edgeValueAt(coeffs, 0, x, y) / 65536.0f
-  )
+    (lambda0 / 65536.0f, lambda1 / 65536.0f)
+  }
 
-  def expectLambdas(dut: Rasterizer, coeffs: ComputedCoeffs, x: Int, y: Int): Unit = {
+  def expectLambdas(dut: Rasterizer, vertices: Array[(Int, Int)], x: Int, y: Int): Unit = {
     val pixelOffsets = Seq((0, 0), (1, 0), (0, 1), (1, 1))
     for (pixel <- 0 until Consts.pixelsPerQuad) {
       val (dx, dy) = pixelOffsets(pixel)
-      val (expectedLambda0, expectedLambda1) = computeExpectedLambda(coeffs, x + dx, y + dy)
+      val (expectedLambda0, expectedLambda1) = computeExpectedLambda(vertices, x + dx, y + dy)
       val actualLambda0 = rawToFloat(dut.io.quad.bits.lambda(pixel)(0).raw.peek().litValue)
       val actualLambda1 = rawToFloat(dut.io.quad.bits.lambda(pixel)(1).raw.peek().litValue)
       assert(math.abs(actualLambda0 - expectedLambda0) < 0.00001f,
@@ -134,7 +140,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
         val y = dut.io.quad.bits.location.y.peek().litValue.toInt
         assert(x <= (bbRight - bbLeft))
         assert(y <= (bbBottom - bbTop))
-        expectLambdas(dut, coeffs, x, y)
+        expectLambdas(dut, coeffs.vertices, x + bbLeft, y + bbTop)
         val mask = dut.io.quad.bits.mask.peek().litValue.toLong
         if ((mask & 1) != 0) outputBuffer(y)(x) = true
         if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
