@@ -51,7 +51,7 @@ class Color extends Bundle {
 
   /** Truncate an internal channel to 8-bits with appropriate rounding.
     */
-  def channel8Bit(chidx: Int): UInt = {
+  private def channel8Bit(chidx: Int): UInt = {
     val shift = Color.channelBits - 8
     val roundConst = (1 << (shift - 1)).U
 

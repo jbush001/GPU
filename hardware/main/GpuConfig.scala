@@ -25,7 +25,6 @@ object Consts {
 
 case class GpuConfig(
   // Configurable design parameters
-  depthBufferBits: Int = 24,
   tileSizePixels: Int = 64,
   edgeFunctionBits: Int = 32,
   coordinateBits: Int = 16,

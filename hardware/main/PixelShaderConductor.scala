@@ -30,8 +30,7 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
 }
 
 /**
-  * PixelShaderConductor coordinates between the [[Rasterizer]], [[ShaderCore]],
-  * and [[TileBuffer]].
+  * PixelShaderConductor handles batching requests for [[ShaderCore]],
   * It collects rasterized quads from the rasterizer, dispatches shading
   * jobs to the shader core, and sends shaded quads to the tile buffer, tracking
   * the state of all in-flight quads.

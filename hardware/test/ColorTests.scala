@@ -95,6 +95,5 @@ class ColorTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
       dut.io.result.expect(r = 0, g = 257, b = 514, a = 1023)
     }
   }
-
 }
 

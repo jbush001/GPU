@@ -71,7 +71,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 class RenderTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("triangle1") {
+  test("texture fetch") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
       asm

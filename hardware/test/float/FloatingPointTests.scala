@@ -27,6 +27,9 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
 
   def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
 
+  /** This manages pipelining test operations, inserting the appropriate delay
+    * between issueing requests and checking their results.
+    */
   def runFpPipelineTest[T <: Module, V](
     dut: T,
     pipelineDelay: Int,
@@ -379,7 +382,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (1.0f, -1.0f, true),
         (-1.0f, -2.0f, true),
         (-2.0f, -1.0f, false),
-        (+0.0f, -0.0f, false),
+        (+0.0f, -0.0f, false), // These are effectively equal
         (-0.0f, +0.0f, false),
         (Float.PositiveInfinity, 1.0f, true),
         (1.0f, Float.PositiveInfinity, false),
@@ -387,7 +390,7 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim {
         (1.0f, Float.NegativeInfinity, true),
         (Float.PositiveInfinity, Float.NegativeInfinity, true),
         (Float.NegativeInfinity, Float.PositiveInfinity, false),
-        (Float.NaN, 1.0f, false),
+        (Float.NaN, 1.0f, false), // NaN should always return false for comparisons
         (1.0f, Float.NaN, false),
         (Float.NaN, Float.NaN, false)
       )

@@ -77,14 +77,23 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
     simulate(new DepthInterpolator) { dut =>
       dut.io.interpolatedQuad.ready.poke(true)
       writeCoefficients(dut, 0, (0.2f, 0.6f, 0.8f))
+      writeCoefficients(dut, 1, (0.3f, 0.4f, 0.5f))
+
       pokeQuad(dut, 0, Seq(
         (0.0f, 0.0f),
         (1.0f, 0.0f),
         (0.0f, 1.0f),
         (0.333333f, 0.333333f)))
-      dut.clock.step(12) // one cycle of latency was consumed by pokeQuad
+      pokeQuad(dut, 1, Seq(
+        (1.0f, 0.0f),
+        (0.0f, 1.0f),
+        (0.333333f, 0.333333f),
+        (0.0f, 0.0f)))
+      dut.clock.step(11) // Two cycles of latency was consumed by pokeQuad
 
       expectDepths(dut, Seq(0.2f, 0.6f, 0.8f, 0.37894696f))
+      dut.clock.step()
+      expectDepths(dut, Seq(0.4f, 0.5f, 0.38297862f, 0.3f))
     }
   }
 }
