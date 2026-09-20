@@ -36,6 +36,8 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
     val invW1 = 1.0f / coefficients._2
     val invW2 = 1.0f / coefficients._3
     dut.io.writeCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
+    dut.io.writeCoeffs.bits.coeffs.invW1.raw.poke(floatToRawBits(invW1))
+    dut.io.writeCoeffs.bits.coeffs.invW2.raw.poke(floatToRawBits(invW2))
     dut.io.writeCoeffs.bits.coeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
     dut.io.writeCoeffs.bits.coeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
     dut.io.writeCoeffs.valid.poke(true)
@@ -89,7 +91,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
         (0.0f, 1.0f),
         (0.333333f, 0.333333f),
         (0.0f, 0.0f)))
-      dut.clock.step(11) // Two cycles of latency was consumed by pokeQuad
+      dut.clock.step(15) // Two cycles of latency was consumed by pokeQuad
 
       expectDepths(dut, Seq(0.2f, 0.6f, 0.8f, 0.37894696f))
       dut.clock.step()

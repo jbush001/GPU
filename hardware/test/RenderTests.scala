@@ -71,7 +71,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 class RenderTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("texture fetch") {
+  test("render texture") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
       asm
@@ -100,16 +100,19 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         .halt()
       val programBytes = asm.finish()
 
-      val vertices = Seq((5, 7, 0.5f), (33, 121, 0.5f), (110, 119, 0.5f), (117, 15, 0.5f))
-      val varyings: Seq[Seq[Float]] = vertices.map { case (x, y, _) =>
-        Seq(x.toFloat / 127.0f, y.toFloat / 127.0f)
-      }
+      val vertices = Seq((40, 5, 0.6f), (5, 125, 0.2f), (120, 125, 0.2f), (88, 5, 0.6f))
+      val varyings: Seq[Seq[Float]] = Seq(
+        Seq(0.0f, 0.0f),
+        Seq(0.0f, 1.0f),
+        Seq(1.0f, 1.0f),
+        Seq(1.0f, 0.0f)
+      )
 
       runRenderTest(dut, programBytes, vertices, varyings, Seq(0, 1, 2, 0, 2, 3))
     }
   }
 
-  test("intersecting triangles") {
+  test("render intersecting triangles") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
       asm
@@ -231,7 +234,9 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val invW2 = 1.0f / w2
     dut.io.writeDepthCoeffs.bits.primitiveId.poke(primitiveId)
     dut.io.writeDepthCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
+    dut.io.writeDepthCoeffs.bits.coeffs.invW1.raw.poke(floatToRawBits(invW1))
     dut.io.writeDepthCoeffs.bits.coeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
+    dut.io.writeDepthCoeffs.bits.coeffs.invW2.raw.poke(floatToRawBits(invW2))
     dut.io.writeDepthCoeffs.bits.coeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
     dut.io.writeDepthCoeffs.valid.poke(true)
     dut.clock.step()
