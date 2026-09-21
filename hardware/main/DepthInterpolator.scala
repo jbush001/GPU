@@ -27,11 +27,7 @@ class DepthInterpolatorCoeffs extends Bundle {
   val invdW2 = Float32()
 }
 
-/** A [[RasterizedQuad]] augmented with per-pixel interpolated depth, produced
-  * by [[DepthInterpolator]].
-  */
-class InterpolatedQuad(implicit cfg: GpuConfig) extends Bundle {
-  val quad = new RasterizedQuad
+class InterpolatedQuad(implicit cfg: GpuConfig) extends RasterizedQuad {
   val depths = Vec(Consts.pixelsPerQuad, Float32())
 }
 
@@ -59,7 +55,14 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
   val stall = io.interpolatedQuad.valid && !io.interpolatedQuad.ready
 
   val totalLatency = 17
-  io.interpolatedQuad.bits.quad := ShiftRegister(io.rasterizedQuad.bits, totalLatency, !stall)
+  val delayedSourceQuad = ShiftRegister(io.rasterizedQuad.bits, totalLatency, !stall)
+
+  // Connect all relevant fields to the destination
+  io.interpolatedQuad.bits.elements.foreach { case (name, destData) =>
+    delayedSourceQuad.elements.get(name).foreach { srcData =>
+      destData := srcData
+    }
+  }
 
   val coeff0 = coeffs(io.rasterizedQuad.bits.primitiveId)
   val coeff5 = ShiftRegister(coeff0, 5, !stall)
@@ -80,8 +83,8 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     val e1 = FpMul(w, lambda1_13, !stall)
 
     // note: we replace the lambda values here with perspective corrected ones.
-    io.interpolatedQuad.bits.quad.lambda(pixel)(0) := FpMul(e0, coeff15.invW1, !stall) // Cycle 15
-    io.interpolatedQuad.bits.quad.lambda(pixel)(1) := FpMul(e1, coeff15.invW2, !stall)
+    io.interpolatedQuad.bits.lambda(pixel)(0) := FpMul(e0, coeff15.invW1, !stall) // Cycle 15
+    io.interpolatedQuad.bits.lambda(pixel)(1) := FpMul(e1, coeff15.invW2, !stall)
     io.interpolatedQuad.bits.depths(pixel) := ShiftRegister(w, 4, !stall)
   }
 

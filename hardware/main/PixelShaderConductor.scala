@@ -141,7 +141,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   when (io.flush && fillActive) {
     assert(fillQuadCount != 0.U)
     // Push empty quads to complete any pending entries.
-    jobs(fillIndex).sourceQuads(fillQuadCount).quad.mask := 0.U
+    jobs(fillIndex).sourceQuads(fillQuadCount).mask := 0.U
     when (fillQuadCount === (quadsPerJob - 1).U) {
       // Finished filling, ready for processing
       fillQuadCount := 0.U
@@ -216,8 +216,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val drainSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
   nextDrainJob.io.out.ready := false.B
-  io.shadedQuad.bits.location := jobs(drainSelect).sourceQuads(drainQuadCount).quad.location
-  io.shadedQuad.bits.mask := jobs(drainSelect).sourceQuads(drainQuadCount).quad.mask
+  io.shadedQuad.bits.location := jobs(drainSelect).sourceQuads(drainQuadCount).location
+  io.shadedQuad.bits.mask := jobs(drainSelect).sourceQuads(drainQuadCount).mask
   io.shadedQuad.bits.depths := jobs(drainSelect).sourceQuads(drainQuadCount).depths
   for (pixelI <- 0 until Consts.pixelsPerQuad) {
     for (channelI <- 0 until Color.numChannels) {
@@ -274,7 +274,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
         for (i <- 0 until cfg.shaderVectorLanes) {
           val quadIndex = (i / Consts.pixelsPerQuad)
           val pixelIndex = (i % Consts.pixelsPerQuad)
-          io.shaderRegReadData.bits(i) := readJob.sourceQuads(quadIndex).quad.lambda(pixelIndex)(
+          io.shaderRegReadData.bits(i) := readJob.sourceQuads(quadIndex).lambda(pixelIndex)(
             regReadAddrStage2(0)).asUInt
         }
       }
@@ -282,7 +282,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       // Read varying coefficient memory
       is (2.U) {
         for (quadI <- 0 until quadsPerJob) {
-          val coeffVal = varyingCoeffs(readJob.sourceQuads(quadI).quad.primitiveId)(readJob.varyingCoeffIndex)
+          val coeffVal = varyingCoeffs(readJob.sourceQuads(quadI).primitiveId)(readJob.varyingCoeffIndex)
           for (pixelI <- 0 until Consts.pixelsPerQuad) {
             io.shaderRegReadData.bits(quadI * Consts.pixelsPerQuad + pixelI) := coeffVal.raw
           }

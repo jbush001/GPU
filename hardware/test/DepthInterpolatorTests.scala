@@ -125,7 +125,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
         lambdas(i)._2 / vertexW._3 / perspectiveDenominator)
       for (component <- 0 until 2) {
         val actual = rawToFloat(
-          dut.io.interpolatedQuad.bits.quad.lambda(i)(component).raw.peek().litValue)
+          dut.io.interpolatedQuad.bits.lambda(i)(component).raw.peek().litValue)
         assert(
           math.abs(actual - expected(component)) < 0.00001f,
           s"pixel $i lambda $component: expected ${expected(component)}, got $actual")
@@ -139,10 +139,10 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
     location: (Int, Int),
     mask: Int
   ): Unit = {
-    dut.io.interpolatedQuad.bits.quad.primitiveId.expect(primitiveId)
-    dut.io.interpolatedQuad.bits.quad.location.x.expect(location._1)
-    dut.io.interpolatedQuad.bits.quad.location.y.expect(location._2)
-    dut.io.interpolatedQuad.bits.quad.mask.expect(mask)
+    dut.io.interpolatedQuad.bits.primitiveId.expect(primitiveId)
+    dut.io.interpolatedQuad.bits.location.x.expect(location._1)
+    dut.io.interpolatedQuad.bits.location.y.expect(location._2)
+    dut.io.interpolatedQuad.bits.mask.expect(mask)
   }
 
   def expectReference(dut: DepthInterpolator, expected: ExpectedQuad): Unit = {
@@ -194,14 +194,14 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
       dut.io.rasterizedQuad.ready.expect(false.B)
 
       val depthBeforeStall = dut.io.interpolatedQuad.bits.depths(0).raw.peek().litValue
-      val primitiveBeforeStall = dut.io.interpolatedQuad.bits.quad.primitiveId.peek().litValue
-      val locationBeforeStall = dut.io.interpolatedQuad.bits.quad.location.x.peek().litValue
+      val primitiveBeforeStall = dut.io.interpolatedQuad.bits.primitiveId.peek().litValue
+      val locationBeforeStall = dut.io.interpolatedQuad.bits.location.x.peek().litValue
 
       dut.clock.step(3)
       dut.io.interpolatedQuad.valid.expect(true.B)
       dut.io.interpolatedQuad.bits.depths(0).raw.expect(depthBeforeStall)
-      dut.io.interpolatedQuad.bits.quad.primitiveId.expect(primitiveBeforeStall)
-      dut.io.interpolatedQuad.bits.quad.location.x.expect(locationBeforeStall)
+      dut.io.interpolatedQuad.bits.primitiveId.expect(primitiveBeforeStall)
+      dut.io.interpolatedQuad.bits.location.x.expect(locationBeforeStall)
 
       dut.io.interpolatedQuad.ready.poke(true)
       dut.clock.step()

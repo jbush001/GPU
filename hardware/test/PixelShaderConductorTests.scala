@@ -25,13 +25,13 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
     lambda: Seq[Seq[Int]], depths: Seq[Float],primitiveId: Int = 0): Unit = {
     dut.io.sourceQuad.valid.poke(true)
-    dut.io.sourceQuad.bits.quad.location.x.poke(x)
-    dut.io.sourceQuad.bits.quad.location.y.poke(y)
-    dut.io.sourceQuad.bits.quad.mask.poke(mask)
-    dut.io.sourceQuad.bits.quad.primitiveId.poke(primitiveId)
+    dut.io.sourceQuad.bits.location.x.poke(x)
+    dut.io.sourceQuad.bits.location.y.poke(y)
+    dut.io.sourceQuad.bits.mask.poke(mask)
+    dut.io.sourceQuad.bits.primitiveId.poke(primitiveId)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
-        dut.io.sourceQuad.bits.quad.lambda(i)(j).raw.poke(lambda(i)(j))
+        dut.io.sourceQuad.bits.lambda(i)(j).raw.poke(lambda(i)(j))
       }
     }
 
@@ -236,9 +236,9 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
           }
 
           dut.io.sourceQuad.valid.poke(true)
-          dut.io.sourceQuad.bits.quad.location.x.poke(tilex)
-          dut.io.sourceQuad.bits.quad.location.y.poke(tiley)
-          dut.io.sourceQuad.bits.quad.mask.poke(15)
+          dut.io.sourceQuad.bits.location.x.poke(tilex)
+          dut.io.sourceQuad.bits.location.y.poke(tiley)
+          dut.io.sourceQuad.bits.mask.poke(15)
           outstandingQuads += ((tilex, tiley))
         } else {
           dut.io.sourceQuad.valid.poke(false)
