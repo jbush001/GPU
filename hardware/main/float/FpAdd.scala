@@ -158,6 +158,7 @@ class FpAddNormalize extends Module {
   val isZeroResult = io.sumResult === 0.U
   val normalizeShift = PriorityEncoder(Reverse(io.sumResult(sumResultWidth - 1, 0)))
   val normalizedSum = (io.sumResult << normalizeShift)(Float32.fractionWidth, 1)
+  val normalizedExponent = io.resultExponent2 + 1.U - normalizeShift
 
   val resultFraction = WireInit(0.U(Float32.fractionWidth.W))
   val resultExponent = WireInit(0.U(Float32.exponentWidth.W))
@@ -170,9 +171,12 @@ class FpAddNormalize extends Module {
   }.elsewhen (isZeroResult) {
     resultFraction := 0.U
     resultExponent := 0.U
+  }.elsewhen (normalizedExponent >= 0xff.U) {
+    resultFraction := 0.U
+    resultExponent := 0xff.U
   }.otherwise {
     resultFraction := normalizedSum
-    resultExponent := io.resultExponent2 + 1.U - normalizeShift
+    resultExponent := normalizedExponent
   }
 
   val resultNegative = io.resultNegative2 && !isZeroResult

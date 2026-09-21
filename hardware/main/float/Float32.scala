@@ -46,7 +46,7 @@ class Float32 extends Bundle {
   def neg = Float32(!this.isNegative, this.exponent, this.fraction)
 
   def absGreaterThan(that: Float32): Bool = {
-    this.abs.raw > that.abs.raw
+    this.abs.raw > that.abs.raw && !this.isNaN && !that.isNaN
   }
 
   private def toOrderable: UInt = {
@@ -113,6 +113,7 @@ class Float32 extends Bundle {
       // Value is >= 1.0 or is NaN
       result := ~0.U(width.W)
     }.otherwise {
+      // @bug this is not correct
       val scaledProduct = (this.fullFraction << 24) - this.fullFraction
       val denormShift = Float32.exponentBias - this.exponent
       val shifted = scaledProduct >> denormShift
