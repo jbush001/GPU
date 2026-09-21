@@ -33,8 +33,6 @@ import chisel3.util._
   *   - A data word is consumed iff both `data.valid` and `data.ready` are
   *     true; the arbiter advances to the next word only after a word is
   *     consumed.
-  *   - After the arbiter has asserted `data.valid`, it MUST NOT deassert
-  *     it or change the contents of `data.bits`.
   *   - A burst completes on the clock edge the last word is consumed.
   *   - `data.valid` and `data.ready` MUST NOT be combinationally dependent
   *     on each other.

@@ -25,28 +25,28 @@ import chisel3.util._
   */
 class AxiBus(implicit cfg: GpuConfig) extends Bundle {
   // Write request channel (B1.1.1)
-  val writeRequest = Decoupled(new Bundle {
+  val writeRequest = Irrevocable(new Bundle {
     val address = UInt(cfg.busAddressBits.W) // AWADDR Address to write to
     val length = UInt(cfg.busBurstLengthBits.W) // AWLEN Number of data transfers in burst
   })
 
   // Write data channel (B1.1.2)
-  val writeData = Decoupled(new Bundle {
+  val writeData = Irrevocable(new Bundle {
     val data = UInt(cfg.busDataBits.W) // WDATA Data to write
     val last = Bool() // WLAST True if this is the last transfer in burst
   })
 
   // Write response channel (B1.1.3)
-  val writeResponse = Flipped(Decoupled(new Bundle {}))
+  val writeResponse = Flipped(Irrevocable(new Bundle {}))
 
   // Read request channel (B1.2.1)
-  val readRequest = Decoupled(new Bundle {
+  val readRequest = Irrevocable(new Bundle {
     val address = UInt(cfg.busAddressBits.W) // ARADDR Address to read from
     val length = UInt(cfg.busBurstLengthBits.W) // ARLEN Number of data transfers in burst
   })
 
   // Read data channel (B1.2.2)
-  val readData = Flipped(Decoupled(new Bundle {
+  val readData = Flipped(Irrevocable(new Bundle {
     val data = UInt(cfg.busDataBits.W) // RDATA Data read
   }))
 }
