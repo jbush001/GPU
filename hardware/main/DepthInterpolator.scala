@@ -50,7 +50,7 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     val idle = Output(Bool())
   })
 
-  val coeffs = RegInit(VecInit(Seq.fill(1 << cfg.primitiveIdBits)(0.U.asTypeOf(new DepthInterpolatorCoeffs()))))
+  val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentPrimitives)(0.U.asTypeOf(new DepthInterpolatorCoeffs())))
 
   when (io.writeCoeffs.valid) {
     coeffs(io.writeCoeffs.bits.primitiveId) := io.writeCoeffs.bits.coeffs

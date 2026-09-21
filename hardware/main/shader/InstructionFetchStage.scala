@@ -73,7 +73,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   // Stage 1: read tag memory
   ///////////////////////////////////////////////////////////
   val tagMemory = SyncReadMem(cfg.icacheLines, UInt(cfg.icacheTagBits.W), SyncReadMem.WriteFirst)
-  val tagValid = RegInit(VecInit(Seq.fill(cfg.icacheLines)(false.B)))
+  val tagValid = RegInit(VecInit.fill(cfg.icacheLines)(false.B))
 
   val stage1 = new {
     val validUpdated = io.updateCache.valid && io.updateCache.bits.last && (io.updateCache.bits.address.index === io.fetchRequest.bits.pc.index)

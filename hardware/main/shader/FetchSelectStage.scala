@@ -78,7 +78,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     val jobId = UInt(cfg.shaderJobIdBits.W)
   }
 
-  val threads = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U.asTypeOf(new ThreadInfo))))
+  val threads = RegInit(VecInit.fill(cfg.shaderThreads)(0.U.asTypeOf(new ThreadInfo)))
 
   // This CAM looks up the thread by JobID.
   when (io.ioWakeJob.valid) {
@@ -157,7 +157,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // wider than the number of physical execution units and issue the same
   // instruction multiple times with a "chime" index.
   val rawLatency = 4 // Will issue every nth cycle, where n = rawLatency + 1
-  val issueRawDelay = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(0.U(3.W))))
+  val issueRawDelay = RegInit(VecInit.fill(cfg.shaderThreads)(0.U(3.W)))
   val inRawWait = Wire(Vec(cfg.shaderThreads, Bool()))
   for (i <- 0 until cfg.shaderThreads) {
     when (io.rollback.valid && io.rollback.bits.thread === i.U) {

@@ -186,7 +186,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
           if (dut.io.edgeCoeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
-            val primitiveId = (primIndex % (1 << cfg.primitiveIdBits))
+            val primitiveId = (primIndex % (cfg.maxConcurrentPrimitives))
             setUpPrimitive(dut, primitiveId, triangleVerts, tileLeft, tileTop)
             val triangleVaryings = triangleIndices.map(i => varyings(i))
             for (i <- varyings(0).indices) {

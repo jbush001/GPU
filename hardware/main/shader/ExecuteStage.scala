@@ -139,7 +139,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
 
   val comparisonResult3 = ShiftRegister(comparisonResult0, 3)
 
-  val compareAsVec = WireInit(VecInit(Seq.fill(cfg.shaderVectorLanes)(0.U(32.W))))
+  val compareAsVec = WireInit(VecInit.fill(cfg.shaderVectorLanes)(0.U(32.W)))
   compareAsVec(0) := comparisonResult3
 
   // Branch check

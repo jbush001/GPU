@@ -170,7 +170,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     UInt(32.W), SyncReadMem.Undefined)
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
-  val execMask = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W))))
+  val execMask = RegInit(VecInit.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W)))
   when (io.resetThread.valid) {
     execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
   }
@@ -247,7 +247,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   val decodedMetadataStage2 = RegNext(decodedMetadata)
 
-  def broadcast(v: UInt): Vec[UInt] = VecInit(Seq.fill(cfg.shaderVectorLanes)(v))
+  def broadcast(v: UInt): Vec[UInt] = VecInit.fill(cfg.shaderVectorLanes)(v)
 
   val operand1Reg = Mux(isLoadConst(decodedOpcode),
     io.fetchedInstruction.bits.instruction(13, 7), // Dest reg is first operand for load const.

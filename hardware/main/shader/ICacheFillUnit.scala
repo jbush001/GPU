@@ -77,8 +77,8 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     val address = new ICacheAddress
   }
 
-  val pendingMisses = RegInit(VecInit(Seq.fill(cfg.shaderThreads)(
-    0.U.asTypeOf(new PendingMiss))))
+  val pendingMisses = RegInit(VecInit.fill(cfg.shaderThreads)(
+    0.U.asTypeOf(new PendingMiss)))
   val pendingMissMatchOh = VecInit(pendingMisses.map(r => r.valid
     && r.address.cacheLineAligned === io.fillRequest.bits.address.cacheLineAligned))
   val pendingMissMatchIndex = PriorityEncoder(pendingMissMatchOh)

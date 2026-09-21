@@ -113,8 +113,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val returnedTexelBitmap = Bits(quadsPerJob.W)
   }
 
-  val jobs = RegInit(VecInit(Seq.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo))))
-  val varyingCoeffs = RegInit(VecInit(Seq.fill(1 << cfg.primitiveIdBits)(VecInit(Seq.fill(maxVaryingCoeffs)(0.U.asTypeOf(Float32()))))))
+  val jobs = RegInit(VecInit.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo)))
+  val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentPrimitives, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
 
   io.idle := jobs.map(_.state === JobState.Idle).reduce(_&&_)
 

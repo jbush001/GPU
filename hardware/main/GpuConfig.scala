@@ -54,4 +54,5 @@ case class GpuConfig(
   val icacheTagBits = busAddressBits - icacheIndexBits - cacheLineOffsetBits
 
   val textureRequestIdBits = shaderJobIdBits + log2Up(shaderVectorLanes / Consts.pixelsPerQuad)
+  val maxConcurrentPrimitives = 1 << primitiveIdBits
 }
