@@ -20,7 +20,7 @@ import chisel3._
 import chisel3.util._
 
 class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
-  val primitiveId = UInt(cfg.primitiveIdBits.W)
+  val triangleId = UInt(cfg.triangleIdBits.W)
   val offset = Point2D()
   val boundingBox = BoundingBox()
   val initialValue = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
@@ -28,17 +28,16 @@ class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
   val yStep = Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W))
 }
 
-/** Contains coverage and interpolation data for a single 2x2 pixel quad. */
+/** Coverage and interpolation data for a single 2x2 pixel quad. */
 class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
-  /** Uniquely associates this quad with a specific triangle. */
-  val primitiveId = UInt(cfg.primitiveIdBits.W)
+  val triangleId = UInt(cfg.triangleIdBits.W)
 
-  /** Coordinates of the upper left corner, relative to the left/top edges
-    * of the current tile bounding box.
+  /** Coordinates of the upper left corner, relative to the left/top
+    * of tile bounding box.
     */
   val location = Point2D()
 
-  /** Indicates which pixels are covered, with one bit per pixel using the
+  /** Indicates covered pixels, with one bit per pixel using the
     * following layout:
     *
     *     0 1
@@ -115,26 +114,19 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  // Derive the other pixels values combinationally.
-  val pixelEdgeValue = Seq.tabulate(Consts.triangleEdges) { edge =>
-    Seq(
-      edgeValue(edge), // Upper left
-      edgeValue(edge) + inCoeffs.xStep(edge), // Upper right
-      edgeValue(edge) + inCoeffs.yStep(edge), // Lower left
-      edgeValue(edge) + inCoeffs.xStep(edge) + inCoeffs.yStep(edge) // Lower right
-    )
-  }
+  // Derive the other pixels values from the current one.
+  val pixelEdges = Seq.tabulate(Consts.triangleEdges) { e =>
+    val ev = edgeValue(e)
+    val dx = inCoeffs.xStep(e)
+    val dy = inCoeffs.yStep(e)
+    Seq(ev, ev + dx, ev + dy, ev + dx + dy)
+  }.transpose
 
-  // This checks if each pixel is inside or outside the triangle
-  val pixelInside = Cat((0 until Consts.pixelsPerQuad).map { pixel =>
-    val edgeChecks = (0 until Consts.triangleEdges).map(edge => pixelEdgeValue(edge)(pixel) >= 0.S)
-    edgeChecks.reduceLeft(_ & _)
-  }.reverse)
+  val pixelInside = VecInit(pixelEdges.map(_.map(_ >= 0.S).reduce(_ && _))).asUInt
 
-  // The lambda values are computed from the edge equations.
-  for (pixel <- 0 until Consts.pixelsPerQuad) {
-    io.quad.bits.lambda(pixel)(0) := Float32.fromFixedPoint(pixelEdgeValue(2)(pixel), 16)
-    io.quad.bits.lambda(pixel)(1) := Float32.fromFixedPoint(pixelEdgeValue(0)(pixel), 16)
+  for ((edges, pixel) <- pixelEdges.zipWithIndex) {
+    io.quad.bits.lambda(pixel)(0) := Float32.fromFixedPoint(edges(2), 16)
+    io.quad.bits.lambda(pixel)(1) := Float32.fromFixedPoint(edges(0), 16)
   }
 
   object State extends ChiselEnum {
@@ -198,5 +190,5 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // Adjust coordinates to be relative to the offset.
   io.quad.bits.location := quadLoc - inCoeffs.offset
   io.quad.bits.mask := pixelInside
-  io.quad.bits.primitiveId := inCoeffs.primitiveId
+  io.quad.bits.triangleId := inCoeffs.triangleId
 }

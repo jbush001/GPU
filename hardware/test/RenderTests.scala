@@ -30,13 +30,13 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val dap = new DirectAccessPort
     val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
-      val primitiveId = UInt(cfg.primitiveIdBits.W)
+      val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(5.W)
       val value = Float32()
     }))
 
     val writeDepthCoeffs = Flipped(Valid(new Bundle {
-      val primitiveId = UInt(cfg.primitiveIdBits.W)
+      val triangleId = UInt(cfg.triangleIdBits.W)
       val coeffs = new DepthInterpolatorCoeffs()
     }))
 
@@ -186,11 +186,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
           if (dut.io.edgeCoeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
-            val primitiveId = (primIndex % (cfg.maxConcurrentPrimitives))
-            setUpPrimitive(dut, primitiveId, triangleVerts, tileLeft, tileTop)
+            val triangleId = (primIndex % (cfg.maxConcurrentTriangles))
+            setUpTriangle(dut, triangleId, triangleVerts, tileLeft, tileTop)
             val triangleVaryings = triangleIndices.map(i => varyings(i))
             for (i <- varyings(0).indices) {
-              setUpVarying(dut, primitiveId,
+              setUpVarying(dut, triangleId,
                 i * 3, (triangleVaryings(0)(i), triangleVaryings(1)(i), triangleVaryings(2)(i)))
             }
 
@@ -214,9 +214,9 @@ class RenderTests extends AnyFunSuite with ChiselSim {
 
   var nextVaryingCoeffWrite = 0
 
-  def setUpVarying(dut: SimTop, primitiveId: Int, index: Int, values: (Float, Float, Float)): Unit = {
+  def setUpVarying(dut: SimTop, triangleId: Int, index: Int, values: (Float, Float, Float)): Unit = {
     dut.io.writeVaryingCoeff.valid.poke(true)
-    dut.io.writeVaryingCoeff.bits.primitiveId.poke(primitiveId)
+    dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
     dut.io.writeVaryingCoeff.bits.index.poke(index)
     dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._2 - values._1)) // dQ1
     dut.clock.step()
@@ -228,11 +228,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.clock.step()
   }
 
-  def setUpDepthCoeffs(dut: SimTop, primitiveId: Int, w0: Float, w1: Float, w2: Float) = {
+  def setUpDepthCoeffs(dut: SimTop, triangleId: Int, w0: Float, w1: Float, w2: Float) = {
     val invW0 = 1.0f / w0
     val invW1 = 1.0f / w1
     val invW2 = 1.0f / w2
-    dut.io.writeDepthCoeffs.bits.primitiveId.poke(primitiveId)
+    dut.io.writeDepthCoeffs.bits.triangleId.poke(triangleId)
     dut.io.writeDepthCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
     dut.io.writeDepthCoeffs.bits.coeffs.invW1.raw.poke(floatToRawBits(invW1))
     dut.io.writeDepthCoeffs.bits.coeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
@@ -243,16 +243,16 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.writeDepthCoeffs.valid.poke(false)
   }
 
-  def setUpPrimitive(dut: SimTop, primitiveId: Int, vertices: Seq[(Int, Int, Float)],
+  def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Int, Int, Float)],
     tileLeft: Int, tileTop: Int): Unit = {
 
-    setUpDepthCoeffs(dut, primitiveId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
+    setUpDepthCoeffs(dut, triangleId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
 
     // Set up rasterizer coefficients
     dut.io.edgeCoeffs.valid.poke(true)
     dut.io.edgeCoeffs.bits.offset.x.poke(tileLeft)
     dut.io.edgeCoeffs.bits.offset.y.poke(tileTop)
-    dut.io.edgeCoeffs.bits.primitiveId.poke(primitiveId)
+    dut.io.edgeCoeffs.bits.triangleId.poke(triangleId)
 
     // Compute minimal bounding box that contains the triangle (but is inside the tile)
     val bbLeft = math.max(vertices.map(_._1).min & ~1, tileLeft)

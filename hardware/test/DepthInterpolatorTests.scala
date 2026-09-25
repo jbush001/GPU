@@ -27,7 +27,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   case class ExpectedQuad(
-    primitiveId: Int,
+    triangleId: Int,
     location: (Int, Int),
     mask: Int,
     lambdas: Seq[(Float, Float)],
@@ -49,10 +49,10 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
 
   def pokeCoefficients(
     dut: DepthInterpolator,
-    primitiveId: Int,
+    triangleId: Int,
     coefficients: (Float, Float, Float)
   ) = {
-    dut.io.writeCoeffs.bits.primitiveId.poke(primitiveId)
+    dut.io.writeCoeffs.bits.triangleId.poke(triangleId)
     val invW0 = 1.0f / coefficients._1
     val invW1 = 1.0f / coefficients._2
     val invW2 = 1.0f / coefficients._3
@@ -68,12 +68,12 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
 
   def pokeQuadBits(
     dut: DepthInterpolator,
-    primitiveId: Int,
+    triangleId: Int,
     lambdas: Seq[(Float, Float)],
     location: (Int, Int) = (0, 0),
     mask: Int = 0xf
   ) = {
-    dut.io.rasterizedQuad.bits.primitiveId.poke(primitiveId)
+    dut.io.rasterizedQuad.bits.triangleId.poke(triangleId)
     dut.io.rasterizedQuad.bits.location.x.poke(location._1)
     dut.io.rasterizedQuad.bits.location.y.poke(location._2)
     dut.io.rasterizedQuad.bits.mask.poke(mask)
@@ -85,12 +85,12 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
 
   def pokeQuad(
     dut: DepthInterpolator,
-    primitiveId: Int,
+    triangleId: Int,
     lambdas: Seq[(Float, Float)],
     location: (Int, Int) = (0, 0),
     mask: Int = 0xf
   ) = {
-    pokeQuadBits(dut, primitiveId, lambdas, location, mask)
+    pokeQuadBits(dut, triangleId, lambdas, location, mask)
     dut.io.rasterizedQuad.valid.poke(true)
     assert(dut.io.rasterizedQuad.ready.peek().litToBoolean)
     dut.clock.step()
@@ -135,11 +135,11 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
 
   def expectQuadMetadata(
     dut: DepthInterpolator,
-    primitiveId: Int,
+    triangleId: Int,
     location: (Int, Int),
     mask: Int
   ): Unit = {
-    dut.io.interpolatedQuad.bits.primitiveId.expect(primitiveId)
+    dut.io.interpolatedQuad.bits.triangleId.expect(triangleId)
     dut.io.interpolatedQuad.bits.location.x.expect(location._1)
     dut.io.interpolatedQuad.bits.location.y.expect(location._2)
     dut.io.interpolatedQuad.bits.mask.expect(mask)
@@ -148,7 +148,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
   def expectReference(dut: DepthInterpolator, expected: ExpectedQuad): Unit = {
     expectQuadMetadata(
       dut,
-      expected.primitiveId,
+      expected.triangleId,
       expected.location,
       expected.mask)
     expectDepths(dut, expected.lambdas.map(referenceDepth(expected.vertexW, _)))
@@ -194,13 +194,13 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
       dut.io.rasterizedQuad.ready.expect(false.B)
 
       val depthBeforeStall = dut.io.interpolatedQuad.bits.depths(0).raw.peek().litValue
-      val primitiveBeforeStall = dut.io.interpolatedQuad.bits.primitiveId.peek().litValue
+      val triangleBeforeStall = dut.io.interpolatedQuad.bits.triangleId.peek().litValue
       val locationBeforeStall = dut.io.interpolatedQuad.bits.location.x.peek().litValue
 
       dut.clock.step(3)
       dut.io.interpolatedQuad.valid.expect(true.B)
       dut.io.interpolatedQuad.bits.depths(0).raw.expect(depthBeforeStall)
-      dut.io.interpolatedQuad.bits.primitiveId.expect(primitiveBeforeStall)
+      dut.io.interpolatedQuad.bits.triangleId.expect(triangleBeforeStall)
       dut.io.interpolatedQuad.bits.location.x.expect(locationBeforeStall)
 
       dut.io.interpolatedQuad.ready.poke(true)
@@ -221,8 +221,8 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
       val expected = Queue[ExpectedQuad]()
 
       dut.io.interpolatedQuad.ready.poke(true.B)
-      for (primitiveId <- vertexW.indices) {
-        pokeCoefficients(dut, primitiveId, vertexW(primitiveId))
+      for (triangleId <- vertexW.indices) {
+        pokeCoefficients(dut, triangleId, vertexW(triangleId))
       }
 
       def randomLambdas(): Seq[(Float, Float)] = {
@@ -244,16 +244,16 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
 
       for (cycle <- 0 until 1000) {
         dut.io.interpolatedQuad.ready.poke(rng.nextBoolean().B)
-        val primitiveId = rng.nextInt(vertexW.length)
+        val triangleId = rng.nextInt(vertexW.length)
         val transaction = ExpectedQuad(
-          primitiveId = primitiveId,
+          triangleId = triangleId,
           location = (cycle % 32, (cycle * 3) % 32),
           mask = rng.nextInt(16),
           lambdas = randomLambdas(),
-          vertexW = vertexW(primitiveId))
+          vertexW = vertexW(triangleId))
         pokeQuadBits(
           dut,
-          transaction.primitiveId,
+          transaction.triangleId,
           transaction.lambdas,
           transaction.location,
           transaction.mask)

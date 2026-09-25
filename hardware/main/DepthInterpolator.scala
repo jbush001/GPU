@@ -40,16 +40,16 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     val rasterizedQuad = Flipped(Decoupled(new RasterizedQuad))
     val interpolatedQuad = Decoupled(new InterpolatedQuad)
     val writeCoeffs = Flipped(Valid(new Bundle {
-      val primitiveId = UInt(cfg.primitiveIdBits.W)
+      val triangleId = UInt(cfg.triangleIdBits.W)
       val coeffs = new DepthInterpolatorCoeffs()
     }))
     val idle = Output(Bool())
   })
 
-  val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentPrimitives)(0.U.asTypeOf(new DepthInterpolatorCoeffs())))
+  val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(0.U.asTypeOf(new DepthInterpolatorCoeffs())))
 
   when (io.writeCoeffs.valid) {
-    coeffs(io.writeCoeffs.bits.primitiveId) := io.writeCoeffs.bits.coeffs
+    coeffs(io.writeCoeffs.bits.triangleId) := io.writeCoeffs.bits.coeffs
   }
 
   val stall = io.interpolatedQuad.valid && !io.interpolatedQuad.ready
@@ -64,7 +64,7 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  val coeff0 = coeffs(io.rasterizedQuad.bits.primitiveId)
+  val coeff0 = coeffs(io.rasterizedQuad.bits.triangleId)
   val coeff5 = ShiftRegister(coeff0, 5, !stall)
   val coeff7 = ShiftRegister(coeff5, 2, !stall)
   val coeff15 = ShiftRegister(coeff7, 8, !stall)

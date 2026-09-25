@@ -95,7 +95,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     dut.io.edgeCoeffs.bits.boundingBox.top.poke(bbTop)
     dut.io.edgeCoeffs.bits.boundingBox.right.poke(bbRight)
     dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(bbBottom)
-    dut.io.edgeCoeffs.bits.primitiveId.poke(3)
+    dut.io.edgeCoeffs.bits.triangleId.poke(3)
 
     // Edge 0->1
     dut.io.edgeCoeffs.bits.xStep(0).poke(coeffs.xStep(0))
@@ -135,7 +135,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
       if (dut.io.quad.valid.peek().litValue.toLong != 0
         && dut.io.quad.ready.peek().litValue.toLong != 0) {
         dut.io.edgeCoeffs.ready.expect(0)
-        dut.io.quad.bits.primitiveId.expect(3)
+        dut.io.quad.bits.triangleId.expect(3)
         val x = dut.io.quad.bits.location.x.peek().litValue.toInt
         val y = dut.io.quad.bits.location.y.peek().litValue.toInt
         assert(x <= (bbRight - bbLeft))

@@ -23,12 +23,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
-    lambda: Seq[Seq[Int]], depths: Seq[Float],primitiveId: Int = 0): Unit = {
+    lambda: Seq[Seq[Int]], depths: Seq[Float],triangleId: Int = 0): Unit = {
     dut.io.sourceQuad.valid.poke(true)
     dut.io.sourceQuad.bits.location.x.poke(x)
     dut.io.sourceQuad.bits.location.y.poke(y)
     dut.io.sourceQuad.bits.mask.poke(mask)
-    dut.io.sourceQuad.bits.primitiveId.poke(primitiveId)
+    dut.io.sourceQuad.bits.triangleId.poke(triangleId)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
         dut.io.sourceQuad.bits.lambda(i)(j).raw.poke(lambda(i)(j))
@@ -85,9 +85,9 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     dut.io.shaderRegWrite.valid.poke(false)
   }
 
-  def writeVaryingCoeff(dut: PixelShaderConductor, primitiveId: Int, index: Int, data: Float): Unit = {
+  def writeVaryingCoeff(dut: PixelShaderConductor, triangleId: Int, index: Int, data: Float): Unit = {
     dut.io.writeVaryingCoeff.valid.poke(true)
-    dut.io.writeVaryingCoeff.bits.primitiveId.poke(primitiveId)
+    dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
     dut.io.writeVaryingCoeff.bits.index.poke(index)
     dut.io.writeVaryingCoeff.bits.value.raw.poke(java.lang.Float.floatToRawIntBits(data) & 0xffffffff)
     dut.clock.step()
@@ -469,19 +469,19 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         Seq(7.0f, 8.0f)
       )
 
-      for (primitive <- coeffs.indices) {
-        for (index <- coeffs(primitive).indices) {
-          writeVaryingCoeff(dut, primitive, index, coeffs(primitive)(index))
+      for (triangle <- coeffs.indices) {
+        for (index <- coeffs(triangle).indices) {
+          writeVaryingCoeff(dut, triangle, index, coeffs(triangle)(index))
         }
       }
 
       // Start a job
-      for (primitiveId <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+      for (triangleId <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.sourceQuad.ready.expect(true)
         loadSourceQuad(dut, 0, 0, 15,
             Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
             Seq.fill(Consts.pixelsPerQuad)(0.0f),
-            primitiveId)
+            triangleId)
         dut.io.textureFetchRequest.valid.expect(false)
       }
 

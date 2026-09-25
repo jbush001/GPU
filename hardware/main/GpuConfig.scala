@@ -36,7 +36,7 @@ case class GpuConfig(
   shaderJobIdBits: Int = 4,
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
-  primitiveIdBits: Int = 2,
+  triangleIdBits: Int = 2,
 
   traceEnable: Boolean = false
 ) {
@@ -54,5 +54,5 @@ case class GpuConfig(
   val icacheTagBits = busAddressBits - icacheIndexBits - cacheLineOffsetBits
 
   val textureRequestIdBits = shaderJobIdBits + log2Up(shaderVectorLanes / Consts.pixelsPerQuad)
-  val maxConcurrentPrimitives = 1 << primitiveIdBits
+  val maxConcurrentTriangles = 1 << triangleIdBits
 }

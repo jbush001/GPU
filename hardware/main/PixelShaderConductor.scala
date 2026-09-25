@@ -81,7 +81,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
     // Program varying coefficients, from triangle setup
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
-      val primitiveId = UInt(cfg.primitiveIdBits.W)
+      val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(5.W)
       val value = Float32()
     }))
@@ -114,7 +114,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   val jobs = RegInit(VecInit.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo)))
-  val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentPrimitives, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
+  val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
 
   io.idle := jobs.map(_.state === JobState.Idle).reduce(_&&_)
 
@@ -282,7 +282,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       // Read varying coefficient memory
       is (2.U) {
         for (quadI <- 0 until quadsPerJob) {
-          val coeffVal = varyingCoeffs(readJob.sourceQuads(quadI).primitiveId)(readJob.varyingCoeffIndex)
+          val coeffVal = varyingCoeffs(readJob.sourceQuads(quadI).triangleId)(readJob.varyingCoeffIndex)
           for (pixelI <- 0 until Consts.pixelsPerQuad) {
             io.shaderRegReadData.bits(quadI * Consts.pixelsPerQuad + pixelI) := coeffVal.raw
           }
@@ -408,7 +408,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
-    varyingCoeffs(io.writeVaryingCoeff.bits.primitiveId)(io.writeVaryingCoeff.bits.index) :=
+    varyingCoeffs(io.writeVaryingCoeff.bits.triangleId)(io.writeVaryingCoeff.bits.index) :=
       io.writeVaryingCoeff.bits.value
   }
 }
