@@ -97,9 +97,9 @@ class Float32 extends Bundle {
   /**
     * Convert to unsigned normalized fixed-point representation
     * This differs from the fixed point conversion in that 1.0 is represented
-    * by (2^N - 1). This formally is floor(M * (2^N - 1)), but we can save
-    * hardware by approximating it using ((M << N) - M) >> N.
-    * the value will be clamped into the target range [0, 2^width - 1]
+    * by (2^N - 1). We can perform this optimially in hardware with the
+    * formula ((M << N) - M) >> N the value will be clamped into the target
+    * range [0, 2^width - 1]
     */
   def toUnorm(width: Int): UInt = {
     require(width >= 0 && width <= 24,
@@ -113,11 +113,10 @@ class Float32 extends Bundle {
       // Value is >= 1.0 or is NaN
       result := ~0.U(width.W)
     }.otherwise {
-      // @bug this is not correct
-      val scaledProduct = (this.fullFraction << 24) - this.fullFraction
+      val scaledProduct = ((this.fullFraction << width) - this.fullFraction)
       val denormShift = Float32.exponentBias - this.exponent
       val shifted = scaledProduct >> denormShift
-      result := shifted(47, 47 - width)
+      result := shifted(22 + width, 23)
     }
 
     result
