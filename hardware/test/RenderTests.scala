@@ -28,7 +28,7 @@ import shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val edgeCoeffs = Flipped(Decoupled(new RasterizerCoeffs))
+    val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(5.W)
@@ -51,7 +51,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 
   io.complete := gpu.io.complete
 
-  gpu.io.edgeCoeffs <> io.edgeCoeffs
+  gpu.io.coeffs <> io.coeffs
   io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
   gpu.io.writeDepthCoeffs <> io.writeDepthCoeffs
   gpu.io.startFlush := io.startFlush
@@ -183,7 +183,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
 
         var primIndex = 0
         while (!dut.io.complete.peek().litToBoolean || primIndex * 3 < indices.length) {
-          if (dut.io.edgeCoeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
+          if (dut.io.coeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
             val triangleId = (primIndex % (cfg.maxConcurrentTriangles))
@@ -249,10 +249,10 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     setUpDepthCoeffs(dut, triangleId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
 
     // Set up rasterizer coefficients
-    dut.io.edgeCoeffs.valid.poke(true)
-    dut.io.edgeCoeffs.bits.offset.x.poke(tileLeft)
-    dut.io.edgeCoeffs.bits.offset.y.poke(tileTop)
-    dut.io.edgeCoeffs.bits.triangleId.poke(triangleId)
+    dut.io.coeffs.valid.poke(true)
+    dut.io.coeffs.bits.offset.x.poke(tileLeft)
+    dut.io.coeffs.bits.offset.y.poke(tileTop)
+    dut.io.coeffs.bits.triangleId.poke(triangleId)
 
     // Compute minimal bounding box that contains the triangle (but is inside the tile)
     val bbLeft = math.max(vertices.map(_._1).min & ~1, tileLeft)
@@ -260,10 +260,10 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val bbRight = math.min((vertices.map(_._1).max + 1) & ~1, tileLeft + cfg.tileSizePixels - 2)
     val bbBottom = math.min((vertices.map(_._2).max + 1) & ~1, tileTop + cfg.tileSizePixels - 2)
 
-    dut.io.edgeCoeffs.bits.boundingBox.left.poke(bbLeft)
-    dut.io.edgeCoeffs.bits.boundingBox.top.poke(bbTop)
-    dut.io.edgeCoeffs.bits.boundingBox.right.poke(bbRight)
-    dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(bbBottom)
+    dut.io.coeffs.bits.boundingBox.left.poke(bbLeft)
+    dut.io.coeffs.bits.boundingBox.top.poke(bbTop)
+    dut.io.coeffs.bits.boundingBox.right.poke(bbRight)
+    dut.io.coeffs.bits.boundingBox.bottom.poke(bbBottom)
     val rawCoeffs = (0 until 3).map { i =>
       val (startX, startY, _) = vertices(i)
       val (endX, endY, _) = vertices((i + 1) % 3)
@@ -284,17 +284,17 @@ class RenderTests extends AnyFunSuite with ChiselSim {
       val normYs = (ys * 0xffffL / det).toInt
       val normIv = (biasedIv * 0xffffL / det).toInt
 
-      dut.io.edgeCoeffs.bits.xStep(i).poke(normXs.S)
-      dut.io.edgeCoeffs.bits.yStep(i).poke(normYs.S)
-      dut.io.edgeCoeffs.bits.initialValue(i).poke(normIv.S)
+      dut.io.coeffs.bits.edges(i).xStep.poke(normXs.S)
+      dut.io.coeffs.bits.edges(i).yStep.poke(normYs.S)
+      dut.io.coeffs.bits.edges(i).initialValue.poke(normIv.S)
     }
 
-    while (dut.io.edgeCoeffs.ready.peek().litValue.toLong == 0) {
+    while (dut.io.coeffs.ready.peek().litValue.toLong == 0) {
       dut.clock.step()
     }
 
     dut.clock.step()
-    dut.io.edgeCoeffs.valid.poke(false)
+    dut.io.coeffs.valid.poke(false)
 
     dut.clock.step() // Wait for rasterizer to start to complete is false.
   }

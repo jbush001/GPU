@@ -89,36 +89,36 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     dut.io.quad.ready.poke(true)
     dut.clock.step()
 
-    dut.io.edgeCoeffs.bits.offset.x.poke(bbLeft)
-    dut.io.edgeCoeffs.bits.offset.y.poke(bbTop)
-    dut.io.edgeCoeffs.bits.boundingBox.left.poke(bbLeft)
-    dut.io.edgeCoeffs.bits.boundingBox.top.poke(bbTop)
-    dut.io.edgeCoeffs.bits.boundingBox.right.poke(bbRight)
-    dut.io.edgeCoeffs.bits.boundingBox.bottom.poke(bbBottom)
-    dut.io.edgeCoeffs.bits.triangleId.poke(3)
+    dut.io.coeffs.bits.offset.x.poke(bbLeft)
+    dut.io.coeffs.bits.offset.y.poke(bbTop)
+    dut.io.coeffs.bits.boundingBox.left.poke(bbLeft)
+    dut.io.coeffs.bits.boundingBox.top.poke(bbTop)
+    dut.io.coeffs.bits.boundingBox.right.poke(bbRight)
+    dut.io.coeffs.bits.boundingBox.bottom.poke(bbBottom)
+    dut.io.coeffs.bits.triangleId.poke(3)
 
     // Edge 0->1
-    dut.io.edgeCoeffs.bits.xStep(0).poke(coeffs.xStep(0))
-    dut.io.edgeCoeffs.bits.yStep(0).poke(coeffs.yStep(0))
-    dut.io.edgeCoeffs.bits.initialValue(0).poke(coeffs.initialValue(0))
+    dut.io.coeffs.bits.edges(0).xStep.poke(coeffs.xStep(0))
+    dut.io.coeffs.bits.edges(0).yStep.poke(coeffs.yStep(0))
+    dut.io.coeffs.bits.edges(0).initialValue.poke(coeffs.initialValue(0))
 
     // Edge 1->2
-    dut.io.edgeCoeffs.bits.xStep(1).poke(coeffs.xStep(1))
-    dut.io.edgeCoeffs.bits.yStep(1).poke(coeffs.yStep(1))
-    dut.io.edgeCoeffs.bits.initialValue(1).poke(coeffs.initialValue(1))
+    dut.io.coeffs.bits.edges(1).xStep.poke(coeffs.xStep(1))
+    dut.io.coeffs.bits.edges(1).yStep.poke(coeffs.yStep(1))
+    dut.io.coeffs.bits.edges(1).initialValue.poke(coeffs.initialValue(1))
 
     // Edge 2->0
-    dut.io.edgeCoeffs.bits.xStep(2).poke(coeffs.xStep(2))
-    dut.io.edgeCoeffs.bits.yStep(2).poke(coeffs.yStep(2))
-    dut.io.edgeCoeffs.bits.initialValue(2).poke(coeffs.initialValue(2))
-    dut.io.edgeCoeffs.valid.poke(true)
+    dut.io.coeffs.bits.edges(2).xStep.poke(coeffs.xStep(2))
+    dut.io.coeffs.bits.edges(2).yStep.poke(coeffs.yStep(2))
+    dut.io.coeffs.bits.edges(2).initialValue.poke(coeffs.initialValue(2))
+    dut.io.coeffs.valid.poke(true)
 
-    while (dut.io.edgeCoeffs.ready.peek().litValue.toLong == 0) {
+    while (dut.io.coeffs.ready.peek().litValue.toLong == 0) {
       dut.clock.step()
     }
 
     dut.clock.step()
-    dut.io.edgeCoeffs.valid.poke(false)
+    dut.io.coeffs.valid.poke(false)
 
     val outputBuffer = Array.ofDim[Boolean](bbRight - bbLeft + 2, bbBottom - bbTop + 2);
 
@@ -134,7 +134,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
       if (dut.io.quad.valid.peek().litValue.toLong != 0
         && dut.io.quad.ready.peek().litValue.toLong != 0) {
-        dut.io.edgeCoeffs.ready.expect(0)
+        dut.io.coeffs.ready.expect(0)
         dut.io.quad.bits.triangleId.expect(3)
         val x = dut.io.quad.bits.location.x.peek().litValue.toInt
         val y = dut.io.quad.bits.location.y.peek().litValue.toInt
@@ -151,7 +151,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
     }
 
-    dut.io.edgeCoeffs.ready.expect(true)
+    dut.io.coeffs.ready.expect(true)
 
     val sb = new StringBuilder()
     for (y <- 0 until outputBuffer.length) {
