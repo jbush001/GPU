@@ -100,9 +100,9 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // reach a HALT instruction. This logic tracks which threads are active
   // and assigns new threads on request. This unit can only start one new
   // thread per cycle.
-  val haltedThreads = Cat(threads.map(!_.running).reverse).asUInt
+  val haltedThreads = VecInit(threads.map(!_.running))
   val nextFreeThread = PriorityEncoder(haltedThreads)
-  io.startJob.ready := haltedThreads.orR
+  io.startJob.ready := haltedThreads.reduce(_ || _)
   io.resetThread.valid := io.startJob.fire
   io.resetThread.bits := nextFreeThread
 

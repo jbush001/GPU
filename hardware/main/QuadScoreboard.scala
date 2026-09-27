@@ -19,18 +19,28 @@ package gpu
 import chisel3._
 import chisel3.util._
 
+/**
+ * QuadScoreboard keeps track of the state of triangles and their associated quads.
+ * It manages allocation of triangle IDs, tracks outstanding quads, and detects when
+ * all triangles in a batch have been fully rendered.
+ */
 class QuadScoreboard(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // Define the IO for the QuadScoreboard module here
+    // To setup engine (not yet implemented)
     val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
+
+    // From Rasterizer
     val rasterizationFinished = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
     val issueQuad = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
-    val retireQuad = Flipped(Valid(UInt(cfg.triangleIdBits  .W)))
+
+    // From PixelShaderConductor
+    val retireQuad = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
+
+    // Indicates all triangles in a batch have been rendered.
     val idle = Output(Bool())
   })
 
   class TriangleInfo extends Bundle {
-    // Define the fields for the TriangleInfo bundle here
     val rasterizing = Bool()
     val outstandingQuads = UInt(8.W)
   }
@@ -43,7 +53,7 @@ class QuadScoreboard(implicit val cfg: GpuConfig) extends Module {
   io.idle := freeTriangles.reduce(_ && _)
 
   io.allocateTriangleId.bits := nextFreeIndex
-  io.allocateTriangleId.valid := freeTriangles.asUInt.orR
+  io.allocateTriangleId.valid := freeTriangles.reduce(_ || _)
 
   when (io.allocateTriangleId.fire) {
     assert(!triangles(nextFreeIndex).rasterizing,

@@ -85,7 +85,7 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
 
   // Determine if we should combine this with a pending load
   when (io.fillRequest.valid) {
-    when (pendingMissMatchOh.asUInt.orR) {
+    when (pendingMissMatchOh.reduce(_ || _)) {
       // Combine with existing request
       pendingMisses(pendingMissMatchIndex).waitingThreadBitmap :=
         pendingMisses(pendingMissMatchIndex).waitingThreadBitmap | UIntToOH(io.fillRequest.bits.thread)
