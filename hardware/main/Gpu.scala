@@ -46,6 +46,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
 
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val complete = Output(Bool())
+
+    val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
   })
 
   val rasterizer = Module(new Rasterizer)
@@ -56,15 +58,15 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val memoryArbiter = Module(new MemoryArbiter(1, 1))
   val floatArrayToColor = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
+  val quadScoreboard = Module(new QuadScoreboard)
 
-  io.complete := pixelShaderConductor.io.idle && rasterizer.io.idle && depthInterpolator.io.idle
+  io.complete := quadScoreboard.io.idle
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
 
-  // Hack: wait to flush the pixel shader conductor until a couple cycles after the
-  // rasterizer completes, as there will be pixels in the DepthInterpolator pipeline.
-  // This will go away when we have proper a proper command processor and synchronization.
+  // @todo move this logic into QuadScoreboard and get rid of idle signals from these
+  // units.
   pixelShaderConductor.io.flush := rasterizer.io.idle && depthInterpolator.io.idle
   pixelShaderConductor.io.startJob <> shaderCore.io.startJob
   shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
@@ -76,6 +78,13 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   floatArrayToColor.io.shadedQuad <> tileBuffer.io.shadedQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
   memoryArbiter.io.axiBus <> io.axiBus
+  quadScoreboard.io.issueQuad.valid := rasterizer.io.quad.fire
+  quadScoreboard.io.issueQuad.bits := rasterizer.io.quad.bits.triangleId
+  quadScoreboard.io.retireQuad.valid := (pixelShaderConductor.io.shadedQuad.fire)
+  quadScoreboard.io.retireQuad.bits := pixelShaderConductor.io.shadedQuad.bits.triangleId
+  quadScoreboard.io.rasterizationFinished <> rasterizer.io.rasterizationFinished
+  io.allocateTriangleId <> quadScoreboard.io.allocateTriangleId
+
   memoryArbiter.io.writePorts(0).burst.valid := false.B
   memoryArbiter.io.writePorts(0).data.valid := false.B
   memoryArbiter.io.writePorts(0).burst.bits.address := 0.U

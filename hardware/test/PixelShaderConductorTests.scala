@@ -96,8 +96,6 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
   test("PixelShaderConductor basic operation") {
     simulate(new PixelShaderConductor) { dut =>
-      dut.io.idle.expect(true)
-
       // Fill
       val masks = Seq.tabulate(cfg.shaderVectorLanes / Consts.pixelsPerQuad)(i => 10 + i)
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
@@ -107,7 +105,6 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         loadSourceQuad(dut, i + 3, i + 4, masks(i),
           Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)),
           Seq(1.0f, 2.0f, 3.0f, 4.0f))
-        dut.io.idle.expect(false)
       }
 
       // Process
@@ -117,7 +114,6 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
       dut.io.startJob.valid.expect(false)
-      dut.io.idle.expect(false)
 
       // Read/write registers
       assert(readRegister(dut, jobId, 0) ==
@@ -137,7 +133,6 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
       // Drain
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
-        dut.io.idle.expect(false)
         dut.io.startJob.valid.expect(false)
         dut.io.sourceQuad.ready.expect(true)
         drainShadedQuad(dut, i + 3, i + 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
@@ -145,7 +140,6 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
           Seq(1.0f, 2.0f, 3.0f, 4.0f))
       }
 
-      dut.io.idle.expect(true)
       dut.io.shadedQuad.valid.expect(false)
     }
   }
@@ -184,19 +178,11 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.io.shadedQuad.bits.location.x.expect(3)
       dut.io.shadedQuad.bits.location.y.expect(4)
       dut.io.shadedQuad.bits.mask.expect(15)
-      dut.io.idle.expect(false)
       dut.clock.step()
 
-      // Null quad with zero mask
-      for (_ <- 0 until (cfg.shaderVectorLanes / Consts.pixelsPerQuad) - 1) {
-        dut.io.idle.expect(false)
-        dut.io.shadedQuad.valid.expect(true)
-        dut.io.shadedQuad.bits.mask.expect(0)
-        dut.clock.step()
-      }
-
+      // Now it should short circuit and not emit the null quads.
+      // This is critical for proper operation of the QuadScoreboard.
       dut.io.shadedQuad.valid.expect(false)
-      dut.io.idle.expect(true)
     }
   }
 

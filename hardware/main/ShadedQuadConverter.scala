@@ -28,6 +28,7 @@ class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
     val shadedQuad = Valid(new ShadedQuad)
 
     val floatQuad = Flipped(Valid(new Bundle {
+      val triangleId = UInt(cfg.triangleIdBits.W) // ignored
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))

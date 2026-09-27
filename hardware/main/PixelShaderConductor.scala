@@ -70,14 +70,12 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
     // To TileBuffer
     val shadedQuad = Valid(new Bundle {
+      val triangleId = UInt(cfg.triangleIdBits.W)
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
       val depths = Vec(Consts.pixelsPerQuad, Float32())
     })
-
-    // True when there are no jobs pending
-    val idle = Output(Bool())
 
     // Program varying coefficients, from triangle setup
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
@@ -103,6 +101,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   class JobInfo extends Bundle {
     val state = JobState()
+    val validQuadCount = UInt(log2Up(quadsPerJob + 1).W)
     val sourceQuads = Vec(quadsPerJob, new InterpolatedQuad)
     val shadedColors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
     val varyingCoeffIndex = UInt(log2Up(maxVaryingCoeffs).W)
@@ -115,8 +114,6 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val jobs = RegInit(VecInit.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo)))
   val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
-
-  io.idle := jobs.map(_.state === JobState.Idle).reduce(_&&_)
 
   // Fill jobs
   val nextFillJob = Module(new RRArbiter(Bool(), totalPendingJobs))
@@ -131,7 +128,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Indicate ready if there are any available jobs to fill.
   io.sourceQuad.ready := (jobs.map(
-    _.state === JobState.Idle).reduce(_||_) || fillActive
+    _.state === JobState.Idle).reduce(_ || _) || fillActive
   )
 
   assert(!(io.flush && io.sourceQuad.valid),
@@ -156,6 +153,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
       // Fill existing partially readyToProcess job entry
       jobs(fillIndex).sourceQuads(fillQuadCount) := io.sourceQuad.bits
+      jobs(fillIndex).validQuadCount := fillQuadCount +& 1.U
 
       when (fillQuadCount === (quadsPerJob - 1).U) {
         // Finished filling, ready for processing
@@ -173,6 +171,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       nextFillJob.io.out.ready := true.B
       jobs(nextFillJob.io.chosen).state := JobState.Filling
       jobs(nextFillJob.io.chosen).sourceQuads(0) := io.sourceQuad.bits
+      jobs(nextFillJob.io.chosen).validQuadCount := 1.U
     }
   }
 
@@ -216,6 +215,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val drainSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
   nextDrainJob.io.out.ready := false.B
+  io.shadedQuad.bits.triangleId := jobs(drainSelect).sourceQuads(drainQuadCount).triangleId
   io.shadedQuad.bits.location := jobs(drainSelect).sourceQuads(drainQuadCount).location
   io.shadedQuad.bits.mask := jobs(drainSelect).sourceQuads(drainQuadCount).mask
   io.shadedQuad.bits.depths := jobs(drainSelect).sourceQuads(drainQuadCount).depths
@@ -231,7 +231,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   when (io.shadedQuad.fire) {
     when (drainActive) {
       drainSelect := drainIndex
-      when (drainQuadCount === (quadsPerJob - 1).U) {
+      when (drainQuadCount === jobs(drainIndex).validQuadCount - 1.U) {
         // Finished draining, ready for next job
         drainQuadCount := 0.U
         drainActive := false.B
@@ -242,10 +242,18 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }.otherwise {
       // Pick a new job to drain
       nextDrainJob.io.out.ready := true.B
-      drainActive := true.B
-      drainQuadCount := 1.U
-      drainIndex := nextDrainJob.io.chosen
       drainSelect := nextDrainJob.io.chosen
+      when (jobs(nextDrainJob.io.chosen).validQuadCount === 1.U) {
+        // Special case: the job only has one quad, so we can immediately mark it as idle
+        // without activating the drain logic
+        // XXX this was a bug workaround, but check if this is necessary or the
+        // best way to handle this.
+        jobs(nextDrainJob.io.chosen).state := JobState.Idle
+      }.otherwise {
+        drainActive := true.B
+        drainQuadCount := 1.U
+        drainIndex := nextDrainJob.io.chosen
+      }
     }
   }
 

@@ -44,6 +44,8 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val flushColor = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val complete = Output(Bool())
+
+    val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
   })
 
   val gpu = Module(new Gpu)
@@ -62,6 +64,8 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   }.otherwise {
     io.flushColor.bits := Fill(4, gpu.io.flushData.bits.depth.toUnorm(8))
   }
+
+  io.allocateTriangleId <> gpu.io.allocateTriangleId
 
   gpu.io.flushBufferSel := io.flushBufferSel
   gpu.io.axiBus <> memory.io
@@ -182,11 +186,19 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         val tileTop = tileRow * cfg.tileSizePixels
 
         var primIndex = 0
+        // XXX for now assumes that there is a free triangleId available
+        // (dut.io.allocateTriangleId.valid is true)
         while (!dut.io.complete.peek().litToBoolean || primIndex * 3 < indices.length) {
           if (dut.io.coeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
-            val triangleId = (primIndex % (cfg.maxConcurrentTriangles))
+
+            val triangleId = dut.io.allocateTriangleId.bits.peek().litValue.toInt
+            dut.io.allocateTriangleId.valid.expect(true)
+            dut.io.allocateTriangleId.ready.poke(true)
+            dut.clock.step()
+            dut.io.allocateTriangleId.ready.poke(false)
+
             setUpTriangle(dut, triangleId, triangleVerts, tileLeft, tileTop)
             val triangleVaryings = triangleIndices.map(i => varyings(i))
             for (i <- varyings(0).indices) {

@@ -70,6 +70,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val quad = Decoupled(new RasterizedQuad)
     val idle = Output(Bool())
+    val rasterizationFinished = Valid(UInt(cfg.triangleIdBits.W))
   })
 
   object StepCommand extends ChiselEnum {
@@ -143,6 +144,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   io.coeffs.ready := false.B
   io.quad.valid := false.B
   stepCommand := StepCommand.Wait
+  io.rasterizationFinished.valid := false.B
+  io.rasterizationFinished.bits := activeCoeffs.triangleId
   switch (scanState) {
     // Waiting to start a new triangle
     is (State.Idle) {
@@ -162,6 +165,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
         when (quadLoc.x === activeCoeffs.boundingBox.right) {
           when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
             scanState := State.Idle
+            io.rasterizationFinished.valid := true.B
           }.otherwise {
             stepCommand := StepCommand.Down
             scanState := State.StepLeft
@@ -178,6 +182,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
         when(quadLoc.x === activeCoeffs.boundingBox.left) {
           when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
             scanState := State.Idle
+            io.rasterizationFinished.valid := true.B
           }.otherwise {
             stepCommand := StepCommand.Down
             scanState := State.StepRight
