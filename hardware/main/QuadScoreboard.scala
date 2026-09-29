@@ -33,11 +33,19 @@ class QuadScoreboard(implicit val cfg: GpuConfig) extends Module {
     val rasterizationFinished = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
     val issueQuad = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
 
+    // A quad has entered PixelShaderConductor.
+    val submitQuad = Input(Bool())
+
     // From PixelShaderConductor
     val retireQuad = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
 
+    val batchFinished = Input(Bool())
+
     // Indicates all triangles in a batch have been rendered.
     val idle = Output(Bool())
+
+    // To PixelShaderConductor
+    val flushPixelShader = Output(Bool())
   })
 
   class TriangleInfo extends Bundle {
@@ -46,11 +54,14 @@ class QuadScoreboard(implicit val cfg: GpuConfig) extends Module {
   }
 
   val triangles = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(0.U.asTypeOf(new TriangleInfo)))
+  val quadsAwaitingSubmission = RegInit(0.U(8.W))
 
   val freeTriangles = VecInit(triangles.map(triangle => !triangle.rasterizing && triangle.outstandingQuads === 0.U))
   val nextFreeIndex = PriorityEncoder(freeTriangles)
 
   io.idle := freeTriangles.reduce(_ && _)
+  io.flushPixelShader := !triangles.map(_.rasterizing).reduce(_ || _) &&
+    quadsAwaitingSubmission === 0.U && io.batchFinished
 
   io.allocateTriangleId.bits := nextFreeIndex
   io.allocateTriangleId.valid := freeTriangles.reduce(_ || _)
@@ -68,6 +79,14 @@ class QuadScoreboard(implicit val cfg: GpuConfig) extends Module {
     assert(triangles(finishedIndex).rasterizing,
       "Finishing rasterization for a triangle that is not currently rasterizing")
     triangles(finishedIndex).rasterizing := false.B
+  }
+
+  when (io.submitQuad && !io.issueQuad.fire) {
+    assert(quadsAwaitingSubmission =/= 0.U,
+      "Submitting a quad that was not issued by the rasterizer")
+    quadsAwaitingSubmission := quadsAwaitingSubmission - 1.U
+  }.elsewhen (io.issueQuad.fire && !io.submitQuad) {
+    quadsAwaitingSubmission := quadsAwaitingSubmission + 1.U
   }
 
   for ((triangle, i) <- triangles.zipWithIndex) {

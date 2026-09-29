@@ -43,7 +43,6 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val coeffs = new DepthInterpolatorCoeffs()
     }))
-    val idle = Output(Bool())
   })
 
   val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(0.U.asTypeOf(new DepthInterpolatorCoeffs())))
@@ -95,5 +94,4 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
 
   io.interpolatedQuad.valid := validStages(totalLatency - 1)
   io.rasterizedQuad.ready := !stall
-  io.idle := validStages === 0.U
 }

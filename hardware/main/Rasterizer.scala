@@ -69,7 +69,6 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val quad = Decoupled(new RasterizedQuad)
-    val idle = Output(Bool())
     val rasterizationFinished = Valid(UInt(cfg.triangleIdBits.W))
   })
 
@@ -137,18 +136,19 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   }
 
   val scanState = RegInit(State.Idle)
-  io.idle := (scanState === State.Idle)
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
   io.coeffs.ready := false.B
   io.quad.valid := false.B
   stepCommand := StepCommand.Wait
-  io.rasterizationFinished.valid := false.B
+  val rasterizationFinished = RegInit(false.B) // Delay a cycle so it coincides with idle
+  io.rasterizationFinished.valid := rasterizationFinished
   io.rasterizationFinished.bits := activeCoeffs.triangleId
   switch (scanState) {
     // Waiting to start a new triangle
     is (State.Idle) {
+      rasterizationFinished := false.B
       io.coeffs.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
@@ -165,7 +165,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
         when (quadLoc.x === activeCoeffs.boundingBox.right) {
           when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
             scanState := State.Idle
-            io.rasterizationFinished.valid := true.B
+            rasterizationFinished := true.B
           }.otherwise {
             stepCommand := StepCommand.Down
             scanState := State.StepLeft
@@ -182,7 +182,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
         when(quadLoc.x === activeCoeffs.boundingBox.left) {
           when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
             scanState := State.Idle
-            io.rasterizationFinished.valid := true.B
+            rasterizationFinished := true.B
           }.otherwise {
             stepCommand := StepCommand.Down
             scanState := State.StepRight

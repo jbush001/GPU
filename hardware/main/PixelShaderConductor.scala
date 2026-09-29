@@ -229,6 +229,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   when (io.shadedQuad.fire) {
+    assert(io.shadedQuad.bits.mask =/= 0.U, "Shaded quad has an empty mask")
     when (drainActive) {
       drainSelect := drainIndex
       when (drainQuadCount === jobs(drainIndex).validQuadCount - 1.U) {

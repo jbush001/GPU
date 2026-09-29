@@ -46,6 +46,12 @@ class QuadScoreboardTests extends AnyFunSuite with ChiselSim {
     dut.io.issueQuad.valid.poke(false)
   }
 
+  def submitQuad(dut: QuadScoreboard): Unit = {
+    dut.io.submitQuad.poke(true)
+    dut.clock.step()
+    dut.io.submitQuad.poke(false)
+  }
+
   def retireQuad(dut: QuadScoreboard, triangleId: Int): Unit = {
     dut.io.retireQuad.bits.poke(triangleId)
     dut.io.retireQuad.valid.poke(true)
@@ -173,6 +179,38 @@ class QuadScoreboardTests extends AnyFunSuite with ChiselSim {
       dut.io.idle.expect(true)
       dut.io.allocateTriangleId.valid.expect(true)
       dut.io.allocateTriangleId.bits.expect(triangleId)
+    }
+  }
+
+  test("QuadScoreboard flushPixelShader") {
+    simulate(new QuadScoreboard()) { dut =>
+      val triangleId = allocateTriangle(dut)
+      dut.io.flushPixelShader.expect(false)
+
+      issueQuad(dut, triangleId)
+      finishRasterization(dut, triangleId)
+      dut.io.flushPixelShader.expect(false)
+
+      submitQuad(dut)
+      dut.io.flushPixelShader.expect(false)
+      dut.io.batchFinished.poke(true)
+      dut.io.flushPixelShader.expect(true)
+    }
+  }
+
+  test("QuadScoreboard simultaneous issue and submission") {
+    simulate(new QuadScoreboard()) { dut =>
+      val triangleId = allocateTriangle(dut)
+      dut.io.issueQuad.bits.poke(triangleId)
+      dut.io.issueQuad.valid.poke(true)
+      dut.io.submitQuad.poke(true)
+      dut.clock.step()
+      dut.io.issueQuad.valid.poke(false)
+      dut.io.submitQuad.poke(false)
+      dut.io.batchFinished.poke(true)
+
+      finishRasterization(dut, triangleId)
+      dut.io.flushPixelShader.expect(true)
     }
   }
 }

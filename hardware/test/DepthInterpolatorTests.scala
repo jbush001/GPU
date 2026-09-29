@@ -179,7 +179,6 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
   test("DepthInterpolator stall") {
     simulate(new DepthInterpolator) { dut =>
       dut.io.interpolatedQuad.ready.poke(true)
-      dut.io.idle.expect(true.B)
       pokeCoefficients(dut, 0, (0.25f, 0.5f, 1.0f))
       pokeQuad(
         dut,
@@ -206,7 +205,6 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
       dut.io.interpolatedQuad.ready.poke(true)
       dut.clock.step()
       dut.io.interpolatedQuad.valid.expect(false.B)
-      dut.io.idle.expect(true.B)
     }
   }
 
@@ -277,7 +275,6 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim {
         assert(drainCycles < 100, "Pipeline did not drain within 100 cycles")
       }
       assert(expected.isEmpty, "Not all accepted inputs produced outputs")
-      dut.io.idle.expect(true.B)
     }
   }
 }

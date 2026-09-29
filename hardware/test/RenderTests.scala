@@ -44,6 +44,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val flushColor = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val complete = Output(Bool())
+    val batchFinished = Input(Bool())
 
     val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
   })
@@ -59,6 +60,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
   io.flushColor.valid := gpu.io.flushData.valid
+  gpu.io.batchFinished := io.batchFinished
   when (io.flushBufferSel === RenderBufferId.Color) {
     io.flushColor.bits := gpu.io.flushData.bits.color.toArgb32
   }.otherwise {
@@ -189,6 +191,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         // XXX for now assumes that there is a free triangleId available
         // (dut.io.allocateTriangleId.valid is true)
         while (!dut.io.complete.peek().litToBoolean || primIndex * 3 < indices.length) {
+          // Submit new triangles. This is a stand-in for the unimplemented setup unit.
           if (dut.io.coeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
@@ -209,8 +212,12 @@ class RenderTests extends AnyFunSuite with ChiselSim {
             primIndex += 1
           }
 
+          dut.io.batchFinished.poke(primIndex * 3 >= indices.length)
           dut.clock.step()
         }
+
+        // Flush the tile buffer pipeline
+        dut.clock.step(5)
 
         // Read out the final data
         val offset = (fbSize * cfg.tileSizePixels * tileRow) +

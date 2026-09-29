@@ -46,6 +46,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
 
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
     val complete = Output(Bool())
+    val batchFinished = Input(Bool())
 
     val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
   })
@@ -65,9 +66,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
 
-  // @todo move this logic into QuadScoreboard and get rid of idle signals from these
-  // units.
-  pixelShaderConductor.io.flush := rasterizer.io.idle && depthInterpolator.io.idle
+  pixelShaderConductor.io.flush := quadScoreboard.io.flushPixelShader
   pixelShaderConductor.io.startJob <> shaderCore.io.startJob
   shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
   shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
@@ -80,6 +79,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   memoryArbiter.io.axiBus <> io.axiBus
   quadScoreboard.io.issueQuad.valid := rasterizer.io.quad.fire
   quadScoreboard.io.issueQuad.bits := rasterizer.io.quad.bits.triangleId
+  quadScoreboard.io.batchFinished := io.batchFinished
+  quadScoreboard.io.submitQuad := depthInterpolator.io.interpolatedQuad.fire
   quadScoreboard.io.retireQuad.valid := (pixelShaderConductor.io.shadedQuad.fire)
   quadScoreboard.io.retireQuad.bits := pixelShaderConductor.io.shadedQuad.bits.triangleId
   quadScoreboard.io.rasterizationFinished <> rasterizer.io.rasterizationFinished

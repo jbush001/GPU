@@ -126,7 +126,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
     dut.clock.step()
 
-    while (!dut.io.idle.peek().litToBoolean) {
+    while (!dut.io.rasterizationFinished.valid.peek().litToBoolean) {
       rng match {
         case Some(rng) => dut.io.quad.ready.poke(rng.nextBoolean())
         case None => {}
@@ -184,6 +184,17 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     sb.toString()
   }
 
+  def checkOutput(output: String, expected: String): Unit = {
+    if (output.filterNot(_.isWhitespace) != expected.filterNot(_.isWhitespace)) {
+      println("Output did not match expected:")
+      println("Expected:")
+      println(expected)
+      println("Output:")
+      println(output)
+      fail()
+    }
+  }
+
   test("Rasterizer rasterize") {
     simulate(new Rasterizer()) { dut =>
       val coeffs = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
@@ -206,7 +217,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 ..XXXXXXXXXXXXX.
 .XXXXXXXXXXXXXXX"""
 
-      assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
+
+      checkOutput(output, expected)
     }
   }
 
@@ -247,7 +259,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
         val output = rasterizeTriangle(dut, coeffs, left, top, right - 2,
           bottom - 2, Some(rng));
-        assert(output.filterNot(_.isWhitespace) == expected.filterNot(_.isWhitespace))
+        checkOutput(output, expected)
       }
     }
   }
@@ -273,7 +285,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 ................
 ................
 ................"""
-      assert(output.trim == expected.stripMargin.trim)
+      checkOutput(output, expected)
     }
   }
 }
