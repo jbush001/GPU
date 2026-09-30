@@ -126,6 +126,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
     dut.clock.step()
 
+    var gotLastQuad = false
     while (!dut.io.rasterizationFinished.valid.peek().litToBoolean) {
       rng match {
         case Some(rng) => dut.io.quad.ready.poke(rng.nextBoolean())
@@ -134,22 +135,37 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
       if (dut.io.quad.valid.peek().litValue.toLong != 0
         && dut.io.quad.ready.peek().litValue.toLong != 0) {
+        assert(!gotLastQuad, "Received multiple quads with lastQuad set to true")
+        if (dut.io.quad.bits.lastQuad.peek().litToBoolean) {
+          gotLastQuad = true
+        }
+
         dut.io.coeffs.ready.expect(0)
         dut.io.quad.bits.triangleId.expect(3)
-        val x = dut.io.quad.bits.location.x.peek().litValue.toInt
-        val y = dut.io.quad.bits.location.y.peek().litValue.toInt
-        assert(x <= (bbRight - bbLeft))
-        assert(y <= (bbBottom - bbTop))
-        expectLambdas(dut, coeffs.vertices, x + bbLeft, y + bbTop)
+
+        // Note: in the case where a triangle does not cover any pixels, it will issue a dummy
+        // quad. That's the only time a zero mask is allowed to be sent.
         val mask = dut.io.quad.bits.mask.peek().litValue.toLong
-        if ((mask & 1) != 0) outputBuffer(y)(x) = true
-        if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
-        if ((mask & 4) != 0) outputBuffer(y + 1)(x) = true
-        if ((mask & 8) != 0) outputBuffer(y + 1)(x + 1) = true
+        if (mask == 0) {
+          // It's only legal to have this if it is the dummy quad (sent when there are no quads covered)
+          assert(dut.io.quad.bits.lastQuad.peek().litToBoolean, "Quad with zero mask")
+        } else {
+          val x = dut.io.quad.bits.location.x.peek().litValue.toInt
+          val y = dut.io.quad.bits.location.y.peek().litValue.toInt
+          assert(x <= (bbRight - bbLeft))
+          assert(y <= (bbBottom - bbTop))
+          if ((mask & 1) != 0) outputBuffer(y)(x) = true
+          if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
+          if ((mask & 4) != 0) outputBuffer(y + 1)(x) = true
+          if ((mask & 8) != 0) outputBuffer(y + 1)(x + 1) = true
+          expectLambdas(dut, coeffs.vertices, x + bbLeft, y + bbTop)
+        }
       }
 
       dut.clock.step()
     }
+
+    assert(gotLastQuad, "Final quad did not have lastQuad set to true")
 
     dut.io.coeffs.ready.expect(true)
 

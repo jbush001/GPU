@@ -33,6 +33,7 @@ class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
 /** Coverage and interpolation data for a single 2x2 pixel quad. */
 class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   val triangleId = UInt(cfg.triangleIdBits.W)
+  val lastQuad = Bool()
 
   /** Coordinates of the upper left corner, relative to the left/top
     * of tile bounding box.
@@ -126,21 +127,55 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val pixelInside = VecInit(pixelEdges.map(_.map(_ >= 0.S).reduce(_ && _))).asUInt
 
+  val nextQuad = Wire(new RasterizedQuad)
+  nextQuad.location := quadLoc - activeCoeffs.offset
+  nextQuad.triangleId := activeCoeffs.triangleId
+  nextQuad.mask := pixelInside
+  nextQuad.lastQuad := false.B
   for ((edges, pixel) <- pixelEdges.zipWithIndex) {
-    io.quad.bits.lambda(pixel)(0) := Float32.fromFixedPoint(edges(2), 16)
-    io.quad.bits.lambda(pixel)(1) := Float32.fromFixedPoint(edges(0), 16)
+    nextQuad.lambda(pixel)(0) := Float32.fromFixedPoint(edges(2), 16)
+    nextQuad.lambda(pixel)(1) := Float32.fromFixedPoint(edges(0), 16)
   }
 
+  val nextQuadValid = WireInit(false.B)
+
   object State extends ChiselEnum {
-    val Idle, StepRight, StepLeft = Value
+    val Idle, StepRight, StepLeft, SendLast = Value
   }
 
   val scanState = RegInit(State.Idle)
 
+  // We buffer one quad because we don't know if this will be the last quad.
+  // When the state machine goes into the Sendlast state, the flag is attached
+  // to the outgoing quad.
+  val outputQuad = RegInit(0.U.asTypeOf(new RasterizedQuad))
+  val outputQuadLatched = RegInit(false.B)
+
+  when (io.quad.ready && nextQuadValid) {
+    outputQuad := nextQuad
+    outputQuadLatched := true.B
+  }
+
+  when (io.quad.ready && scanState === State.SendLast) {
+    outputQuadLatched := false.B
+
+    // Reinitialize to zero, as this may be sent as a dummy quad.
+    outputQuad := 0.U.asTypeOf(new RasterizedQuad)
+  }
+
+  io.quad.bits := outputQuad
+
+  // A side effect of this logic is that, if the triangle has no coverage, it will send
+  // a dummy quad with the flags set to zero.
+  io.quad.valid := (outputQuadLatched && nextQuadValid) || scanState === State.SendLast
+  io.quad.bits.lastQuad := scanState === State.SendLast
+
+  // Explictly assign so it is correct for the dummy quad.
+  io.quad.bits.triangleId := activeCoeffs.triangleId
+
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
   io.coeffs.ready := false.B
-  io.quad.valid := false.B
   stepCommand := StepCommand.Wait
   val rasterizationFinished = RegInit(false.B) // Delay a cycle so it coincides with idle
   io.rasterizationFinished.valid := rasterizationFinished
@@ -160,12 +195,11 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     }
 
     is (State.StepRight) {
-      io.quad.valid := pixelInside =/= 0.U
+      nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
         when (quadLoc.x === activeCoeffs.boundingBox.right) {
           when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
-            scanState := State.Idle
-            rasterizationFinished := true.B
+            scanState := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
             scanState := State.StepLeft
@@ -176,13 +210,12 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       }
     }
 
-   is (State.StepLeft) {
-      io.quad.valid := pixelInside =/= 0.U
+    is (State.StepLeft) {
+      nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
         when(quadLoc.x === activeCoeffs.boundingBox.left) {
           when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
-            scanState := State.Idle
-            rasterizationFinished := true.B
+            scanState := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
             scanState := State.StepRight
@@ -192,10 +225,12 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
         }
       }
     }
-  }
 
-  // Adjust coordinates to be relative to the offset.
-  io.quad.bits.location := quadLoc - activeCoeffs.offset
-  io.quad.bits.mask := pixelInside
-  io.quad.bits.triangleId := activeCoeffs.triangleId
+    is (State.SendLast) {
+      when (io.quad.ready) {
+        scanState := State.Idle
+        rasterizationFinished := true.B
+      }
+    }
+  }
 }

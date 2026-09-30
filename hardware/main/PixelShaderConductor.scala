@@ -77,6 +77,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       val depths = Vec(Consts.pixelsPerQuad, Float32())
     })
 
+    val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
+
     // Program varying coefficients, from triangle setup
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
@@ -172,13 +174,14 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val drainIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
   val drainJob = jobs(drainIndex)
   val drainQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
+  val drainQuad = drainJob.sourceQuads(drainQuadCount)
 
   io.shadedQuad.valid := drainJob.state === JobState.ReadyToDrain
 
-  io.shadedQuad.bits.triangleId := drainJob.sourceQuads(drainQuadCount).triangleId
-  io.shadedQuad.bits.location := drainJob.sourceQuads(drainQuadCount).location
-  io.shadedQuad.bits.mask := drainJob.sourceQuads(drainQuadCount).mask
-  io.shadedQuad.bits.depths := drainJob.sourceQuads(drainQuadCount).depths
+  io.shadedQuad.bits.triangleId := drainQuad.triangleId
+  io.shadedQuad.bits.location := drainQuad.location
+  io.shadedQuad.bits.mask := drainQuad.mask
+  io.shadedQuad.bits.depths := drainQuad.depths
   for (pixelI <- 0 until Consts.pixelsPerQuad) {
     for (channelI <- 0 until Color.numChannels) {
       val pixelIndex = drainQuadCount * Consts.pixelsPerQuad.U + pixelI.U
@@ -189,7 +192,6 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   when (io.shadedQuad.fire) {
-    assert(io.shadedQuad.bits.mask =/= 0.U, "Shaded quad has an empty mask")
     when (drainQuadCount === drainJob.validQuadCount - 1.U) {
       // Finished draining this job
       drainQuadCount := 0.U
@@ -199,6 +201,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       drainQuadCount := drainQuadCount + 1.U
     }
   }
+
+  io.triangleFinished.valid := drainQuad.lastQuad
+  io.triangleFinished.bits := drainQuad.triangleId
 
   val textureResponseId = io.textureFetchResponse.bits.requestId
   val textureResponseJobId = textureResponseId(cfg.shaderJobIdBits - 1, 0)

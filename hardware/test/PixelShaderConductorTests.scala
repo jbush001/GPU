@@ -23,7 +23,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
-    lambda: Seq[Seq[Int]], depths: Seq[Float],triangleId: Int = 0): Unit = {
+    lambda: Seq[Seq[Int]], depths: Seq[Float],triangleId: Int = 0,
+    lastQuad: Boolean = false): Unit = {
     dut.io.sourceQuad.valid.poke(true)
     dut.io.sourceQuad.bits.location.x.poke(x)
     dut.io.sourceQuad.bits.location.y.poke(y)
@@ -38,6 +39,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     for (i <- depths.indices) {
       dut.io.sourceQuad.bits.depths(i).raw.poke(java.lang.Float.floatToRawIntBits(depths(i)))
     }
+
+    dut.io.sourceQuad.bits.lastQuad.poke(lastQuad)
 
     dut.clock.step()
     dut.io.sourceQuad.valid.poke(false)
@@ -104,7 +107,9 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         val base = i * Consts.pixelsPerQuad
         loadSourceQuad(dut, i + 3, i + 4, masks(i),
           Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)),
-          Seq(1.0f, 2.0f, 3.0f, 4.0f))
+          Seq(1.0f, 2.0f, 3.0f, 4.0f),
+          triangleId = 3,
+          lastQuad = (i == (cfg.shaderVectorLanes / Consts.pixelsPerQuad - 1)))
       }
 
       // Process
@@ -135,6 +140,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.startJob.valid.expect(false)
         dut.io.sourceQuad.ready.expect(true)
+
+        if (i == (cfg.shaderVectorLanes / Consts.pixelsPerQuad - 1)) {
+          dut.io.triangleFinished.valid.expect(true)
+          dut.io.triangleFinished.bits.expect(3)
+        }
+
         drainShadedQuad(dut, i + 3, i + 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
           Seq(i * 4 + j + 100, i * 4 + j + 200, i * 4 + j + 300, i * 4 + j + 400)),
           Seq(1.0f, 2.0f, 3.0f, 4.0f))
@@ -189,7 +200,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         loadSourceQuad(dut, x, 0, 15,
           Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
-          Seq.fill(Consts.pixelsPerQuad)(0.0f))
+          Seq.fill(Consts.pixelsPerQuad)(0.0f),
+          triangleId = 2)
       }
 
       dut.io.startJob.valid.expect(true)
@@ -199,7 +211,9 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         loadSourceQuad(dut, x + 10, 0, 15,
           Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
-          Seq.fill(Consts.pixelsPerQuad)(0.0f))
+          Seq.fill(Consts.pixelsPerQuad)(0.0f),
+          triangleId = 2,
+          lastQuad = (x == (cfg.shaderVectorLanes / Consts.pixelsPerQuad - 1)))
       }
 
       dut.io.startJob.valid.expect(true)
@@ -219,12 +233,20 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.io.jobFinished.valid.poke(false)
 
       for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        dut.io.triangleFinished.valid.expect(false)
         drainShadedQuad(dut, x, 0, 15,
           Seq.fill(Consts.pixelsPerQuad)(Seq.fill(Color.numChannels)(0)),
           Seq.fill(Consts.pixelsPerQuad)(0.0f))
       }
 
       for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        if (x == (cfg.shaderVectorLanes / Consts.pixelsPerQuad - 1)) {
+          dut.io.triangleFinished.valid.expect(true)
+          dut.io.triangleFinished.bits.expect(2)
+        } else {
+          dut.io.triangleFinished.valid.expect(false)
+        }
+
         drainShadedQuad(dut, x + 10, 0, 15,
           Seq.fill(Consts.pixelsPerQuad)(Seq.fill(Color.numChannels)(0)),
           Seq.fill(Consts.pixelsPerQuad)(0.0f))
