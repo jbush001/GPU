@@ -155,15 +155,11 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
       // Flush
       dut.io.flush.poke(true)
-      for (_ <- 0 until (cfg.shaderVectorLanes / Consts.pixelsPerQuad) - 1) {
-        dut.io.startJob.valid.expect(false)
-        dut.clock.step()
-      }
-
+      dut.io.startJob.valid.expect(false)
+      dut.clock.step()
       dut.io.flush.poke(false)
-
-      dut.io.startJob.ready.poke(true)
       dut.io.startJob.valid.expect(true)
+      dut.io.startJob.ready.poke(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
 
@@ -183,6 +179,56 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       // Now it should short circuit and not emit the null quads.
       // This is critical for proper operation of the QuadScoreboard.
       dut.io.shadedQuad.valid.expect(false)
+    }
+  }
+
+  test("PixelShaderConductor drains jobs in source order") {
+    simulate(new PixelShaderConductor) { dut =>
+      dut.io.startJob.ready.poke(true)
+
+      for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        loadSourceQuad(dut, x, 0, 15,
+          Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
+          Seq.fill(Consts.pixelsPerQuad)(0.0f))
+      }
+
+      dut.io.startJob.valid.expect(true)
+      val firstJobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
+      dut.clock.step()
+
+      for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        loadSourceQuad(dut, x + 10, 0, 15,
+          Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
+          Seq.fill(Consts.pixelsPerQuad)(0.0f))
+      }
+
+      dut.io.startJob.valid.expect(true)
+      val secondJobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
+      dut.clock.step()
+
+      // A later completed job cannot overtake the head of the FIFO.
+      dut.io.jobFinished.valid.poke(true)
+      dut.io.jobFinished.bits.poke(secondJobId)
+      dut.clock.step()
+      dut.io.jobFinished.valid.poke(false)
+      dut.io.shadedQuad.valid.expect(false)
+
+      dut.io.jobFinished.valid.poke(true)
+      dut.io.jobFinished.bits.poke(firstJobId)
+      dut.clock.step()
+      dut.io.jobFinished.valid.poke(false)
+
+      for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        drainShadedQuad(dut, x, 0, 15,
+          Seq.fill(Consts.pixelsPerQuad)(Seq.fill(Color.numChannels)(0)),
+          Seq.fill(Consts.pixelsPerQuad)(0.0f))
+      }
+
+      for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+        drainShadedQuad(dut, x + 10, 0, 15,
+          Seq.fill(Consts.pixelsPerQuad)(Seq.fill(Color.numChannels)(0)),
+          Seq.fill(Consts.pixelsPerQuad)(0.0f))
+      }
     }
   }
 

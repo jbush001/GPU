@@ -92,11 +92,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   })
 
   val quadsPerJob = cfg.shaderVectorLanes / Consts.pixelsPerQuad
-  val totalPendingJobs = 10
+  val totalPendingJobs = 1 << cfg.shaderJobIdBits
   val maxVaryingCoeffs = 18
 
   object JobState extends ChiselEnum {
-    val Idle, Filling, ReadyToProcess, Processing, ReadyToDrain, Draining = Value
+    val Idle, Filling, ReadyToProcess, Processing, ReadyToDrain = Value
   }
 
   class JobInfo extends Bundle {
@@ -116,145 +116,87 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
 
   // Fill jobs
-  val nextFillJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for ((in, job) <- nextFillJob.io.in.zip(jobs)) {
-    in.valid := job.state === JobState.Idle
-    in.bits := DontCare
-  }
-
-  val fillActive = RegInit(false.B)
-  val fillIndex = RegInit(0.U(log2Up(totalPendingJobs).W))
+  val fillIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
   val fillQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
+  val fillJob = jobs(fillIndex)
 
-  // Indicate ready if there are any available jobs to fill.
-  io.sourceQuad.ready := (jobs.map(
-    _.state === JobState.Idle).reduce(_ || _) || fillActive
-  )
+  // Indicate ready if the current job is being filled or the tail is free.
+  io.sourceQuad.ready := (fillJob.state === JobState.Filling
+    || fillJob.state === JobState.Idle)
 
   assert(!(io.flush && io.sourceQuad.valid),
     "Cannot have a valid rasterized quad while flushing")
 
-  nextFillJob.io.out.ready := false.B
-  when (io.flush && fillActive) {
+  when (io.flush && fillJob.state === JobState.Filling) {
+    // End of batch. Mark the current partially filled job as ready to process.
     assert(fillQuadCount != 0.U)
-    // Push empty quads to complete any pending entries.
-    jobs(fillIndex).sourceQuads(fillQuadCount).mask := 0.U
+    fillQuadCount := 0.U
+    fillJob.state := JobState.ReadyToProcess
+    fillIndex := fillIndex + 1.U
+  }.elsewhen (io.sourceQuad.fire) {
+    assert(fillQuadCount === 0.U || fillJob.state === JobState.Filling)
+    fillJob.sourceQuads(fillQuadCount) := io.sourceQuad.bits
+    fillJob.validQuadCount := fillQuadCount +& 1.U
+    fillJob.state := JobState.Filling
     when (fillQuadCount === (quadsPerJob - 1).U) {
       // Finished filling, ready for processing
       fillQuadCount := 0.U
-      fillActive := false.B
-      jobs(fillIndex).state := JobState.ReadyToProcess
+      fillJob.state := JobState.ReadyToProcess
+      fillIndex := fillIndex + 1.U
     }.otherwise {
       fillQuadCount := fillQuadCount + 1.U
-    }
-  }.elsewhen (io.sourceQuad.fire) {
-    when (fillActive) {
-      assert(fillQuadCount != 0.U)
-
-      // Fill existing partially readyToProcess job entry
-      jobs(fillIndex).sourceQuads(fillQuadCount) := io.sourceQuad.bits
-      jobs(fillIndex).validQuadCount := fillQuadCount +& 1.U
-
-      when (fillQuadCount === (quadsPerJob - 1).U) {
-        // Finished filling, ready for processing
-        fillQuadCount := 0.U
-        fillActive := false.B
-        jobs(fillIndex).state := JobState.ReadyToProcess
-      }.otherwise {
-        fillQuadCount := fillQuadCount + 1.U
-      }
-    }.otherwise {
-      // Pick a new job entry to start filling
-      fillActive := true.B
-      fillQuadCount := 1.U
-      fillIndex := nextFillJob.io.chosen
-      nextFillJob.io.out.ready := true.B
-      jobs(nextFillJob.io.chosen).state := JobState.Filling
-      jobs(nextFillJob.io.chosen).sourceQuads(0) := io.sourceQuad.bits
-      jobs(nextFillJob.io.chosen).validQuadCount := 1.U
     }
   }
 
   // Send fully populated jobs to the shader engine
-  val nextShaderJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for ((in, job) <- nextShaderJob.io.in.zip(jobs)) {
-    in.valid := job.state === JobState.ReadyToProcess
-    in.bits := DontCare
-  }
+  val dispatchIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
 
-  nextShaderJob.io.out.ready := io.startJob.ready
-
-  io.startJob.valid := nextShaderJob.io.out.valid
+  io.startJob.valid := jobs(dispatchIndex).state === JobState.ReadyToProcess
   io.startJob.bits.startPc := 0.U // XXX need to allow setting shader address
-  io.startJob.bits.jobId := nextShaderJob.io.chosen
+  io.startJob.bits.jobId := dispatchIndex
 
   when (io.startJob.fire) {
-    jobs(nextShaderJob.io.chosen).state := JobState.Processing
-    jobs(nextShaderJob.io.chosen).varyingCoeffIndex := 0.U
+    jobs(dispatchIndex).state := JobState.Processing
+    jobs(dispatchIndex).varyingCoeffIndex := 0.U
+    dispatchIndex := dispatchIndex + 1.U
   }
 
   when (io.jobFinished.fire) {
-    val index = io.jobFinished.bits(log2Up(totalPendingJobs) - 1, 0)
+    val index = io.jobFinished.bits
     assert(jobs(index).state === JobState.Processing,
       "Job finished signal received for a job that is not processing")
     jobs(index).state := JobState.ReadyToDrain
   }
 
   // Drain shaded quads to the tile buffer
-  val nextDrainJob = Module(new RRArbiter(Bool(), totalPendingJobs))
-  for ((in, job) <- nextDrainJob.io.in.zip(jobs)) {
-    in.valid := job.state === JobState.ReadyToDrain
-    in.bits := DontCare
-  }
-
-  val drainActive = RegInit(false.B)
-  val drainIndex = RegInit(0.U(log2Up(totalPendingJobs).W))
+  val drainIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
+  val drainJob = jobs(drainIndex)
   val drainQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
 
-  io.shadedQuad.valid := (jobs.map(_.state === JobState.ReadyToDrain).reduce(_ || _)) || drainActive
+  io.shadedQuad.valid := drainJob.state === JobState.ReadyToDrain
 
-  val drainSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
-  nextDrainJob.io.out.ready := false.B
-  io.shadedQuad.bits.triangleId := jobs(drainSelect).sourceQuads(drainQuadCount).triangleId
-  io.shadedQuad.bits.location := jobs(drainSelect).sourceQuads(drainQuadCount).location
-  io.shadedQuad.bits.mask := jobs(drainSelect).sourceQuads(drainQuadCount).mask
-  io.shadedQuad.bits.depths := jobs(drainSelect).sourceQuads(drainQuadCount).depths
+  io.shadedQuad.bits.triangleId := drainJob.sourceQuads(drainQuadCount).triangleId
+  io.shadedQuad.bits.location := drainJob.sourceQuads(drainQuadCount).location
+  io.shadedQuad.bits.mask := drainJob.sourceQuads(drainQuadCount).mask
+  io.shadedQuad.bits.depths := drainJob.sourceQuads(drainQuadCount).depths
   for (pixelI <- 0 until Consts.pixelsPerQuad) {
     for (channelI <- 0 until Color.numChannels) {
       val pixelIndex = drainQuadCount * Consts.pixelsPerQuad.U + pixelI.U
       io.shadedQuad.bits.colors(pixelI)(channelI) := (
-        jobs(drainSelect).shadedColors(channelI)(pixelIndex(log2Up(cfg.shaderVectorLanes) - 1, 0))
+        drainJob.shadedColors(channelI)(pixelIndex(log2Up(cfg.shaderVectorLanes) - 1, 0))
       )
     }
   }
 
   when (io.shadedQuad.fire) {
     assert(io.shadedQuad.bits.mask =/= 0.U, "Shaded quad has an empty mask")
-    when (drainActive) {
-      drainSelect := drainIndex
-      when (drainQuadCount === jobs(drainIndex).validQuadCount - 1.U) {
-        // Finished draining, ready for next job
-        drainQuadCount := 0.U
-        drainActive := false.B
-        jobs(drainIndex).state := JobState.Idle
-      }.otherwise {
-        drainQuadCount := drainQuadCount + 1.U
-      }
+    when (drainQuadCount === drainJob.validQuadCount - 1.U) {
+      // Finished draining this job
+      drainQuadCount := 0.U
+      drainJob.state := JobState.Idle
+      drainIndex := drainIndex + 1.U
     }.otherwise {
-      // Pick a new job to drain
-      nextDrainJob.io.out.ready := true.B
-      drainSelect := nextDrainJob.io.chosen
-      when (jobs(nextDrainJob.io.chosen).validQuadCount === 1.U) {
-        // Special case: the job only has one quad, so we can immediately mark it as idle
-        // without activating the drain logic
-        // XXX this was a bug workaround, but check if this is necessary or the
-        // best way to handle this.
-        jobs(nextDrainJob.io.chosen).state := JobState.Idle
-      }.otherwise {
-        drainActive := true.B
-        drainQuadCount := 1.U
-        drainIndex := nextDrainJob.io.chosen
-      }
+      drainQuadCount := drainQuadCount + 1.U
     }
   }
 
@@ -266,7 +208,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   // register the request and perform the lookup in the second cycle so we can
   // cleanly bypass texture results that happen the same cycle.
   val regReadValidStage2 = RegNext(io.shaderRegRead.valid, init = false.B)
-  val regReadJobIdStage2 = RegNext(io.shaderRegRead.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
+  val regReadJobIdStage2 = RegNext(io.shaderRegRead.bits.jobId)
   val regReadAddrStage2 = RegNext(io.shaderRegRead.bits.addr)
 
   val readJob = jobs(regReadJobIdStage2)
@@ -327,7 +269,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   when (io.shaderRegWrite.valid) {
-    val writeJob = jobs(io.shaderRegWrite.bits.jobId(log2Up(totalPendingJobs) - 1, 0))
+    val writeJob = jobs(io.shaderRegWrite.bits.jobId)
     assert(writeJob.state === JobState.Processing)
     switch (io.shaderRegWrite.bits.addr) {
       is (0.U, 1.U, 2.U, 3.U) {
