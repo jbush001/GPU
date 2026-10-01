@@ -34,8 +34,8 @@ class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
   * framebuffer.
   *
   * This module performs alpha blending, depth tests, and other pixel-level
-  * checks. It has a three stage read/modify/write pipeline that accepts one
-  * 2x2 quad per cycle. It stores all information in on-chip SRAM. When
+  * operations. It has a three stage read/modify/write pipeline that accepts
+  * one 2x2 quad per cycle. It stores all information in on-chip SRAM. When
   * rendering completes for a tile, a flush copies the buffer contents to
   * external memory.
   * This stores color and depth values in a native format; conversions only

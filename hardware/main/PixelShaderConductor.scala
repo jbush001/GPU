@@ -33,64 +33,87 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   * PixelShaderConductor handles batching requests for [[ShaderCore]],
   * It collects rasterized quads from the rasterizer, dispatches shading
   * jobs to the shader core, and sends shaded quads to the tile buffer, tracking
-  * the state of all in-flight quads.
+  * the state of all in-flight quads. The ShaderCore performs register reads
+  * and writes to access data for pixels.
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // From DepthInterpolator
+    /** From [[DepthInterpolator]]. Incoming quad to be shaded. */
     val sourceQuad = Flipped(Decoupled(new InterpolatedQuad))
 
+    /** Asserted for one cycle when all triangles have been processed. */
     val lastTriangle = Output(Bool())
 
-    // To/From ShaderCore
+    /** Asserted for one cycle when a single triangle has been fully processed. */
+    val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
+
+    /** To [[ShaderCore]], requests starting a new thread to process pixels
+      * The jobId will be used for subsequent register accesses to uniquely identify
+      * this job.
+      */
     val startJob = Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
       val jobId = UInt(cfg.shaderJobIdBits.W)
     })
 
+    /** From [[ShaderCore]], Signals that the job has completed and its outputs
+      * have been written via shaderRegWrite.
+      */
     val jobFinished = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
+    /** From [[ShaderCore]],  Requests a read of register `addr` for job `jobId`.
+      * The response arrives one cycle later on shaderRegReadData.
+      */
     val shaderRegRead = Flipped(Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
     }))
 
-    // This is the response to shaderRegRead with one cycle of latency.
-    // If this is not valid, then the reader should block. This will
-    // subsequently assert ioWakeJob.
+    /** This is the response to shaderRegRead.
+      * If valid is low in the cycle after a request, the data is not yet
+      * available and the requesting thread must stall until ioWakeJob is
+      * asserted for its jobId
+      */
     val shaderRegReadData = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
-    // This is asserted when a previously blocked shaderRegRead can now proceed.
+    /** From [[ShaderCore]], Asserted when a read that returned invalid on
+      * shaderRegReadData can now proceed. Only used if shaderRegReadData.valid
+      * was low in the cycle after the request.
+      */
     val ioWakeJob = Valid(UInt(cfg.shaderJobIdBits.W))
 
+    /** From [[ShaderCore]], Writes `data` (one 32-bit value per lane) to
+      * register `addr` of job `jobId`.
+      */
     val shaderRegWrite = Flipped(Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(3.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
-    // To TileBuffer
+    /** To [[TileBuffer]], fully shaded quad to write back */
     val shadedQuad = Valid(new Bundle {
-      val triangleId = UInt(cfg.triangleIdBits.W)
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)
       val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
       val depths = Vec(Consts.pixelsPerQuad, Float32())
     })
 
-    val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
-
-    // Program varying coefficients, from triangle setup
+    /** From triangle setup. Writes one varying coefficient (used to interpolate
+      * per-vertex attributes across the triangle) at `index` for `triangleId`.
+      */
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(5.W)
       val value = Float32()
     }))
 
-    // To TextureCache
+    /** To [[TextureCache]]. Requests a texture sample. */
     val textureFetchRequest = Decoupled(new TextureFetchRequest())
 
-    // From TextureCache
+    /** From [[TextureCache]]. Returns the sampled texture data. Must be
+      * matched with a previous textureFetchRequest.
+      */
     val textureFetchResponse = Flipped(Valid(new TextureFetchResponse()))
   })
 
@@ -115,10 +138,14 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val returnedTexelBitmap = Bits(quadsPerJob.W)
   }
 
+  // The jobs array is indexed by jobId.
   val jobs = RegInit(VecInit.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo)))
+
+  // We support multiple triangles in-flight at once. This array stores coeffients for all active
+  // ones.
   val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
 
-  // Fill jobs
+  // Collects quads for a full SIMD width in the shader.
   val fillIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
   val fillQuadCount = RegInit(0.U(log2Up(quadsPerJob).W))
   val fillJob = jobs(fillIndex)
@@ -171,7 +198,6 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   io.shadedQuad.valid := drainJob.state === JobState.ReadyToDrain
 
-  io.shadedQuad.bits.triangleId := drainQuad.triangleId
   io.shadedQuad.bits.location := drainQuad.location
   io.shadedQuad.bits.mask := drainQuad.mask
   io.shadedQuad.bits.depths := drainQuad.depths

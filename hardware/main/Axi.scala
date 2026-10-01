@@ -19,8 +19,9 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** AMBA AXI bus interface.
-  * @see ARM IHI 0022, Issue L
+/**
+  * AXI bus interface.
+  * @see AMBA AXI Protocol Specification, Issue L
   * [[https://developer.arm.com/documentation/ihi0022/latest]]
   */
 class AxiBus(implicit cfg: GpuConfig) extends Bundle {

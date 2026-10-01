@@ -34,7 +34,14 @@ class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
 /** Coverage and interpolation data for a single 2x2 pixel quad. */
 class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   val triangleId = UInt(cfg.triangleIdBits.W)
+
+  /** Set for the last quad of the triangle */
   val lastQuad = Bool()
+
+  /** This is asserted for the last quad when the `lastTriangle` is set
+    * in [[RasterizerCoeffs]]. `lastQuad` is always asserted at the same
+    * time as this signal.
+    */
   val lastTriangle = Bool()
 
   /** Coordinates of the upper left corner, relative to the left/top
@@ -70,7 +77,14 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   */
 class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
+    /** From triangle setup. When ready/valid are high, the values have been accepted
+      * and the next value can be asserted.
+      */
     val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
+
+    /** To the tile buffer. Outputs a rasterized 2x2 pixel quad with coverage
+      * and interpolation data.
+      */
     val quad = Decoupled(new RasterizedQuad)
   })
 
