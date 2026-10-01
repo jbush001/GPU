@@ -43,16 +43,25 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val startFlush = Input(Bool())
     val flushColor = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
-    val complete = Output(Bool())
-    val batchFinished = Input(Bool())
 
-    val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
+    val complete = Output(Bool())
+    val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
+    val lastTriangle = Output(Bool())
   })
 
   val gpu = Module(new Gpu)
   val memory = Module(new SimAxiMemory(1024))
 
-  io.complete := gpu.io.complete
+  io.lastTriangle := gpu.io.lastTriangle
+  io.triangleFinished <> gpu.io.triangleFinished
+
+  val complete = RegInit(false.B)
+  io.complete := complete
+  when (gpu.io.lastTriangle) {
+    complete := true.B
+  }.elsewhen (io.startFlush) {
+    complete := false.B // Hack
+  }
 
   gpu.io.coeffs <> io.coeffs
   io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
@@ -60,14 +69,11 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
   io.flushColor.valid := gpu.io.flushData.valid
-  gpu.io.batchFinished := io.batchFinished
   when (io.flushBufferSel === RenderBufferId.Color) {
     io.flushColor.bits := gpu.io.flushData.bits.color.toArgb32
   }.otherwise {
     io.flushColor.bits := Fill(4, gpu.io.flushData.bits.depth.toUnorm(8))
   }
-
-  io.allocateTriangleId <> gpu.io.allocateTriangleId
 
   gpu.io.flushBufferSel := io.flushBufferSel
   gpu.io.axiBus <> memory.io
@@ -187,32 +193,24 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         val tileLeft = tileColumn * cfg.tileSizePixels
         val tileTop = tileRow * cfg.tileSizePixels
 
+        // XXX for now does not check for deallocation of triangle IDs
         var primIndex = 0
-        // XXX for now assumes that there is a free triangleId available
-        // (dut.io.allocateTriangleId.valid is true)
         while (!dut.io.complete.peek().litToBoolean || primIndex * 3 < indices.length) {
           // Submit new triangles. This is a stand-in for the unimplemented setup unit.
           if (dut.io.coeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
 
-            val triangleId = dut.io.allocateTriangleId.bits.peek().litValue.toInt
-            dut.io.allocateTriangleId.valid.expect(true)
-            dut.io.allocateTriangleId.ready.poke(true)
-            dut.clock.step()
-            dut.io.allocateTriangleId.ready.poke(false)
-
-            setUpTriangle(dut, triangleId, triangleVerts, tileLeft, tileTop)
+            setUpTriangle(dut, primIndex, triangleVerts, tileLeft, tileTop, primIndex >= (indices.length / 3) - 1)
             val triangleVaryings = triangleIndices.map(i => varyings(i))
             for (i <- varyings(0).indices) {
-              setUpVarying(dut, triangleId,
+              setUpVarying(dut, primIndex,
                 i * 3, (triangleVaryings(0)(i), triangleVaryings(1)(i), triangleVaryings(2)(i)))
             }
 
             primIndex += 1
           }
 
-          dut.io.batchFinished.poke(primIndex * 3 >= indices.length)
           dut.clock.step()
         }
 
@@ -263,7 +261,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
   }
 
   def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Int, Int, Float)],
-    tileLeft: Int, tileTop: Int): Unit = {
+    tileLeft: Int, tileTop: Int, lastTriangle: Boolean): Unit = {
 
     setUpDepthCoeffs(dut, triangleId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
 
@@ -272,6 +270,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.coeffs.bits.offset.x.poke(tileLeft)
     dut.io.coeffs.bits.offset.y.poke(tileTop)
     dut.io.coeffs.bits.triangleId.poke(triangleId)
+    dut.io.coeffs.bits.lastTriangle.poke(lastTriangle)
 
     // Compute minimal bounding box that contains the triangle (but is inside the tile)
     val bbLeft = math.max(vertices.map(_._1).min & ~1, tileLeft)

@@ -38,6 +38,9 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
       val coeffs = new DepthInterpolatorCoeffs()
     }))
 
+    val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
+    val lastTriangle = Output(Bool())
+
     val startFlush = Input(Bool())
     val flushData = Decoupled(new Bundle {
       val depth = Float32()
@@ -45,10 +48,6 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     })
 
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
-    val complete = Output(Bool())
-    val batchFinished = Input(Bool())
-
-    val allocateTriangleId = Decoupled(UInt(cfg.triangleIdBits.W))
   })
 
   val rasterizer = Module(new Rasterizer)
@@ -59,14 +58,13 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val memoryArbiter = Module(new MemoryArbiter(1, 1))
   val floatArrayToColor = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
-  val quadScoreboard = Module(new QuadScoreboard)
 
-  io.complete := quadScoreboard.io.idle
+  io.triangleFinished <> pixelShaderConductor.io.triangleFinished
+  io.lastTriangle := pixelShaderConductor.io.lastTriangle
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
 
-  pixelShaderConductor.io.flush := quadScoreboard.io.flushPixelShader
   pixelShaderConductor.io.startJob <> shaderCore.io.startJob
   shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
   shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
@@ -77,14 +75,6 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   floatArrayToColor.io.shadedQuad <> tileBuffer.io.shadedQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
   memoryArbiter.io.axiBus <> io.axiBus
-  quadScoreboard.io.issueQuad.valid := rasterizer.io.quad.fire
-  quadScoreboard.io.issueQuad.bits := rasterizer.io.quad.bits.triangleId
-  quadScoreboard.io.batchFinished := io.batchFinished
-  quadScoreboard.io.submitQuad := depthInterpolator.io.interpolatedQuad.fire
-  quadScoreboard.io.retireQuad.valid := (pixelShaderConductor.io.shadedQuad.fire)
-  quadScoreboard.io.retireQuad.bits := pixelShaderConductor.io.shadedQuad.bits.triangleId
-  quadScoreboard.io.rasterizationFinished <> rasterizer.io.rasterizationFinished
-  io.allocateTriangleId <> quadScoreboard.io.allocateTriangleId
 
   memoryArbiter.io.writePorts(0).burst.valid := false.B
   memoryArbiter.io.writePorts(0).data.valid := false.B

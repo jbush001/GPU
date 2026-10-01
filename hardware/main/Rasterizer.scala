@@ -21,6 +21,7 @@ import chisel3.util._
 
 class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
   val triangleId = UInt(cfg.triangleIdBits.W)
+  val lastTriangle = Bool()
   val offset = Point2D()
   val boundingBox = BoundingBox()
   val edges = Vec(Consts.triangleEdges, new Bundle {
@@ -34,6 +35,7 @@ class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
 class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   val triangleId = UInt(cfg.triangleIdBits.W)
   val lastQuad = Bool()
+  val lastTriangle = Bool()
 
   /** Coordinates of the upper left corner, relative to the left/top
     * of tile bounding box.
@@ -70,7 +72,6 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
     val quad = Decoupled(new RasterizedQuad)
-    val rasterizationFinished = Valid(UInt(cfg.triangleIdBits.W))
   })
 
   object StepCommand extends ChiselEnum {
@@ -132,6 +133,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   nextQuad.triangleId := activeCoeffs.triangleId
   nextQuad.mask := pixelInside
   nextQuad.lastQuad := false.B
+  nextQuad.lastTriangle := false.B
   for ((edges, pixel) <- pixelEdges.zipWithIndex) {
     nextQuad.lambda(pixel)(0) := Float32.fromFixedPoint(edges(2), 16)
     nextQuad.lambda(pixel)(1) := Float32.fromFixedPoint(edges(0), 16)
@@ -169,6 +171,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // a dummy quad with the flags set to zero.
   io.quad.valid := (outputQuadLatched && nextQuadValid) || scanState === State.SendLast
   io.quad.bits.lastQuad := scanState === State.SendLast
+  io.quad.bits.lastTriangle := scanState === State.SendLast && activeCoeffs.lastTriangle
 
   // Explictly assign so it is correct for the dummy quad.
   io.quad.bits.triangleId := activeCoeffs.triangleId
@@ -177,13 +180,9 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // bounding box in a zig-zag pattern.
   io.coeffs.ready := false.B
   stepCommand := StepCommand.Wait
-  val rasterizationFinished = RegInit(false.B) // Delay a cycle so it coincides with idle
-  io.rasterizationFinished.valid := rasterizationFinished
-  io.rasterizationFinished.bits := activeCoeffs.triangleId
   switch (scanState) {
     // Waiting to start a new triangle
     is (State.Idle) {
-      rasterizationFinished := false.B
       io.coeffs.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
@@ -229,7 +228,6 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.SendLast) {
       when (io.quad.ready) {
         scanState := State.Idle
-        rasterizationFinished := true.B
       }
     }
   }

@@ -39,7 +39,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // From DepthInterpolator
     val sourceQuad = Flipped(Decoupled(new InterpolatedQuad))
-    val flush = Input(Bool())
+
+    val lastTriangle = Output(Bool())
 
     // To/From ShaderCore
     val startJob = Decoupled(new Bundle {
@@ -126,27 +127,19 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   io.sourceQuad.ready := (fillJob.state === JobState.Filling
     || fillJob.state === JobState.Idle)
 
-  assert(!(io.flush && io.sourceQuad.valid),
-    "Cannot have a valid rasterized quad while flushing")
 
-  when (io.flush && fillJob.state === JobState.Filling) {
-    // End of batch. Mark the current partially filled job as ready to process.
-    assert(fillQuadCount != 0.U)
-    fillQuadCount := 0.U
-    fillJob.state := JobState.ReadyToProcess
-    fillIndex := fillIndex + 1.U
-  }.elsewhen (io.sourceQuad.fire) {
+  when (io.sourceQuad.fire) {
     assert(fillQuadCount === 0.U || fillJob.state === JobState.Filling)
     fillJob.sourceQuads(fillQuadCount) := io.sourceQuad.bits
     fillJob.validQuadCount := fillQuadCount +& 1.U
-    fillJob.state := JobState.Filling
-    when (fillQuadCount === (quadsPerJob - 1).U) {
+    when (fillQuadCount === (quadsPerJob - 1).U || io.sourceQuad.bits.lastTriangle) {
       // Finished filling, ready for processing
       fillQuadCount := 0.U
       fillJob.state := JobState.ReadyToProcess
       fillIndex := fillIndex + 1.U
     }.otherwise {
       fillQuadCount := fillQuadCount + 1.U
+      fillJob.state := JobState.Filling
     }
   }
 
@@ -202,8 +195,9 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  io.triangleFinished.valid := drainQuad.lastQuad
+  io.triangleFinished.valid := drainQuad.lastQuad && io.shadedQuad.fire
   io.triangleFinished.bits := drainQuad.triangleId
+  io.lastTriangle := drainQuad.lastTriangle && io.shadedQuad.fire
 
   val textureResponseId = io.textureFetchResponse.bits.requestId
   val textureResponseJobId = textureResponseId(cfg.shaderJobIdBits - 1, 0)

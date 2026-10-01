@@ -127,7 +127,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     dut.clock.step()
 
     var gotLastQuad = false
-    while (!dut.io.rasterizationFinished.valid.peek().litToBoolean) {
+    while (!gotLastQuad) {
       rng match {
         case Some(rng) => dut.io.quad.ready.poke(rng.nextBoolean())
         case None => {}
@@ -135,7 +135,6 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
       if (dut.io.quad.valid.peek().litValue.toLong != 0
         && dut.io.quad.ready.peek().litValue.toLong != 0) {
-        assert(!gotLastQuad, "Received multiple quads with lastQuad set to true")
         if (dut.io.quad.bits.lastQuad.peek().litToBoolean) {
           gotLastQuad = true
         }
@@ -164,8 +163,6 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
       dut.clock.step()
     }
-
-    assert(gotLastQuad, "Final quad did not have lastQuad set to true")
 
     dut.io.coeffs.ready.expect(true)
 

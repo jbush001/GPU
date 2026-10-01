@@ -24,7 +24,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
     lambda: Seq[Seq[Int]], depths: Seq[Float],triangleId: Int = 0,
-    lastQuad: Boolean = false): Unit = {
+    lastQuad: Boolean = false, lastTriangle: Boolean = false): Unit = {
     dut.io.sourceQuad.valid.poke(true)
     dut.io.sourceQuad.bits.location.x.poke(x)
     dut.io.sourceQuad.bits.location.y.poke(y)
@@ -40,7 +40,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.io.sourceQuad.bits.depths(i).raw.poke(java.lang.Float.floatToRawIntBits(depths(i)))
     }
 
-    dut.io.sourceQuad.bits.lastQuad.poke(lastQuad)
+    dut.io.sourceQuad.bits.lastQuad.poke(lastQuad || lastTriangle)
+    dut.io.sourceQuad.bits.lastTriangle.poke(lastTriangle)
 
     dut.clock.step()
     dut.io.sourceQuad.valid.poke(false)
@@ -159,16 +160,13 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     simulate(new PixelShaderConductor) { dut =>
       dut.io.startJob.ready.poke(true)
 
-      // Load one valid quad
-      loadSourceQuad(dut, 3, 4, 15,
-        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)),
-        Seq.fill(Consts.pixelsPerQuad)(0.0f))
+      dut.io.startJob.valid.expect(false)
 
       // Flush
-      dut.io.flush.poke(true)
-      dut.io.startJob.valid.expect(false)
-      dut.clock.step()
-      dut.io.flush.poke(false)
+      loadSourceQuad(dut, 3, 4, 15,
+        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)),
+        Seq.fill(Consts.pixelsPerQuad)(0.0f),
+        lastQuad = true, lastTriangle = true)
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
@@ -188,7 +186,6 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
 
       // Now it should short circuit and not emit the null quads.
-      // This is critical for proper operation of the QuadScoreboard.
       dut.io.shadedQuad.valid.expect(false)
     }
   }
@@ -273,15 +270,11 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
       val outstandingQuads = scala.collection.mutable.Set[(Int, Int)]()
 
       val maxCycles = 1000
-      val flushCycles = 100
+      val finalizeCycles = 100
+      var sentLastTriangle = false
       for (cycle <- 0 until maxCycles) {
-        val flush = cycle >= maxCycles - flushCycles
-        if (flush) {
-          dut.io.flush.poke(true)
-        }
-
         // Check on loading new rasterized quads
-        if (cycle < maxCycles - flushCycles &&
+        if (cycle <= maxCycles - finalizeCycles &&
           dut.io.sourceQuad.ready.peek().litToBoolean) {
           tilex += 1
           if (tilex >= WIDTH) {
@@ -293,6 +286,15 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
           dut.io.sourceQuad.bits.location.x.poke(tilex)
           dut.io.sourceQuad.bits.location.y.poke(tiley)
           dut.io.sourceQuad.bits.mask.poke(15)
+          if (cycle >= maxCycles - finalizeCycles && !sentLastTriangle) {
+            dut.io.sourceQuad.bits.lastTriangle.poke(true)
+            dut.io.sourceQuad.bits.lastQuad.poke(true)
+            sentLastTriangle = true
+          } else {
+            dut.io.sourceQuad.bits.lastTriangle.poke(false)
+            dut.io.sourceQuad.bits.lastQuad.poke(false)
+          }
+
           outstandingQuads += ((tilex, tiley))
         } else {
           dut.io.sourceQuad.valid.poke(false)
