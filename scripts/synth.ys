@@ -1,0 +1,9 @@
+yosys read_verilog -sv build/generated/*.sv
+
+yosys synth -top Gpu -flatten
+yosys dfflibmap -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+yosys abc -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib -D 5000
+yosys opt_clean
+
+yosys tee -o build/synth_stat.txt stat -liberty /OpenROAD-flow-scripts/flow/platforms/nangate45/lib/NangateOpenCellLibrary_typical.lib
+yosys write_verilog -noattr build/Gpu_synth.v

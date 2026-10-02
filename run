@@ -1,9 +1,0 @@
-#!/usr/bin/env bash
-set -e
-
-case "$1" in
-  test)     scala-cli test hardware ${2:+-- -z "$2"} ;;
-  test-wave) scala-cli test hardware -- -DemitVcd=1 -DfirtoolOpts="-g" ${2:+-z "$2"} ;;
-  doc)      scala-cli doc hardware -f -o docs/gen ;;
-  *)        echo "Usage: $0 {test|test-vcd|sim|syn|doc} [test_name]" ;;
-esac

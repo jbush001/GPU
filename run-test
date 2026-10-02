@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -e
+
+scala_args=()
+
+for arg in "$@"; do
+  case "$arg" in
+    --wave)
+      scala_args+=("-DemitVcd=1" "-DfirtoolOpts=-g")
+      ;;
+    *)
+      scala_args+=("-z" "$arg")
+      ;;
+  esac
+done
+
+echo "Running tests with extra arguments: ${scala_args[@]}"
+
+if [[ ${#scala_args[@]} -gt 0 ]]; then
+  scala-cli test hardware -- "${scala_args[@]}"
+else
+  scala-cli test hardware
+fi

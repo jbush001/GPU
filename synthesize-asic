@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+
+scala-cli run hardware --main-class gpu.Synthesis
+time docker run --rm \
+  -v $PWD:/work -w /work \
+  openroad/orfs \
+  yosys -c scripts/synth.ys

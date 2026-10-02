@@ -17,25 +17,37 @@ be downloaded from here:
 
 https://www.chisel-lang.org/docs/installation
 
+If you don't already have Docker installed:
+
+    sudo apt install -y docker.io util-linux-extra
+    sudo usermod -aG docker $USER
+    newgrp docker
+
+(log completely out of Linux and back in)
+
+    docker run --rm hello-world
+
 ## Building and Running
 
 **To run all automated tests:**
 
-    ./run test
+    ./run-test
 
 **To run a specific test:**
 
-    ./run test "my test name"
+    ./run-test "my test name"
 
 **To run a test and dumping waveform files:**
 
-    ./run test-wave "my test name"
+    ./run-test --wave "my test name"
 
 The output waveform will be written to build/chiselsim/.../workdir-verilator/trace.vcd
 
-**Generating API documentation**
+**To Synthesize for ASIC**
 
-    ./run doc
+Using Nangate45 PDK and Yosys toolchain.
+
+    ./synthesize-asic
 
 **Running Assembler**
 
