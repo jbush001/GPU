@@ -143,15 +143,11 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   compareAsVec(0) := comparisonResult3
 
   // Branch check
-  val branchTaken0 = Wire(Bool())
-  branchTaken0 := false.B
-  when (io.decodedInstruction.valid) {
-    switch (io.decodedInstruction.bits.meta.opcode) {
-      is (OpCode.Bnz) { branchTaken0 := io.decodedInstruction.bits.operand1(0) =/= 0.U }
-      is (OpCode.Bz) { branchTaken0 := io.decodedInstruction.bits.operand1(0) === 0.U }
-      is (OpCode.Jump) { branchTaken0 := true.B }
-    }
-  }
+  val branchTaken0 = io.decodedInstruction.valid && MuxLookup(io.decodedInstruction.bits.meta.opcode, false.B)(Seq(
+      OpCode.Bnz -> (io.decodedInstruction.bits.operand1(0) =/= 0.U),
+      OpCode.Bz -> (io.decodedInstruction.bits.operand1(0) === 0.U),
+      OpCode.Jump -> true.B,
+    ))
 
   val branchTaken3 = ShiftRegister(branchTaken0, 3)
 

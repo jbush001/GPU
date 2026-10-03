@@ -14,8 +14,6 @@ for arg in "$@"; do
   esac
 done
 
-echo "Running tests with extra arguments: ${scala_args[@]}"
-
 if [[ ${#scala_args[@]} -gt 0 ]]; then
   scala-cli test hardware -- "${scala_args[@]}"
 else
