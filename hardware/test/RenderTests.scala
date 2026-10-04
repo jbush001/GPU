@@ -112,7 +112,12 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         .halt()
       val programBytes = asm.finish()
 
-      val vertices = Seq((40, 5, 0.6f), (5, 125, 0.2f), (120, 125, 0.2f), (88, 5, 0.6f))
+      val vertices = Seq(
+        (-0.375f, 0.921875f, 0.6f),
+        (-0.921875f, -0.953125f, 0.2f),
+        (0.875f, -0.953125f, 0.2f),
+        (0.375f, 0.921875f, 0.6f)
+      )
       val varyings: Seq[Seq[Float]] = Seq(
         Seq(0.0f, 0.0f),
         Seq(0.0f, 1.0f),
@@ -138,13 +143,13 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         .halt()
       val programBytes = asm.finish()
       val vertices = Seq(
-        (4, 24, 0.1f),
-        (64, 124, 0.9f),
-        (124, 4, 0.1f),
+        (-0.9375f, 0.625f, 0.1f),
+        (0.0f, -0.9375f, 0.9f),
+        (0.9375f, 0.9375f, 0.1f),
 
-        (64, 4, 0.9f),
-        (4, 104, 0.3f),
-        (124, 124, 0.1f),
+        (0.0f, 0.9375f, 0.9f),
+        (-0.9375f, -0.625f, 0.3f),
+        (0.9375f, -0.9375f, 0.1f),
       )
 
       val varyings: Seq[Seq[Float]] = Seq(
@@ -160,7 +165,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int, Float)],
+  def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Float, Float, Float)],
                     varyings: Seq[Seq[Float]], indices: Seq[Int]): Unit = {
     val imageData = renderBuffer(dut, programBytes, vertices, varyings, indices)
     val reference = loadReferenceImage(getReferenceImageName())
@@ -177,7 +182,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Int, Int, Float)],
+  def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Float, Float, Float)],
     varyings: Seq[Seq[Float]], indices: Seq[Int]): Array[Int] = {
     // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
@@ -201,7 +206,8 @@ class RenderTests extends AnyFunSuite with ChiselSim {
             val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
 
-            setUpTriangle(dut, primIndex, triangleVerts, tileLeft, tileTop, primIndex >= (indices.length / 3) - 1)
+            setUpTriangle(dut, primIndex, triangleVerts, tileLeft, tileTop, fbSize,
+              primIndex >= (indices.length / 3) - 1)
             val triangleVaryings = triangleIndices.map(i => varyings(i))
             for (i <- varyings(0).indices) {
               setUpVarying(dut, primIndex,
@@ -260,8 +266,8 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.writeDepthCoeffs.valid.poke(false)
   }
 
-  def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Int, Int, Float)],
-    tileLeft: Int, tileTop: Int, lastTriangle: Boolean): Unit = {
+  def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Float, Float, Float)],
+    tileLeft: Int, tileTop: Int, fbSize: Int, lastTriangle: Boolean): Unit = {
 
     setUpDepthCoeffs(dut, triangleId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
 
@@ -272,35 +278,42 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.coeffs.bits.triangleId.poke(triangleId)
     dut.io.coeffs.bits.lastTriangle.poke(lastTriangle)
 
-    // Compute minimal bounding box that contains the triangle (but is inside the tile)
-    val bbLeft = math.max(vertices.map(_._1).min & ~1, tileLeft)
-    val bbTop = math.max(vertices.map(_._2).min & ~1, tileTop)
-    val bbRight = math.min((vertices.map(_._1).max + 1) & ~1, tileLeft + cfg.tileSizePixels - 2)
-    val bbBottom = math.min((vertices.map(_._2).max + 1) & ~1, tileTop + cfg.tileSizePixels - 2)
+    val pixelStep = 2.0f / fbSize
 
-    dut.io.coeffs.bits.boundingBox.left.poke(bbLeft)
-    dut.io.coeffs.bits.boundingBox.top.poke(bbTop)
-    dut.io.coeffs.bits.boundingBox.right.poke(bbRight)
-    dut.io.coeffs.bits.boundingBox.bottom.poke(bbBottom)
+    def quadAlign(value: Float): Float = Math.round(value / (pixelStep * 2.0f)) * pixelStep * 2.0f
+
+    // Compute minimal bounding box that contains the triangle (but is inside the tile)
+    val bbLeft = math.max(quadAlign(vertices.map(_._1).min), tileLeft.toFloat * pixelStep - 1.0f)
+    val bbTop = math.max(quadAlign(vertices.map(_._2).min), 1.0f - tileTop.toFloat * pixelStep)
+    val bbRight = math.min(quadAlign(vertices.map(_._1).max + 1), (tileLeft + cfg.tileSizePixels - 2).toFloat * pixelStep - 1.0f)
+    val bbBottom = math.min(quadAlign(vertices.map(_._2).max + 1), 1.0f - (tileTop + cfg.tileSizePixels - 2).toFloat * pixelStep)
+
+    val pixelBbLeft = ((bbLeft + 1.0f) / pixelStep).toInt & ~1
+    val pixelBbTop = ((1.0f - bbTop) / pixelStep).toInt & ~1
+    val pixelBbRight = ((bbRight + 1.0f) / pixelStep).toInt & ~1
+    val pixelBbBottom = ((1.0f - bbBottom) / pixelStep).toInt & ~1
+    dut.io.coeffs.bits.boundingBox.left.poke(pixelBbLeft)
+    dut.io.coeffs.bits.boundingBox.top.poke(pixelBbTop)
+    dut.io.coeffs.bits.boundingBox.right.poke(pixelBbRight)
+    dut.io.coeffs.bits.boundingBox.bottom.poke(pixelBbBottom)
+
     val rawCoeffs = (0 until 3).map { i =>
       val (startX, startY, _) = vertices(i)
       val (endX, endY, _) = vertices((i + 1) % 3)
-      val dx = endY - startY
+      val dx = startY - endY
       val dy = endX - startX
 
-      // Implement top-left fill convention.
-      val isTopLeft = (dy > 0) || (dy == 0 && dx < 0)
-      val rawIv = ((bbLeft - startX) * dx - (bbTop - startY) * dy)
-      val biasedIv = rawIv + (if (isTopLeft) 0 else -1)
-      (dx, -dy, rawIv, biasedIv)
+      val rawIv = ((bbLeft - startX) * dx + (bbTop - startY) * dy)
+      (dx * pixelStep, -dy * pixelStep, rawIv)
     }
 
-    val det = math.abs(rawCoeffs.map(_._3).sum)
+    val normFactor = 1.0f / math.abs(rawCoeffs.map(_._3).sum)
 
-    for (((xs, ys, _, biasedIv), i) <- rawCoeffs.zipWithIndex) {
-      val normXs = (xs * 0xffffL / det).toInt
-      val normYs = (ys * 0xffffL / det).toInt
-      val normIv = (biasedIv * 0xffffL / det).toInt
+    for (((xs, ys, biasedIv), i) <- rawCoeffs.zipWithIndex) {
+      val isTopLeft = (xs > 0.0f) || (xs == 0.0f && ys > 0.0f)
+      val normXs = (xs * normFactor * 0xffffL).toInt
+      val normYs = (ys * normFactor * 0xffffL).toInt
+      val normIv = (biasedIv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
 
       dut.io.coeffs.bits.edges(i).xStep.poke(normXs.S)
       dut.io.coeffs.bits.edges(i).yStep.poke(normYs.S)
