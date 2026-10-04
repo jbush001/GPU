@@ -199,22 +199,17 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         val tileTop = tileRow * cfg.tileSizePixels
 
         // XXX for now does not check for deallocation of triangle IDs
-        var primIndex = 0
-        while (!dut.io.complete.peek().litToBoolean || primIndex * 3 < indices.length) {
+        var triangleId = 0
+        while (!dut.io.complete.peek().litToBoolean || triangleId * 3 < indices.length) {
           // Submit new triangles. This is a stand-in for the unimplemented setup unit.
-          if (dut.io.coeffs.ready.peek().litToBoolean && primIndex * 3 < indices.length) {
-            val triangleIndices = (0 until 3).map(i => indices(primIndex * 3 + i))
+          if (dut.io.coeffs.ready.peek().litToBoolean && triangleId * 3 < indices.length) {
+            val triangleIndices = (0 until 3).map(i => indices(triangleId * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
 
-            setUpTriangle(dut, primIndex, triangleVerts, tileLeft, tileTop, fbSize,
-              primIndex >= (indices.length / 3) - 1)
-            val triangleVaryings = triangleIndices.map(i => varyings(i))
-            for (i <- varyings(0).indices) {
-              setUpVarying(dut, primIndex,
-                i * 3, (triangleVaryings(0)(i), triangleVaryings(1)(i), triangleVaryings(2)(i)))
-            }
-
-            primIndex += 1
+            setUpTriangle(dut, triangleId, triangleVerts, tileLeft, tileTop, fbSize, fbSize,
+              triangleIndices.map(i => varyings(i)),
+              triangleId >= (indices.length / 3) - 1)
+            triangleId += 1
           }
 
           dut.clock.step()
@@ -235,26 +230,14 @@ class RenderTests extends AnyFunSuite with ChiselSim {
 
   def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
 
-  var nextVaryingCoeffWrite = 0
+  def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Float, Float, Float)],
+    tileLeft: Int, tileTop: Int, fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
+    lastTriangle: Boolean): Unit = {
 
-  def setUpVarying(dut: SimTop, triangleId: Int, index: Int, values: (Float, Float, Float)): Unit = {
-    dut.io.writeVaryingCoeff.valid.poke(true)
-    dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
-    dut.io.writeVaryingCoeff.bits.index.poke(index)
-    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._2 - values._1)) // dQ1
-    dut.clock.step()
-    dut.io.writeVaryingCoeff.bits.index.poke(index + 1)
-    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._3 - values._1)) // dQ2
-    dut.clock.step()
-    dut.io.writeVaryingCoeff.bits.index.poke(index + 2)
-    dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(values._1)) // Q0
-    dut.clock.step()
-  }
-
-  def setUpDepthCoeffs(dut: SimTop, triangleId: Int, w0: Float, w1: Float, w2: Float) = {
-    val invW0 = 1.0f / w0
-    val invW1 = 1.0f / w1
-    val invW2 = 1.0f / w2
+    // Set up depth interpolation coefficients
+    val invW0 = 1.0f / vertices(0)._3
+    val invW1 = 1.0f / vertices(1)._3
+    val invW2 = 1.0f / vertices(2)._3
     dut.io.writeDepthCoeffs.bits.triangleId.poke(triangleId)
     dut.io.writeDepthCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
     dut.io.writeDepthCoeffs.bits.coeffs.invW1.raw.poke(floatToRawBits(invW1))
@@ -264,12 +247,23 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.writeDepthCoeffs.valid.poke(true)
     dut.clock.step()
     dut.io.writeDepthCoeffs.valid.poke(false)
-  }
 
-  def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Float, Float, Float)],
-    tileLeft: Int, tileTop: Int, fbSize: Int, lastTriangle: Boolean): Unit = {
+    // Set up varying interpolation coefficients
+    dut.io.writeVaryingCoeff.valid.poke(true)
+    dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
+    for (i <- varyings(0).indices) {
+      dut.io.writeVaryingCoeff.bits.index.poke(i * 3)
+      dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(varyings(1)(i) - varyings(0)(i))) // dQ1
+      dut.clock.step()
+      dut.io.writeVaryingCoeff.bits.index.poke(i * 3 + 1)
+      dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(varyings(2)(i) - varyings(0)(i))) // dQ2
+      dut.clock.step()
+      dut.io.writeVaryingCoeff.bits.index.poke(i * 3 + 2)
+      dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(varyings(0)(i))) // Q0
+      dut.clock.step()
+    }
 
-    setUpDepthCoeffs(dut, triangleId, vertices(0)._3, vertices(1)._3, vertices(2)._3)
+    dut.io.writeVaryingCoeff.valid.poke(false)
 
     // Set up rasterizer coefficients
     dut.io.coeffs.valid.poke(true)
@@ -278,46 +272,51 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.coeffs.bits.triangleId.poke(triangleId)
     dut.io.coeffs.bits.lastTriangle.poke(lastTriangle)
 
-    val pixelStep = 2.0f / fbSize
+    val xPixelStep = 2.0f / fbWidth
+    val yPixelStep = 2.0f / fbHeight
 
-    def quadAlign(value: Float): Float = Math.round(value / (pixelStep * 2.0f)) * pixelStep * 2.0f
+    def xAlign(value: Float): Float = Math.round(value / (xPixelStep * 2.0f)) * xPixelStep * 2.0f
+    def yAlign(value: Float): Float = Math.round(value / (yPixelStep * 2.0f)) * yPixelStep * 2.0f
 
     // Compute minimal bounding box that contains the triangle (but is inside the tile)
-    val bbLeft = math.max(quadAlign(vertices.map(_._1).min), tileLeft.toFloat * pixelStep - 1.0f)
-    val bbTop = math.max(quadAlign(vertices.map(_._2).min), 1.0f - tileTop.toFloat * pixelStep)
-    val bbRight = math.min(quadAlign(vertices.map(_._1).max + 1), (tileLeft + cfg.tileSizePixels - 2).toFloat * pixelStep - 1.0f)
-    val bbBottom = math.min(quadAlign(vertices.map(_._2).max + 1), 1.0f - (tileTop + cfg.tileSizePixels - 2).toFloat * pixelStep)
+    val bbLeft = math.max(xAlign(vertices.map(_._1).min), tileLeft.toFloat * xPixelStep - 1.0f)
+    val bbTop = math.max(yAlign(vertices.map(_._2).min), 1.0f - tileTop.toFloat * yPixelStep)
+    val bbRight = math.min(xAlign(vertices.map(_._1).max + 1), (tileLeft + cfg.tileSizePixels - 2).toFloat * xPixelStep - 1.0f)
+    val bbBottom = math.min(yAlign(vertices.map(_._2).max + 1), 1.0f - (tileTop + cfg.tileSizePixels - 2).toFloat * yPixelStep)
 
-    val pixelBbLeft = ((bbLeft + 1.0f) / pixelStep).toInt & ~1
-    val pixelBbTop = ((1.0f - bbTop) / pixelStep).toInt & ~1
-    val pixelBbRight = ((bbRight + 1.0f) / pixelStep).toInt & ~1
-    val pixelBbBottom = ((1.0f - bbBottom) / pixelStep).toInt & ~1
+    val pixelBbLeft = ((bbLeft + 1.0f) / xPixelStep).toInt & ~1
+    val pixelBbTop = ((1.0f - bbTop) / yPixelStep).toInt & ~1
+    val pixelBbRight = ((bbRight + 1.0f) / xPixelStep).toInt & ~1
+    val pixelBbBottom = ((1.0f - bbBottom) / yPixelStep).toInt & ~1
     dut.io.coeffs.bits.boundingBox.left.poke(pixelBbLeft)
     dut.io.coeffs.bits.boundingBox.top.poke(pixelBbTop)
     dut.io.coeffs.bits.boundingBox.right.poke(pixelBbRight)
     dut.io.coeffs.bits.boundingBox.bottom.poke(pixelBbBottom)
 
-    val rawCoeffs = (0 until 3).map { i =>
-      val (startX, startY, _) = vertices(i)
-      val (endX, endY, _) = vertices((i + 1) % 3)
+    val rawCoeffs = new Array[(Float, Float, Float)](3)
+    var area2 = 0.0f
+    for (edge <- 0 until 3) {
+      val (startX, startY, _) = vertices(edge)
+      val (endX, endY, _) = vertices((edge + 1) % 3)
       val dx = startY - endY
       val dy = endX - startX
-
-      val rawIv = ((bbLeft - startX) * dx + (bbTop - startY) * dy)
-      (dx * pixelStep, -dy * pixelStep, rawIv)
+      val iv = ((bbLeft - startX) * dx + (bbTop - startY) * dy)
+      area2 += iv
+      rawCoeffs(edge) = (dx * xPixelStep, -dy * yPixelStep, iv)
     }
 
-    val normFactor = 1.0f / math.abs(rawCoeffs.map(_._3).sum)
+    val normFactor = 1.0f / area2
 
-    for (((xs, ys, biasedIv), i) <- rawCoeffs.zipWithIndex) {
+    for (edge <- rawCoeffs.indices) {
+      val (xs, ys, iv) = rawCoeffs(edge)
       val isTopLeft = (xs > 0.0f) || (xs == 0.0f && ys > 0.0f)
       val normXs = (xs * normFactor * 0xffffL).toInt
       val normYs = (ys * normFactor * 0xffffL).toInt
-      val normIv = (biasedIv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
+      val normIv = (iv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
 
-      dut.io.coeffs.bits.edges(i).xStep.poke(normXs.S)
-      dut.io.coeffs.bits.edges(i).yStep.poke(normYs.S)
-      dut.io.coeffs.bits.edges(i).initialValue.poke(normIv.S)
+      dut.io.coeffs.bits.edges(edge).xStep.poke(normXs.S)
+      dut.io.coeffs.bits.edges(edge).yStep.poke(normYs.S)
+      dut.io.coeffs.bits.edges(edge).initialValue.poke(normIv.S)
     }
 
     while (dut.io.coeffs.ready.peek().litValue.toLong == 0) {
