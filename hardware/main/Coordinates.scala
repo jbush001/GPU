@@ -46,8 +46,8 @@ object Point2D {
   * All boundary coordinates are inclusive.
   */
 class BoundingBox(implicit cfg: GpuConfig) extends Bundle {
-  val top = SInt(cfg.coordinateBits.W)
   val left = SInt(cfg.coordinateBits.W)
+  val top = SInt(cfg.coordinateBits.W)
   val right = SInt(cfg.coordinateBits.W)
   val bottom = SInt(cfg.coordinateBits.W)
 

@@ -25,7 +25,7 @@ import chisel3.util._
 class FpAdd extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
-    val result = Output(Float32())
+    val sum = Output(Float32())
     val addend1 = Input(Float32())
     val addend2 = Input(Float32())
   })
@@ -54,7 +54,7 @@ class FpAdd extends Module {
   normalize.io.isNaN2 := sum.io.isNaN2
   normalize.io.isInf2 := sum.io.isInf2
 
-  io.result := normalize.io.result
+  io.sum := normalize.io.result
 }
 
 /**
@@ -192,6 +192,6 @@ object FpAdd {
     add.io.addend1 := addend1
     add.io.addend2 := addend2
     add.io.en := en
-    add.io.result
+    add.io.sum
   }
 }

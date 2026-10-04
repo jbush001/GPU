@@ -154,7 +154,7 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
           dut.io.addend2.raw.poke(this.floatToRawBits(test._2))
         },
         (dut: FpAdd, test: TestVector, index: Int) => {
-          val actualBits: Long = dut.io.result.raw.peek().litValue.toLong & 0xffffffffL
+          val actualBits: Long = dut.io.sum.raw.peek().litValue.toLong & 0xffffffffL
           if (!floatBitsMatch(test._3, actualBits)) {
             reportTestFailure(index, test._1, test._2, test._3,
               java.lang.Float.intBitsToFloat(actualBits.toInt))
