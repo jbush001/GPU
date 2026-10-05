@@ -27,7 +27,7 @@ import chisel3.util._
   * @note All arithmetic operations round towards zero.
   */
 class Float32 extends Bundle {
-  val raw = Bits(32.W)
+  val raw = UInt(32.W)
 
   def isNegative = raw(31)
   def exponent = raw(30, 23).asUInt

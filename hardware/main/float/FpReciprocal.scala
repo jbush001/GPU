@@ -102,11 +102,9 @@ class FpReciprocal extends Module {
     val resultIsZero = RegEnable(stage4.resultIsZero, false.B, io.en)
   }
 
-  // Special case: when the estimate is exactly 1.0, need to adjust
-  // the exponent and fraction.
-  val isOne = stage5.estimate(23)
-  val finalExponent = Mux(isOne, stage5.exponent + 1.U, stage5.exponent)
-  val finalFraction = Mux(isOne, stage5.estimate(22, 0),
+  val normShift = stage5.estimate(23)
+  val finalExponent = Mux(normShift, stage5.exponent + 1.U, stage5.exponent)
+  val finalFraction = Mux(normShift, stage5.estimate(22, 0),
     Cat(stage5.estimate(21, 0), 0.U))
 
   when (stage5.resultIsNaN) {
