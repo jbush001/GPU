@@ -39,8 +39,10 @@ OP_FTOI = Operation("ftoi", 1)
 OP_IGTR = Operation("igtr", 1)
 OP_EQ = Operation("eq", 1)
 OP_AND = Operation("and", 1)
+OP_OR = Operation("or", 1)
 OP_SELECT = Operation("select", 1)
 OP_IADD = Operation("iadd", 1)
+OP_CONST = Operation("const", 0)
 
 
 class OpNode:
@@ -130,36 +132,28 @@ class Program:
         return dict(op_counter)
 
 with Program() as program:
-    z0, z1, z2 = OP_LOAD("z0"), OP_LOAD("z1"), OP_LOAD("z2")
-    invw0, invw1, invw2 = z0.recip(), z1.recip(), z2.recip()
+    z0 = OP_LOAD("z0")
+    z1 = OP_LOAD("z1")
+    z2 = OP_LOAD("z2")
+    invw0 = z0.recip()
+    invw1 = z1.recip()
+    invw2 = z2.recip()
     invdw1 = invw1 - invw0
     invdw2 = invw2 - invw0
 
-    x0, y0 = OP_LOAD("x0"), OP_LOAD("y0")
-    x1, y1 = OP_LOAD("x1"), OP_LOAD("y1")
-    x2, y2 = OP_LOAD("x2"), OP_LOAD("y2")
+    x0 = OP_LOAD("x0")
+    y0 = OP_LOAD("y0")
+    x1 = OP_LOAD("x1")
+    y1 = OP_LOAD("y1")
+    x2 = OP_LOAD("x2")
+    y2 = OP_LOAD("y2")
 
-    # Compute bounding box
-    bbLeft = OP_FMIN(x0, x1)
-    bbLeft = OP_FMIN(bbLeft, x2)
-    bbRight = OP_FMAX(x0, x1)
-    bbRight = OP_FMAX(bbRight, x2)
-    bbTop = OP_FMAX(y0, y1)
-    bbTop = OP_FMAX(bbTop, y2)
-    bbBottom = OP_FMIN(y0, y1)
-    bbBottom = OP_FMIN(bbBottom, y2)
-
-    # XXX need to also clamp to current tile boundaries and
-    # round to tile multiples
-    bbLeftInt = bbLeft.ftoi()
-    bbRightInt = bbRight.ftoi()
-    bbTopInt = bbTop.ftoi()
-    bbBottomInt = bbBottom.ftoi()
+    # XXX these should be consts
+    bbLeft = OP_CONST("bbLeft")
+    bbTop = OP_CONST("bbTop")
 
     dx0 = x1 - x0
-    dx0 = OP_FMUL(dx0, "xPixelStep")
     dy0 = y1 - y0
-    dy0 = OP_FMUL(dy0, "yPixelStep")
     t0 = bbLeft - x0
     t1 = t0 * dx0
     t2 = bbTop - y0
@@ -167,10 +161,11 @@ with Program() as program:
     iv0 = t2 + t3
     area2 = iv0
 
+    xStep0 = OP_FMUL(dx0, "xPixelPitch")
+    yStep0 = OP_FMUL(dy0, "yPixelPitch")
+
     dx1 = x2 - x1
-    dx1 = OP_FMUL(dx1, "xPixelStep")
     dy1 = y2 - y1
-    dy1 = OP_FMUL(dy1, "yPixelStep")
     t0 = bbLeft - x1
     t1 = t0 * dx1
     t2 = bbTop - y1
@@ -178,16 +173,20 @@ with Program() as program:
     iv1 = t2 + t3
     area2 = area2 + iv1
 
+    xStep1 = OP_FMUL(dx1, "xPixelPitch")
+    yStep1 = OP_FMUL(dy1, "yPixelPitch")
+
     dx2 = x0 - x2
-    dx2 = OP_FMUL(dx2, "xPixelStep")
     dy2 = y0 - y2
-    dy2 = OP_FMUL(dy2, "yPixelStep")
     t0 = bbLeft - x2
     t1 = t0 * dx2
     t2 = bbTop - y2
     t3 = t2 * dy2
     iv2 = t2 + t3
     area2 = area2 + iv2
+
+    xStep2 = OP_FMUL(dx2, "xPixelPitch")
+    yStep2 = OP_FMUL(dy2, "yPixelPitch")
 
     # XXX implement backface/colinear culling if area2 <= 0
 
@@ -201,9 +200,11 @@ with Program() as program:
     iv0int = normIv0.ftoi()
 
     # Apply top-left pixel hit rule
-    topLeft0 = OP_IGTR(x0int, 0)
-    topLeft0_1 = OP_EQ(x0int, 0)
-    topLeft0 = OP_AND(topLeft0, topLeft0_1)
+    topLeft0_a = OP_IGTR(xStep0, 0)
+    topLeft0_b = OP_EQ(xStep0, 0)
+    topLeft0_c = OP_IGTR(yStep0, 0)
+    topLeft0_d = OP_AND(topLeft0_b, topLeft0_c)
+    topLeft0 = OP_OR(topLeft0_a, topLeft0_d)
     iv0int = OP_SELECT(topLeft0, OP_IADD(iv0int, 1), iv0int)
 
     normX1 = normFactor * x1
@@ -214,9 +215,11 @@ with Program() as program:
     iv1int = normIv1.ftoi()
 
     # Apply top-left pixel hit rule
-    topLeft1 = OP_IGTR(x1int, 0)
-    topLeft1_1 = OP_EQ(x1int, 0)
-    topLeft1 = OP_AND(topLeft1, topLeft1_1)
+    topLeft1_a = OP_IGTR(xStep1, 0)
+    topLeft1_b = OP_EQ(xStep1, 0)
+    topLeft1_c = OP_IGTR(yStep1, 0)
+    topLeft1_d = OP_AND(topLeft1_b, topLeft1_c)
+    topLeft1 = OP_OR(topLeft1_a, topLeft1_d)
     iv1int = OP_SELECT(topLeft1, OP_IADD(iv1int, 1), iv1int)
 
     normX2 = normFactor * x2
@@ -227,9 +230,11 @@ with Program() as program:
     iv2int = normIv2.ftoi()
 
     # Apply top-left pixel hit rule
-    topLeft2 = OP_IGTR(x2int, 0)
-    topLeft2_1 = OP_EQ(x2int, 0)
-    topLeft2 = OP_AND(topLeft2, topLeft2_1)
+    topLeft2_a = OP_IGTR(xStep2, 0)
+    topLeft2_b = OP_EQ(xStep2, 0)
+    topLeft2_c = OP_IGTR(yStep2, 0)
+    topLeft2_d = OP_AND(topLeft2_b, topLeft2_c)
+    topLeft2 = OP_OR(topLeft2_a, topLeft2_d)
     iv2int = OP_SELECT(topLeft2, OP_IADD(iv2int, 1), iv2int)
 
     program.print()

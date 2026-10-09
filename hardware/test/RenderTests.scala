@@ -193,8 +193,8 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val fbSize = 128
     val fbData = new Array[Int](fbSize * fbSize)
 
-    for (tileRow <- 0 until 2) {
-      for (tileColumn <- 0 until 2) {
+    for (tileRow <- 0 until fbSize / cfg.tileSizePixels) {
+      for (tileColumn <- 0 until fbSize / cfg.tileSizePixels) {
         val tileLeft = tileColumn * cfg.tileSizePixels
         val tileTop = tileRow * cfg.tileSizePixels
 
@@ -234,6 +234,12 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     tileLeft: Int, tileTop: Int, fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
     lastTriangle: Boolean): Unit = {
 
+    // Tile constants
+    val xPixelStep = 2.0f / fbWidth.toFloat
+    val yPixelStep = 2.0f / fbHeight.toFloat
+    val bbLeft = ((tileLeft.toFloat / fbWidth.toFloat) - 0.5f) * 2.0f
+    val bbTop = (0.5f - (tileTop.toFloat / fbHeight.toFloat)) * 2.0f
+
     // Set up depth interpolation coefficients
     val invW0 = 1.0f / vertices(0)._3
     val invW1 = 1.0f / vertices(1)._3
@@ -272,26 +278,10 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.coeffs.bits.triangleId.poke(triangleId)
     dut.io.coeffs.bits.lastTriangle.poke(lastTriangle)
 
-    val xPixelStep = 2.0f / fbWidth
-    val yPixelStep = 2.0f / fbHeight
-
-    def xAlign(value: Float): Float = Math.round(value / (xPixelStep * 2.0f)) * xPixelStep * 2.0f
-    def yAlign(value: Float): Float = Math.round(value / (yPixelStep * 2.0f)) * yPixelStep * 2.0f
-
-    // Compute minimal bounding box that contains the triangle (but is inside the tile)
-    val bbLeft = math.max(xAlign(vertices.map(_._1).min), tileLeft.toFloat * xPixelStep - 1.0f)
-    val bbTop = math.max(yAlign(vertices.map(_._2).min), 1.0f - tileTop.toFloat * yPixelStep)
-    val bbRight = math.min(xAlign(vertices.map(_._1).max + 1), (tileLeft + cfg.tileSizePixels - 2).toFloat * xPixelStep - 1.0f)
-    val bbBottom = math.min(yAlign(vertices.map(_._2).max + 1), 1.0f - (tileTop + cfg.tileSizePixels - 2).toFloat * yPixelStep)
-
-    val pixelBbLeft = ((bbLeft + 1.0f) / xPixelStep).toInt & ~1
-    val pixelBbTop = ((1.0f - bbTop) / yPixelStep).toInt & ~1
-    val pixelBbRight = ((bbRight + 1.0f) / xPixelStep).toInt & ~1
-    val pixelBbBottom = ((1.0f - bbBottom) / yPixelStep).toInt & ~1
-    dut.io.coeffs.bits.boundingBox.left.poke(pixelBbLeft)
-    dut.io.coeffs.bits.boundingBox.top.poke(pixelBbTop)
-    dut.io.coeffs.bits.boundingBox.right.poke(pixelBbRight)
-    dut.io.coeffs.bits.boundingBox.bottom.poke(pixelBbBottom)
+    dut.io.coeffs.bits.boundingBox.left.poke(tileLeft)
+    dut.io.coeffs.bits.boundingBox.top.poke(tileTop)
+    dut.io.coeffs.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+    dut.io.coeffs.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
 
     val rawCoeffs = new Array[(Float, Float, Float)](3)
     var area2 = 0.0f
@@ -309,9 +299,9 @@ class RenderTests extends AnyFunSuite with ChiselSim {
 
     for (edge <- rawCoeffs.indices) {
       val (xs, ys, iv) = rawCoeffs(edge)
-      val isTopLeft = (xs > 0.0f) || (xs == 0.0f && ys > 0.0f)
       val normXs = (xs * normFactor * 0xffffL).toInt
       val normYs = (ys * normFactor * 0xffffL).toInt
+      val isTopLeft = (normXs > 0) || (normXs == 0 && normYs > 0)
       val normIv = (iv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
 
       dut.io.coeffs.bits.edges(edge).xStep.poke(normXs.S)
