@@ -82,10 +82,10 @@ We can substitute:
 
 ```math
 \begin{aligned}
-\lambda_0 = 1 - \lambda_1 - \lambda_2 \\
-q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0(1 - \lambda_1 - \lambda_2) + \lambda_1Q_1 + \lambda_2Q_2 \rightarrow \\
-q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0 - Q_0\lambda_1 - Q_0\lambda_2 + \lambda_1Q_1 + \lambda_2Q_2 \rightarrow \\
-q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0 + \lambda_1(Q_1 - Q_0) + \lambda_2(Q_2 - Q_0)
+& \lambda_0 = 1 - \lambda_1 - \lambda_2 \\
+& q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0(1 - \lambda_1 - \lambda_2) + \lambda_1Q_1 + \lambda_2Q_2 \rightarrow \\
+& q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0 - Q_0\lambda_1 - Q_0\lambda_2 + \lambda_1Q_1 + \lambda_2Q_2 \rightarrow \\
+& q_{(\lambda_0, \lambda_1, \lambda_2)} = Q_0 + \lambda_1(Q_1 - Q_0) + \lambda_2(Q_2 - Q_0)
 \end{aligned}
 ```
 
@@ -93,8 +93,8 @@ We precompute two values at triangle setup time:
 
 ```math
 \begin{aligned}
-dQ_1 = Q_1 - Q_0 \\\\
-dQ_2 = Q_2 - Q_0
+& dQ_1 = Q_1 - Q_0 \\\\
+& dQ_2 = Q_2 - Q_0
 \end{aligned}
 ```
 
@@ -113,44 +113,50 @@ Putting this all together:
 Set up depth interpolation coefficients
 
 ```math
-    invW0 = \frac{1.0}{z_0} \\
-    invW1 = \frac{1.0}{z_1} \\
-    invW2 = \frac{1.0}{z_2} \\
-    invdW1 = invW1 - invW0 \\
-    invdW2 = invW2 - invW1 \\
+\begin{aligned}
+& invW0 = \frac{1.0}{z_0} \\
+& invW1 = \frac{1.0}{z_1} \\
+& invW2 = \frac{1.0}{z_2} \\
+& invdW1 = invW1 - invW0 \\
+& invdW2 = invW2 - invW1 \\
+\end{aligned}
 ```
 
 Set up rasterizer coefficients
 
 ```math
-    dx_0 = x_1 - x_0 \\
-    dy_0 = y_1 - y_0 \\
-    edge_0 = (x_{start} - x_0) * dx_0 +  (y_{start} - y_0) * dy_0 \\
-
-    dx_1 = x_2 - x_1 \\
-    dy_1 = y_2 - y_1 \\
-    edge_1 = (x_{start} - x_1) * dx_1+  (y_{start} - y_1) * dy_1 \\
-
-    dx_2 = x_0 - x_2 \\
-    dy_2 = y_0 - y_2 \\
-    edge_2 = (x_{start} - x_2) * dx_2 +  (y_{start} - y_2) * dy_2
+\begin{aligned}
+& dx_0 = x_1 - x_0 \\
+& dy_0 = y_1 - y_0 \\
+& edge_0 = (x_{start} - x_0) * dx_0 +  (y_{start} - y_0) * dy_0 \\
+& dx_1 = x_2 - x_1 \\
+& dy_1 = y_2 - y_1 \\
+& edge_1 = (x_{start} - x_1) * dx_1+  (y_{start} - y_1) * dy_1 \\
+& dx_2 = x_0 - x_2 \\
+& dy_2 = y_0 - y_2 \\
+& edge_2 = (x_{start} - x_2) * dx_2 +  (y_{start} - y_2) * dy_2
+\end{aligned}
 ```
 
 Normalize
 
 ```math
-    normFactor = \frac{1.0}{edge_0 + edge_1 + edge_2} \\
-    dx_n *= normFactor \\
-    dy_n *= normFactor \\
-    edge_n *= normFactor
+\begin{aligned}
+& normFactor = \frac{1.0}{edge_0 + edge_1 + edge_2} \\
+& dx_n *= normFactor \\
+& dy_n *= normFactor \\
+& edge_n *= normFactor
+\end{aligned}
 ```
 
 For each parameter
 
 ```math
-    P_0 = p_0 \\
-    dP_1 = p_1 - p_0 \\
-    dP_2 = p_2 - p_0
+\begin{aligned}
+& P_0 = p_0 \\
+& dP_1 = p_1 - p_0 \\
+& dP_2 = p_2 - p_0
+\end{aligned}
 ```
 
 **Per pixel**
@@ -158,14 +164,22 @@ For each parameter
 First, we compute the inverse depth and depth at each pixel
 
 ```math
-    invW_{pixel} = invW_0 + invW_1 * \lambda_1 + invW_2 * \lambda_2 \\
-    w_{pixel} = \frac{1.0}{invW_{pixel}}
+\begin{aligned}
+& invW_{pixel} = invW_0 + invW_1 * \lambda_1 + invW_2 * \lambda_2 \\
+& w_{pixel} = \frac{1.0}{invW_{pixel}}
+\end{aligned}
 ```
 
 Then compute the perspective correct barycentric coordinates:
 
 ```math
-    \lambda_{pixel}'= \lambda_{pixel} \cdot w_{pixel} \cdot invW_n
+\lambda_{pixel}'= \lambda_{pixel} \cdot w_{pixel} \cdot invW_n
+```
+
+And compute the perspective correct parameters
+
+```math
+P_{pixel} = P_0 + \lambda_1' dP_1 + \lambda_2' dP_2
 ```
 
 [^1]: Pineda, Juan. "A parallel algorithm for polygon rasterization." Proceedings of the 15th annual conference on Computer graphics and interactive techniques. 1988.
