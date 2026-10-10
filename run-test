@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+# Disable buffering for Verilator to ensure printfs and local println
+# from the test harness are properly sequenced.
+export VERILATOR_FLAGS="${VERILATOR_FLAGS} --autoflush"
+
 scala_args=()
 
 for arg in "$@"; do
