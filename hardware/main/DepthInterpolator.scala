@@ -32,8 +32,9 @@ class InterpolatedQuad(implicit cfg: GpuConfig) extends RasterizedQuad {
 }
 
 /** Sits between [[Rasterizer]] and [[PixelShaderConductor]] and computes
-  * per-pixel depth for each rasterized quad.
+  * per-pixel depth and perspective corrected barycentric coordinates.
   * This has 17 cycles of latency.
+  * The formulae are fully documented in docs/maths.md
   */
 class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -63,25 +64,33 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     }
   }
 
+  // Need to delay these so they are available at the correct cycle for
+  // each stage in the pipeline where they are used.
   val coeff0 = coeffs(io.rasterizedQuad.bits.triangleId)
   val coeff5 = ShiftRegister(coeff0, 5, !stall)
   val coeff7 = ShiftRegister(coeff5, 2, !stall)
   val coeff15 = ShiftRegister(coeff7, 8, !stall)
 
   for (pixel <- 0 until Consts.pixelsPerQuad) {
+    // Compute inverse depth at each pixel
+    // invW_pixel = invW1 * lambda0 + invW2 * lambda1 + invW0
     val lambda = io.rasterizedQuad.bits.lambda(pixel)
     val a = FpMul(coeff0.invdW1, lambda(0), !stall) // cycle 0
     val b = FpMul(coeff0.invdW2, lambda(1), !stall)
     val sumC = FpAdd(a, b, !stall) // cycle 2
     val sumD = FpAdd(sumC, coeff5.invW0, !stall) // cycle 5
+
+    // Compute the depth at each pixel: depth = 1 / invW_pixel
     val w = FpReciprocal(sumD, !stall) // cycle 8
 
+    // Compute perspective corrected barycentric coordinates
+    // lambda_n_pixel_corrected = lambda_n_pixel * w_pixel * invW_n
     val lambda0_13 = ShiftRegister(lambda(0), 13, !stall)
     val lambda1_13 = ShiftRegister(lambda(1), 13, !stall)
     val e0 = FpMul(w, lambda0_13, !stall) // cycle 13
     val e1 = FpMul(w, lambda1_13, !stall)
 
-    // note: we replace the lambda values here with perspective corrected ones.
+    // Replace the lambda values in the interpolated quad with perspective corrected ones.
     io.interpolatedQuad.bits.lambda(pixel)(0) := FpMul(e0, coeff15.invW1, !stall) // Cycle 15
     io.interpolatedQuad.bits.lambda(pixel)(1) := FpMul(e1, coeff15.invW2, !stall)
     io.interpolatedQuad.bits.depths(pixel) := ShiftRegister(w, 4, !stall)
