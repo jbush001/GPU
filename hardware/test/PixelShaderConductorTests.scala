@@ -517,12 +517,10 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
 
   test("PixelShaderConductor read varying") {
     simulate(new PixelShaderConductor) { dut =>
-      // Write varyings
+      // Write varyings (triangles/varying coefficients)
       val coeffs = Seq(
         Seq(1.0f, 2.0f),
         Seq(3.0f, 4.0f),
-        Seq(5.0f, 6.0f),
-        Seq(7.0f, 8.0f)
       )
 
       for (triangle <- coeffs.indices) {
@@ -531,37 +529,41 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
         }
       }
 
-      // Start a job
-      for (triangleId <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+      // Start a few jobs
+      for (triangleId <- 0 until 2) {
         dut.io.sourceQuad.ready.expect(true)
-        loadSourceQuad(dut, 0, 0, 15,
-            Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
-            Seq.fill(Consts.pixelsPerQuad)(0.0f),
-            triangleId)
-        dut.io.textureFetchRequest.valid.expect(false)
+        for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
+          loadSourceQuad(dut, 0, 0, 15,
+              Seq.fill(Consts.pixelsPerQuad)(Seq(0, 0)),
+              Seq.fill(Consts.pixelsPerQuad)(0.0f),
+              triangleId)
+        }
       }
 
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
       dut.io.sourceQuad.ready.expect(true)
-      val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
+      val jobId1 = dut.io.startJob.bits.jobId.peek().litValue.toInt
       dut.clock.step()
+      dut.io.sourceQuad.ready.expect(true)
+      val jobId2 = dut.io.startJob.bits.jobId.peek().litValue.toInt
+      dut.clock.step()
+      dut.io.startJob.valid.expect(false)
 
       // Now read the varying registers
-      val got1 = readRegister(dut, jobId, 2)
-      val expect1 = Seq(
-        1.0f, 1.0f, 1.0f, 1.0f, 3.0f, 3.0f, 3.0f, 3.0f, 5.0f, 5.0f, 5.0f, 5.0f, 7.0f, 7.0f, 7.0f, 7.0f
-      )
+      val got1 = readRegister(dut, jobId1, 2)
+      val expect1 = Seq.fill(cfg.shaderVectorLanes)(java.lang.Float.floatToRawIntBits(1.0f))
+      assert(got1 == expect1)
+      val got2 = readRegister(dut, jobId1, 2)
+      val expect2 = Seq.fill(cfg.shaderVectorLanes)(java.lang.Float.floatToRawIntBits(2.0f))
+      assert(got2 == expect2)
 
-      dut.clock.step(10)
-      assert(got1 == expect1.map(x => java.lang.Float.floatToRawIntBits(x)))
-
-      val got2 = readRegister(dut, jobId, 2)
-      val expect2 = Seq(
-        2.0f, 2.0f, 2.0f, 2.0f, 4.0f, 4.0f, 4.0f, 4.0f, 6.0f, 6.0f, 6.0f, 6.0f, 8.0f, 8.0f, 8.0f, 8.0f
-      )
-
-      assert(got2 == expect2.map(x => java.lang.Float.floatToRawIntBits(x)))
+      val got3 = readRegister(dut, jobId2, 2)
+      val expect3 = Seq.fill(cfg.shaderVectorLanes)(java.lang.Float.floatToRawIntBits(3.0f))
+      assert(got3 == expect3)
+      val got4 = readRegister(dut, jobId2, 2)
+      val expect4 = Seq.fill(cfg.shaderVectorLanes)(java.lang.Float.floatToRawIntBits(4.0f))
+      assert(got4 == expect4)
     }
   }
 }

@@ -104,7 +104,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       */
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
-      val index = UInt(5.W)
+      val index = UInt(cfg.varyingCoeffIndexBits.W)
       val value = Float32()
     }))
 
@@ -119,7 +119,6 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   val quadsPerJob = cfg.shaderVectorLanes / Consts.pixelsPerQuad
   val totalPendingJobs = 1 << cfg.shaderJobIdBits
-  val maxVaryingCoeffs = 18
 
   object JobState extends ChiselEnum {
     val Idle, Filling, ReadyToProcess, Processing, ReadyToDrain = Value
@@ -130,7 +129,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val validQuadCount = UInt(log2Up(quadsPerJob + 1).W)
     val sourceQuads = Vec(quadsPerJob, new InterpolatedQuad)
     val shadedColors = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
-    val varyingCoeffIndex = UInt(log2Up(maxVaryingCoeffs).W)
+    val varyingCoeffIndex = UInt(cfg.varyingCoeffIndexBits.W)
     val textureFetchRequestPending = Bool()
     val texelCoord = Vec(2, Vec(cfg.shaderVectorLanes, Float32()))
     val fetchedTexels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
@@ -141,9 +140,10 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   // The jobs array is indexed by jobId.
   val jobs = RegInit(VecInit.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo)))
 
-  // We support multiple triangles in-flight at once. This array stores coeffients for all active
-  // ones.
-  val varyingCoeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles, maxVaryingCoeffs)(0.U.asTypeOf(Float32())))
+  // We support multiple triangles in-flight at once. This array stores
+  // coefficients for all active ones.
+  val varyingCoeffMem = SyncReadMem(cfg.maxConcurrentTriangles
+    * cfg.maxVaryingCoeffs, UInt(32.W))
 
   // Collects quads for a full SIMD width in the shader.
   val fillIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
@@ -154,12 +154,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   io.sourceQuad.ready := (fillJob.state === JobState.Filling
     || fillJob.state === JobState.Idle)
 
-
   when (io.sourceQuad.fire) {
     assert(fillQuadCount === 0.U || fillJob.state === JobState.Filling)
     fillJob.sourceQuads(fillQuadCount) := io.sourceQuad.bits
     fillJob.validQuadCount := fillQuadCount +& 1.U
-    when (fillQuadCount === (quadsPerJob - 1).U || io.sourceQuad.bits.lastTriangle) {
+    when (fillQuadCount === (quadsPerJob - 1).U || io.sourceQuad.bits.lastQuad) {
       // Finished filling, ready for processing
       fillQuadCount := 0.U
       fillJob.state := JobState.ReadyToProcess
@@ -236,13 +235,21 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val regReadJobIdStage2 = RegNext(io.shaderRegRead.bits.jobId)
   val regReadAddrStage2 = RegNext(io.shaderRegRead.bits.addr)
 
-  val readJob = jobs(regReadJobIdStage2)
+  val readJobStage1 = jobs(io.shaderRegRead.bits.jobId)
+  val varyingCoeffReadVal = varyingCoeffMem.read(Cat(readJobStage1.sourceQuads(0).triangleId,
+    readJobStage1.varyingCoeffIndex))
+  when (io.shaderRegRead.valid && io.shaderRegRead.bits.addr === 2.U) {
+    // Reading a varying increments the index as a side effect
+    readJobStage1.varyingCoeffIndex := readJobStage1.varyingCoeffIndex + 1.U
+  }
+
+  val readJobStage2 = jobs(regReadJobIdStage2)
 
   // This logic handles the second stage/cycle of the shader register read.
   io.shaderRegReadData.valid := false.B // default
   io.shaderRegReadData.bits := DontCare
   when (regReadValidStage2) {
-    assert(readJob.state === JobState.Processing)
+    assert(readJobStage2.state === JobState.Processing)
     io.shaderRegReadData.valid := true.B
     switch (regReadAddrStage2) {
       // Read barycentric coordinates
@@ -250,21 +257,14 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
         for (i <- 0 until cfg.shaderVectorLanes) {
           val quadIndex = (i / Consts.pixelsPerQuad)
           val pixelIndex = (i % Consts.pixelsPerQuad)
-          io.shaderRegReadData.bits(i) := readJob.sourceQuads(quadIndex).lambda(pixelIndex)(
+          io.shaderRegReadData.bits(i) := readJobStage2.sourceQuads(quadIndex).lambda(pixelIndex)(
             regReadAddrStage2(0)).asUInt
         }
       }
 
       // Read varying coefficient memory
       is (2.U) {
-        for (quadI <- 0 until quadsPerJob) {
-          val coeffVal = varyingCoeffs(readJob.sourceQuads(quadI).triangleId)(readJob.varyingCoeffIndex)
-          for (pixelI <- 0 until Consts.pixelsPerQuad) {
-            io.shaderRegReadData.bits(quadI * Consts.pixelsPerQuad + pixelI) := coeffVal.raw
-          }
-        }
-
-        readJob.varyingCoeffIndex := readJob.varyingCoeffIndex + 1.U
+        io.shaderRegReadData.bits := VecInit(Seq.fill(cfg.shaderVectorLanes)(varyingCoeffReadVal))
       }
 
       // Read fetched texel
@@ -280,11 +280,11 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
           for (lane <- lastTexelOffset until cfg.shaderVectorLanes) {
             io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane - lastTexelOffset).raw
           }
-        }.elsewhen (!readJob.returnedTexelBitmap.andR) {
+        }.elsewhen (!readJobStage2.returnedTexelBitmap.andR) {
           io.shaderRegReadData.valid := false.B  // Need to wait for result
-          readJob.threadNeedsWake := true.B
+          readJobStage2.threadNeedsWake := true.B
         }.otherwise {
-          val texelVal = readJob.fetchedTexels(colorChannel(1, 0))
+          val texelVal = readJobStage2.fetchedTexels(colorChannel(1, 0))
           io.shaderRegReadData.bits := texelVal.map(_.raw)
         }
       }
@@ -384,7 +384,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
-    varyingCoeffs(io.writeVaryingCoeff.bits.triangleId)(io.writeVaryingCoeff.bits.index) :=
-      io.writeVaryingCoeff.bits.value
+    val writeAddr = Cat(io.writeVaryingCoeff.bits.triangleId,
+      io.writeVaryingCoeff.bits.index)
+    varyingCoeffMem.write(writeAddr, io.writeVaryingCoeff.bits.value.raw)
   }
 }

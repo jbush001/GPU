@@ -37,6 +37,7 @@ case class GpuConfig(
   cacheLineSizeBytes: Int = 64,
   icacheLines: Int = 64,
   triangleIdBits: Int = 2,
+  maxVaryings: Int = 16,
 
   traceEnable: Boolean = false
 ) {
@@ -55,4 +56,7 @@ case class GpuConfig(
 
   val textureRequestIdBits = shaderJobIdBits + log2Up(shaderVectorLanes / Consts.pixelsPerQuad)
   val maxConcurrentTriangles = 1 << triangleIdBits
+
+  val maxVaryingCoeffs = maxVaryings * 3 // 3 coefficients per varying
+  val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
 }
