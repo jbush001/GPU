@@ -15,9 +15,10 @@
 #
 
 """
-This uses a SAT solver to find an optimal program schedule for a given
-program and VLIW-ish datapath. It allows exploration of different pipeline
-configurations to find the best.
+This uses the z3 SMT solver to find an optimal program schedule for a given
+program and VLIW-ish datapath. We do this by structuring programs as proofs.
+This allows exploration of different pipeline configurations to find the best
+program (for different criteria of "best").
 """
 
 import z3
@@ -149,6 +150,7 @@ class Program:
     def compile(self, pipelines):
         program = self.schedule(pipelines)
         program = self.allocate_registers(program)
+        self.validate_constraints(program)
         return program
 
     def schedule(self, pipelines):
@@ -165,7 +167,7 @@ class Program:
             node.pipeline = instr_to_pipe[node.opcode]
             node.latency = pipelines[node.pipeline][2]
 
-        optimizer = z3.Optimize()
+        solver = z3.Optimize()
 
         # This is what we are solving for: assigning each node a start cycle
         for node in self.instructions:
@@ -174,13 +176,13 @@ class Program:
         # Now specify constraints for the solver.
         # First, every node needs to start at time >= 0.
         for node in self.instructions:
-            optimizer.add(node.start_cycle >= 0)
+            solver.add(node.start_cycle >= 0)
 
         # Add all RAW dependency constraints
         for node in self.instructions:
             for operand in node.operands:
                 if isinstance(operand, Instruction):
-                    optimizer.add(node.start_cycle >= operand.start_cycle + operand.latency)
+                    solver.add(node.start_cycle >= operand.start_cycle + operand.latency)
 
         worst_case_duration = sum(pipelines[node.pipeline][2] for node in self.instructions)
 
@@ -188,23 +190,26 @@ class Program:
         # that specifially as a constraint.
         total_duration = z3.Int('total_duration')
         for node in self.instructions:
-            optimizer.add(total_duration >= node.start_cycle + node.latency)
+            solver.add(total_duration >= node.start_cycle + node.latency)
 
-        optimizer.add(total_duration >= 0)
-        optimizer.add(total_duration <= worst_case_duration)
-        optimizer.minimize(total_duration)
+        solver.add(total_duration >= 0)
+        solver.add(total_duration <= worst_case_duration)
+        solver.minimize(total_duration)
 
         # Add pipeline capacity constraints
         for index, (_, capacity, _, op_list) in enumerate(pipelines):
             pipeline_nodes = [node for node in self.instructions if node.pipeline == index]
             for cycle in range(worst_case_duration):
-                optimizer.add(z3.Sum([z3.If(node.start_cycle == cycle, 1, 0) for node in pipeline_nodes]) <= capacity)
+                solver.add(z3.Sum([z3.If(node.start_cycle == cycle, 1, 0) for node in pipeline_nodes]) <= capacity)
+
+        # XXX I don't have a constraint here for the number of source or dest operands,
+        # but in practice I don't seem to be hitting that.
 
         start_time = time.time()
-        if optimizer.check() != z3.sat:
+        if solver.check() != z3.sat:
             raise Exception('Unsatisfiable scheduling constraints')
 
-        model = optimizer.model()
+        model = solver.model()
         end_time = time.time()
         print(f'Solved instruction scheduling in {end_time - start_time} seconds')
 
@@ -233,44 +238,124 @@ class Program:
 
         return program
 
-    def allocate_registers(self, program):
-        """Map from SSA virtual registers to physical registers"""
-        virt_to_phys_reg = {}
-        free_registers = []
-        last_use = {}
-
-        # Determine which virtual registers are killed in which cycles
-        for cycle, bundle in reversed(list(enumerate(program))):
-            for inst in bundle:
-                for source_op in inst[3:]:
-                    if isinstance(source_op, int):
-                        if source_op not in last_use:
-                            last_use[source_op] = cycle
-
-        kill_list = {}
-        for virt_reg, cycle in last_use.items():
-            kill_list[cycle] = kill_list.get(cycle, []) + [virt_reg]
-
-        next_phys_reg = 0
-
-        # Create the virtual to physical mapping list
+    def compute_live_ranges(self, program):
+        live_ranges = {}
         for cycle, bundle in enumerate(program):
-            for (_pipeline, opcode, dest, *rest) in bundle:
+            for inst in bundle:
+                _pipeline, opcode, dest, *rest = inst
                 if opcode != 'store' and isinstance(dest, int):
-                    assert(dest not in virt_to_phys_reg)
-                    if free_registers:
-                        virt_to_phys_reg[dest] = free_registers.pop()
-                    else:
-                        virt_to_phys_reg[dest] = next_phys_reg
-                        next_phys_reg += 1
+                    # This is strict SSA...
+                    assert dest not in live_ranges, 'Redefined virtual register'
+                    live_ranges[dest] = [cycle, cycle]
 
-            # Free registers for killed virtual registers
-            for virt_reg in kill_list.get(cycle, []):
-                assert(virt_reg in virt_to_phys_reg)
-                free_registers.append(virt_to_phys_reg[virt_reg])
+                for source_op in rest:
+                    if isinstance(source_op, int):
+                        assert source_op in live_ranges, "Use of undefined virtual register"
+                        live_ranges[source_op][1] = cycle
+
+
+
+        return live_ranges
+
+    def build_register_interference_graph(self, live_ranges):
+        interference_graph = []
+        vregs = sorted(live_ranges.keys())
+        for i in range(len(vregs)):
+            for j in range(i + 1, len(vregs)):
+                if live_ranges[vregs[i]][0] <= live_ranges[vregs[j]][1] and live_ranges[vregs[j]][0] <= live_ranges[vregs[i]][1]:
+                    interference_graph.append((vregs[i], vregs[j]))
+
+        return interference_graph
+
+    def allocate_registers(self, program):
+        live_ranges = self.compute_live_ranges(program)
+        interference_edges = self.build_register_interference_graph(live_ranges)
+        virtual_regs = list(live_ranges.keys())
+
+        solver = z3.Optimize()
+
+        # Hardware constants
+        NUM_PHYS_REGS = 16
+        MAX_READ_PORTS_PER_BANK = 2
+        MAX_WRITE_PORTS_PER_BANK = 1
+
+        # We are solving for this: virtual to physical register mapping.
+        phys_reg_map = {v: z3.Int(f'phys_{v}') for v in virtual_regs}
+
+        for v in virtual_regs:
+            solver.add(phys_reg_map[v] >= 0)
+            solver.add(phys_reg_map[v] < NUM_PHYS_REGS)
+
+        def get_bank(p):
+            return p & 1
+
+        # Add interference constraints.
+        for u, v in interference_edges:
+            solver.add(phys_reg_map[u] != phys_reg_map[v])
+
+        # Add bank and writeback constraints.
+        for bundle in program:
+            read_vregs = set()
+            write_vregs = []
+
+            for inst in bundle:
+                _pipeline, opcode, dest, *operands = inst
+                for op in operands:
+                    if isinstance(op, int):
+                        read_vregs.add(op)
+
+                if opcode != 'store' and isinstance(dest, int):
+                    write_vregs.append(dest)
+
+            # Add constraints
+            bank_0_reads = []
+            bank_1_reads = []
+
+            for v in read_vregs:
+                for p in range(NUM_PHYS_REGS):
+                    is_p = (phys_reg_map[v] == p)
+                    if get_bank(p) == 0:
+                        bank_0_reads.append(z3.If(is_p, 1, 0))
+                    else:
+                        bank_1_reads.append(z3.If(is_p, 1, 0))
+
+            if bank_0_reads:
+                solver.add(z3.Sum(bank_0_reads) <= MAX_READ_PORTS_PER_BANK)
+
+            if bank_1_reads:
+                solver.add(z3.Sum(bank_1_reads) <= MAX_READ_PORTS_PER_BANK)
+
+            bank_0_writes = []
+            bank_1_writes = []
+
+            for dest_v in write_vregs:
+                for p in range(NUM_PHYS_REGS):
+                    is_p = (phys_reg_map[dest_v] == p)
+                    if get_bank(p) == 0:
+                        bank_0_writes.append(z3.If(is_p, 1, 0))
+                    else:
+                        bank_1_writes.append(z3.If(is_p, 1, 0))
+
+            if bank_0_writes:
+                solver.add(z3.Sum(bank_0_writes) <= MAX_WRITE_PORTS_PER_BANK)
+            if bank_1_writes:
+                solver.add(z3.Sum(bank_1_writes) <= MAX_WRITE_PORTS_PER_BANK)
+
+        # XXX does not check special register writes
+
+        # Solve
+        start = time.time()
+        if solver.check() == z3.sat:
+            model = solver.model()
+            virt_to_phys_reg = {v: model.eval(phys_reg_map[v]).as_long() for v in virtual_regs}
+        else:
+            raise Exception("Z3 could not find a valid register/bank allocation for this schedule!")
+
+        end = time.time()
+        print(f"Solved register allocation in {end - start} seconds")
 
         # Rewrite and replace with physical registers
-        return next_phys_reg, [
+        return [
             [
                 tuple([inst[0]] + [
                     virt_to_phys_reg[operand] if isinstance(operand, int) else operand
@@ -280,6 +365,38 @@ class Program:
             ]
             for bundle in program
         ]
+
+    def validate_constraints(self, program):
+        # Ensure there are no bank conflicts
+        MAX_READ_PORTS_PER_BANK = 2
+        MAX_WRITE_PORTS_PER_BANK = 1
+
+        for bundle in program:
+            bank_0_reads = 0
+            bank_1_reads = 0
+            bank_0_writes = 0
+            bank_1_writes = 0
+            for inst in bundle:
+                dest_reg = inst[2]
+                if isinstance(dest_reg, int):
+                    if (dest_reg & 1) == 0:
+                        bank_0_writes += 1
+                    else:
+                        bank_1_writes += 1
+
+                for operand in inst[3:]:
+                    if isinstance(operand, int):
+                        if operand & 1 == 0:
+                            bank_0_reads += 1
+                        else:
+                            bank_1_reads += 1
+
+            if bank_0_reads > MAX_READ_PORTS_PER_BANK or bank_1_reads > MAX_READ_PORTS_PER_BANK:
+                raise Exception("Bank conflict detected in read ports")
+            if bank_0_writes > MAX_WRITE_PORTS_PER_BANK or bank_1_writes > MAX_WRITE_PORTS_PER_BANK:
+                raise Exception("Bank conflict detected in write ports")
+
+        print('Constraint validation passed')
 
 use_load_store = False
 
@@ -445,13 +562,12 @@ with Program() as program:
 
     print('---------------------------------------------------------------------')
 
-    num_regs, program = program.compile([
+    program = program.compile([
         ('loadstore', 1, 1, [OpCode.load, OpCode.store]),
         ('multiply', 1, 2, [OpCode.fmul]),
         ('add', 1, 3, [OpCode.fsub, OpCode.fadd, OpCode.ftoi, OpCode.flte, OpCode.igtr, OpCode.eq, OpCode.and_, OpCode.or_, OpCode.select, OpCode.iadd, OpCode.move]),
         ('reciprocal', 1, 5, [OpCode.recip])])
 
-    print(f'physical registers used {num_regs}')
     for pc, bundle in enumerate(program):
         print(f'{pc} {bundle}')
 
