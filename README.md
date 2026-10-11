@@ -17,6 +17,10 @@ be downloaded from here:
 
 https://www.chisel-lang.org/docs/installation
 
+Python packages:
+
+    sudo apt install -y python3-z3
+
 If you don't already have Docker installed:
 
     sudo apt install -y docker.io util-linux-extra
