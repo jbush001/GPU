@@ -15,9 +15,9 @@
 #
 
 """
-This uses a SAT solver to compile an optimal program schedule for a given
-VLIW-ish datapath. It allows exploration of different pipeline configurations
-to find the best.
+This uses a SAT solver to find an optimal program schedule for a given
+program and VLIW-ish datapath. It allows exploration of different pipeline
+configurations to find the best.
 """
 
 import z3
@@ -90,7 +90,6 @@ class OpNode:
         return f'%{self.id} = {self.operation.name} {operand_str}'
 
 class Program:
-    """Represent the algorithm in DAG form"""
     current = None
 
     def __init__(self):
@@ -151,24 +150,24 @@ class Program:
         for node in self.nodes:
             for operand in node.operands:
                 if isinstance(operand, OpNode):
-                    operand_latency = pipelines[operand.pipeline][2]
                     optimizer.add(node.start_cycle >= operand.start_cycle + operand.latency)
 
+        worst_case_duration = sum(pipelines[node.pipeline][2] for node in self.nodes)
+
         # We want to minimize the total program duration, so encode
-        # that specifially as an objective
+        # that specifially as a constraint.
         total_duration = z3.Int('total_duration')
         for node in self.nodes:
             optimizer.add(total_duration >= node.start_cycle + node.latency)
 
-        worst_case = sum(pipelines[node.pipeline][2] for node in self.nodes)
         optimizer.add(total_duration >= 0)
-        optimizer.add(total_duration <= worst_case)
+        optimizer.add(total_duration <= worst_case_duration)
         optimizer.minimize(total_duration)
 
         # Add pipeline capacity constraints
         for index, (_, capacity, _, op_list) in enumerate(pipelines):
             pipeline_nodes = [node for node in self.nodes if node.pipeline == index]
-            for cycle in range(worst_case):
+            for cycle in range(worst_case_duration):
                 optimizer.add(z3.Sum([z3.If(node.start_cycle == cycle, 1, 0) for node in pipeline_nodes]) <= capacity)
 
         if optimizer.check() != z3.sat:
@@ -176,7 +175,7 @@ class Program:
 
         model = optimizer.model()
 
-        # Flatten into a program
+        # Flatten into a program, convert to three-address form.
         total_cycles = model.eval(total_duration).as_long() - 1
         program = [[] for _ in range(total_cycles + 1)]
         for node in self.nodes:
@@ -191,7 +190,7 @@ class Program:
         return program
 
     def allocate_registers(self, program):
-        # Map from SSA virtual registers to physical registers
+        """Map from SSA virtual registers to physical registers"""
         virt_to_phys_reg = {}
         free_registers = []
         last_use = {}
@@ -239,7 +238,7 @@ class Program:
             for bundle in program
         ]
 
-
+# Build the DAG form of our program using an embedded DSL.
 with Program() as program:
     # Depth interpolator
     z0 = OP_LOAD('z0')
@@ -250,6 +249,11 @@ with Program() as program:
     invw2 = z2.recip()
     invdw1 = invw1 - invw0
     invdw2 = invw2 - invw0
+    OP_STORE('invw0', invw0)
+    OP_STORE('invw1', invw1)
+    OP_STORE('invw2', invw2)
+    OP_STORE('invdw1', invdw1)
+    OP_STORE('invdw2', invdw2)
 
     # Rasterizer
     x0 = OP_LOAD('x0')
@@ -297,7 +301,6 @@ with Program() as program:
 
     # XXX implement backface/colinear culling if area2 <= 0
     cull = OP_FLTE(area2, 0)
-
 
     normFactor = area2.recip()
 
