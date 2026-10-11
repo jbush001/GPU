@@ -41,6 +41,7 @@ class OpCode(Enum):
     iadd = auto()
     const = auto()
     store = auto()
+    move = auto()
 
 class Value:
     """A node in the immediate representation of the program."""
@@ -85,13 +86,26 @@ class Instruction(Value):
         self.start_cycle = None
         self.pipeline = None
         self.latency = None
+        self.dest_reg = None
 
     def get_arg_str(self):
         return ', '.join(f'%{op.id}' if isinstance(op, Instruction) else str(op) for op in self.operands)
 
+    def set_dest_reg(self, name):
+        """
+        Hard code the physical destination register for this instruction.
+        This is used for special function registers. Normally the instruction
+        is just an SSA value that will have registers allocated as needed during
+        the register allocation phase.
+        """
+        self.dest_reg = name
+
     def __str__(self):
         operand_str = self.get_arg_str()
-        return f'%{self.id} = {self.opcode.name} {operand_str}'
+        if self.dest_reg is not None:
+            return f'%{self.dest_reg} = {self.opcode.name} {operand_str}'
+        else:
+            return f'%{self.id} = {self.opcode.name} {operand_str}'
 
 class StoreInstruction(Instruction):
     """Store instructions are special in that they don't produce a value."""
@@ -145,6 +159,9 @@ class Program:
                 instr_to_pipe[op] = index
 
         for node in self.instructions:
+            if node.opcode not in instr_to_pipe:
+                raise ValueError(f"No pipeline assigned for opcode {node.opcode}")
+
             node.pipeline = instr_to_pipe[node.opcode]
             node.latency = pipelines[node.pipeline][2]
 
@@ -192,14 +209,25 @@ class Program:
         print(f'Solved instruction scheduling in {end_time - start_time} seconds')
 
         # Flatten into a program, convert to three-address form.
-        total_cycles = model.eval(total_duration).as_long() - 1
+        total_cycles = model.eval(total_duration).as_long()
         program = [[] for _ in range(total_cycles + 1)]
         for node in self.instructions:
             start = model.eval(node.start_cycle).as_long()
-            operands = [operand.id if isinstance(operand, Instruction) else str(operand) for operand in node.operands]
+            def map_operand(operand):
+                if isinstance(operand, Instruction):
+                    if operand.dest_reg is not None:
+                        return f'%{operand.dest_reg}'
+                    else:
+                        return operand.id
+                else:
+                    return str(operand)
+
+            operands = [map_operand(operand) for operand in node.operands]
             if isinstance(node, StoreInstruction):
                 # Store doesn't have a destination register
                 program[start].append((node.pipeline, node.opcode.name, *operands))
+            elif node.dest_reg is not None:
+                program[start].append((node.pipeline, node.opcode.name, f'%{node.dest_reg}', *operands))
             else:
                 program[start].append((node.pipeline, node.opcode.name, node.id, *operands))
 
@@ -228,7 +256,7 @@ class Program:
         # Create the virtual to physical mapping list
         for cycle, bundle in enumerate(program):
             for (_pipeline, opcode, dest, *rest) in bundle:
-                if (opcode != 'store'):
+                if opcode != 'store' and isinstance(dest, int):
                     assert(dest not in virt_to_phys_reg)
                     if free_registers:
                         virt_to_phys_reg[dest] = free_registers.pop()
@@ -253,30 +281,56 @@ class Program:
             for bundle in program
         ]
 
+use_load_store = False
+
 # Build the the program using an embedded DSL.
 with Program() as program:
     # Depth interpolator
-    z0 = Instruction(OpCode.load, Value('z0'))
-    z1 = Instruction(OpCode.load, Value('z1'))
-    z2 = Instruction(OpCode.load, Value('z2'))
+    if use_load_store:
+        z0 = Instruction(OpCode.load, Value('z0'))
+        z1 = Instruction(OpCode.load, Value('z1'))
+        z2 = Instruction(OpCode.load, Value('z2'))
+    else:
+        z0 = Value('z0')
+        z1 = Value('z1')
+        z2 = Value('z2')
+
     invw0 = z0.recip()
     invw1 = z1.recip()
     invw2 = z2.recip()
     invdw1 = invw1 - invw0
     invdw2 = invw2 - invw0
-    StoreInstruction(Value('invw0'), invw0)
-    StoreInstruction(Value('invw1'), invw1)
-    StoreInstruction(Value('invw2'), invw2)
-    StoreInstruction(Value('invdw1'), invdw1)
-    StoreInstruction(Value('invdw2'), invdw2)
+    if use_load_store:
+        StoreInstruction(Value('invw0'), invw0)
+        StoreInstruction(Value('invw1'), invw1)
+        StoreInstruction(Value('invw2'), invw2)
+        StoreInstruction(Value('invdw1'), invdw1)
+        StoreInstruction(Value('invdw2'), invdw2)
+    else:
+        sprInvw0 = Instruction(OpCode.move, invw0)
+        sprInvw1 = Instruction(OpCode.move, invw1)
+        sprInvw2 = Instruction(OpCode.move, invw2)
+        sprInvw0.set_dest_reg('invw0')
+        sprInvw1.set_dest_reg('invw1')
+        sprInvw2.set_dest_reg('invw2')
+        invdw1.set_dest_reg('invdw1')
+        invdw2.set_dest_reg('invdw2')
 
     # Rasterizer
-    x0 = Instruction(OpCode.load, Value('x0'))
-    y0 = Instruction(OpCode.load, Value('y0'))
-    x1 = Instruction(OpCode.load, Value('x1'))
-    y1 = Instruction(OpCode.load, Value('y1'))
-    x2 = Instruction(OpCode.load, Value('x2'))
-    y2 = Instruction(OpCode.load, Value('y2'))
+    if use_load_store:
+        x0 = Instruction(OpCode.load, Value('x0'))
+        y0 = Instruction(OpCode.load, Value('y0'))
+        x1 = Instruction(OpCode.load, Value('x1'))
+        y1 = Instruction(OpCode.load, Value('y1'))
+        x2 = Instruction(OpCode.load, Value('x2'))
+        y2 = Instruction(OpCode.load, Value('y2'))
+    else:
+        x0 = Value('x0')
+        y0 = Value('y0')
+        x1 = Value('x1')
+        y1 = Value('y1')
+        x2 = Value('x2')
+        y2 = Value('y2')
 
     dx0 = y0 - y1
     dy0 = x1 - x0
@@ -323,9 +377,14 @@ with Program() as program:
         topLeft0 = Instruction(OpCode.or_, topLeft0_a, topLeft0_d)
         iv0int = Instruction(OpCode.select, topLeft0, Instruction(OpCode.iadd, iv0int, 1), iv0int)
 
-    StoreInstruction(Value('xStep0'), x0int)
-    StoreInstruction(Value('yStep0'), y0int)
-    StoreInstruction(Value('iv0'), iv0int)
+    if use_load_store:
+        StoreInstruction(Value('xStep0'), x0int)
+        StoreInstruction(Value('yStep0'), y0int)
+        StoreInstruction(Value('iv0'), iv0int)
+    else:
+        x0int.set_dest_reg('xStep0')
+        y0int.set_dest_reg('yStep0')
+        iv0int.set_dest_reg('iv0')
 
     normX1 = normFactor * x1
     normY1 = normFactor * y1
@@ -343,9 +402,14 @@ with Program() as program:
         topLeft1 = Instruction(OpCode.or_, topLeft1_a, topLeft1_d)
         iv1int = Instruction(OpCode.select, topLeft1, Instruction(OpCode.iadd, iv1int, 1), iv1int)
 
-    StoreInstruction(Value('xStep1'), x1int)
-    StoreInstruction(Value('yStep1'), y1int)
-    StoreInstruction(Value('iv1'), iv1int)
+    if use_load_store:
+        StoreInstruction(Value('xStep1'), x1int)
+        StoreInstruction(Value('yStep1'), y1int)
+        StoreInstruction(Value('iv1'), iv1int)
+    else:
+        x1int.set_dest_reg('xStep1')
+        y1int.set_dest_reg('yStep1')
+        iv1int.set_dest_reg('iv1')
 
     normX2 = normFactor * x2
     normY2 = normFactor * y2
@@ -363,9 +427,14 @@ with Program() as program:
         topLeft2 = Instruction(OpCode.or_, topLeft2_a, topLeft2_d)
         iv2int = Instruction(OpCode.select, topLeft2, Instruction(OpCode.iadd, iv2int, 1), iv2int)
 
-    StoreInstruction(Value('xStep2'), x2int)
-    StoreInstruction(Value('yStep2'), y2int)
-    StoreInstruction(Value('iv2'), iv2int)
+    if use_load_store:
+        StoreInstruction(Value('xStep2'), x2int)
+        StoreInstruction(Value('yStep2'), y2int)
+        StoreInstruction(Value('iv2'), iv2int)
+    else:
+        x2int.set_dest_reg('xStep2')
+        y2int.set_dest_reg('yStep2')
+        iv2int.set_dest_reg('iv2')
 
     program.print()
 
@@ -379,7 +448,7 @@ with Program() as program:
     num_regs, program = program.compile([
         ('loadstore', 1, 1, [OpCode.load, OpCode.store]),
         ('multiply', 1, 2, [OpCode.fmul]),
-        ('add', 1, 3, [OpCode.fsub, OpCode.fadd, OpCode.ftoi, OpCode.flte, OpCode.igtr, OpCode.eq, OpCode.and_, OpCode.or_, OpCode.select, OpCode.iadd]),
+        ('add', 1, 3, [OpCode.fsub, OpCode.fadd, OpCode.ftoi, OpCode.flte, OpCode.igtr, OpCode.eq, OpCode.and_, OpCode.or_, OpCode.select, OpCode.iadd, OpCode.move]),
         ('reciprocal', 1, 5, [OpCode.recip])])
 
     print(f'physical registers used {num_regs}')
