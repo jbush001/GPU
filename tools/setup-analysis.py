@@ -35,7 +35,6 @@ from enum import Enum, auto
 import time
 
 class OpCode(Enum):
-    load = auto()
     recip = auto()
     fsub = auto()
     fadd = auto()
@@ -49,7 +48,6 @@ class OpCode(Enum):
     select = auto()
     iadd = auto()
     const = auto()
-    store = auto()
     move = auto()
 
 class Value:
@@ -118,15 +116,6 @@ class Instruction(Value):
             return f'%{self.dest_reg} = {self.opcode.name} {operand_str}'
         else:
             return f'%{self.id} = {self.opcode.name} {operand_str}'
-
-class StoreInstruction(Instruction):
-    """Store instructions are special in that they don't produce a value."""
-    def __init__(self, dest, *operands):
-        super().__init__(OpCode.store, dest, *operands)
-
-    def __str__(self):
-        operand_str = self.get_arg_str()
-        return f'store {operand_str}'
 
 class Program:
     current = None
@@ -239,10 +228,7 @@ class Program:
                     return str(operand)
 
             operands = [map_operand(operand) for operand in node.operands]
-            if isinstance(node, StoreInstruction):
-                # Store doesn't have a destination register
-                program[start].append((node.pipeline, node.opcode.name, *operands))
-            elif node.dest_reg is not None:
+            if node.dest_reg is not None:
                 program[start].append((node.pipeline, node.opcode.name, f'%{node.dest_reg}', *operands))
             else:
                 program[start].append((node.pipeline, node.opcode.name, node.id, *operands))
@@ -254,7 +240,7 @@ class Program:
         for cycle, bundle in enumerate(program):
             for inst in bundle:
                 _pipeline, opcode, dest, *rest = inst
-                if opcode != 'store' and isinstance(dest, int):
+                if isinstance(dest, int):
                     # This is strict SSA...
                     assert dest not in live_ranges, 'Redefined virtual register'
                     live_ranges[dest] = [cycle, cycle]
@@ -315,7 +301,7 @@ class Program:
                     if isinstance(op, int):
                         read_vregs.add(op)
 
-                if opcode != 'store' and isinstance(dest, int):
+                if isinstance(dest, int):
                     write_vregs.append(dest)
 
             # Add constraints
@@ -409,87 +395,70 @@ class Program:
 
         print('Constraint validation passed')
 
-use_load_store = False
-
 # Generate the intermediate representation. These formula are implicitly
 # translated into instruction nodes.
 with Program() as program:
-    # Set up depth interpolator coefficients
-    if use_load_store:
-        z0 = Instruction(OpCode.load, Value('z0'))
-        z1 = Instruction(OpCode.load, Value('z1'))
-        z2 = Instruction(OpCode.load, Value('z2'))
-    else:
-        z0 = SpecialRegister('z0')
-        z1 = SpecialRegister('z1')
-        z2 = SpecialRegister('z2')
+    # Define all special registers. These are encoded directly in the
+    # register source field.
+    x0 = SpecialRegister('x0')
+    y0 = SpecialRegister('y0')
+    z0 = SpecialRegister('z0')
+    x1 = SpecialRegister('x1')
+    y1 = SpecialRegister('y1')
+    z1 = SpecialRegister('z1')
+    x2 = SpecialRegister('x2')
+    y2 = SpecialRegister('y2')
+    z2 = SpecialRegister('z2')
+    bbLeft = SpecialRegister('bbleft')
+    bbTop = SpecialRegister('bbTop')
+    xPixelPitch = SpecialRegister('xPixelPitch')
+    yPixelPitch = SpecialRegister('yPixelPitch')
 
+    # Set up depth interpolator coefficients
     invw0 = z0.recip()
     invw1 = z1.recip()
     invw2 = z2.recip()
     invdw1 = invw1 - invw0
     invdw2 = invw2 - invw0
-    if use_load_store:
-        StoreInstruction('invw0', invw0)
-        StoreInstruction('invw1', invw1)
-        StoreInstruction('invw2', invw2)
-        StoreInstruction('invdw1', invdw1)
-        StoreInstruction('invdw2', invdw2)
-    else:
-        sprInvw0 = Instruction(OpCode.move, invw0)
-        sprInvw1 = Instruction(OpCode.move, invw1)
-        sprInvw2 = Instruction(OpCode.move, invw2)
-        sprInvw0.set_dest_reg('invw0')
-        sprInvw1.set_dest_reg('invw1')
-        sprInvw2.set_dest_reg('invw2')
-        invdw1.set_dest_reg('invdw1')
-        invdw2.set_dest_reg('invdw2')
+    sprInvw0 = Instruction(OpCode.move, invw0)
+    sprInvw1 = Instruction(OpCode.move, invw1)
+    sprInvw2 = Instruction(OpCode.move, invw2)
+    sprInvw0.set_dest_reg('invw0')
+    sprInvw1.set_dest_reg('invw1')
+    sprInvw2.set_dest_reg('invw2')
+    invdw1.set_dest_reg('invdw1')
+    invdw2.set_dest_reg('invdw2')
 
     # Set up rasterizer coefficients
-    if use_load_store:
-        x0 = Instruction(OpCode.load, 'x0')
-        y0 = Instruction(OpCode.load, 'y0')
-        x1 = Instruction(OpCode.load, 'x1')
-        y1 = Instruction(OpCode.load, 'y1')
-        x2 = Instruction(OpCode.load, 'x2')
-        y2 = Instruction(OpCode.load, 'y2')
-    else:
-        x0 = SpecialRegister('x0')
-        y0 = SpecialRegister('y0')
-        x1 = SpecialRegister('x1')
-        y1 = SpecialRegister('y1')
-        x2 = SpecialRegister('x2')
-        y2 = SpecialRegister('y2')
-
+    # Edge 0
     dx0 = y0 - y1
     dy0 = x1 - x0
-    iv0 = ((SpecialRegister('bbleft') - x0) * dx0) + ((SpecialRegister('bbTop') - y0) * dy0)
+    iv0 = ((bbLeft - x0) * dx0) + ((bbTop - y0) * dy0)
     area2 = iv0
+    xStep0 = dx0 * xPixelPitch
+    yStep0 = dy0 * yPixelPitch
 
-    xStep0 = dx0 * SpecialRegister('xPixelPitch')
-    yStep0 = dy0 * SpecialRegister('yPixelPitch')
-
+    # Edge 1
     dx1 = y1 - y2
     dy1 = x2 - x1
-    iv1 = ((SpecialRegister('bbleft') - x1) * dx1) + ((SpecialRegister('bbTop') - y1) * dy1)
+    iv1 = ((bbLeft - x1) * dx1) + ((bbTop - y1) * dy1)
     area2 = area2 + iv1
+    xStep1 = dx1 * xPixelPitch
+    yStep1 = dy1 * yPixelPitch
 
-    xStep1 = dx1 * SpecialRegister('xPixelPitch')
-    yStep1 = dy1 * SpecialRegister('yPixelPitch')
-
+    # Edge 2
     dx2 = y2 - y0
     dy2 = x0 - x2
-    iv2 = ((SpecialRegister('bbleft') - x2) * dx2) + ((SpecialRegister('bbTop') - y2) * dy2)
+    iv2 = ((bbLeft - x2) * dx2) + ((bbTop - y2) * dy2)
     area2 = area2 + iv2
-
-    xStep2 = dx2 * SpecialRegister('xPixelPitch')
-    yStep2 = dy2 * SpecialRegister('yPixelPitch')
+    xStep2 = dx2 * xPixelPitch
+    yStep2 = dy2 * yPixelPitch
 
     # XXX implement backface/colinear culling if area2 <= 0
     cull = area2 <= Literal(0)
 
+    # Normalize functions
     normFactor = area2.recip()
-
     normX0 = normFactor * x0
     normY0 = normFactor * y0
     normIv0 = normFactor * iv0
@@ -506,14 +475,9 @@ with Program() as program:
         topLeft0 = Instruction(OpCode.or_, topLeft0_a, topLeft0_d)
         iv0int = Instruction(OpCode.select, topLeft0, Instruction(OpCode.iadd, iv0int, 1), iv0int)
 
-    if use_load_store:
-        StoreInstruction(Value('xStep0'), x0int)
-        StoreInstruction(Value('yStep0'), y0int)
-        StoreInstruction(Value('iv0'), iv0int)
-    else:
-        x0int.set_dest_reg('xStep0')
-        y0int.set_dest_reg('yStep0')
-        iv0int.set_dest_reg('iv0')
+    x0int.set_dest_reg('xStep0')
+    y0int.set_dest_reg('yStep0')
+    iv0int.set_dest_reg('iv0')
 
     normX1 = normFactor * x1
     normY1 = normFactor * y1
@@ -531,14 +495,9 @@ with Program() as program:
         topLeft1 = Instruction(OpCode.or_, topLeft1_a, topLeft1_d)
         iv1int = Instruction(OpCode.select, topLeft1, Instruction(OpCode.iadd, iv1int, 1), iv1int)
 
-    if use_load_store:
-        StoreInstruction('xStep1', x1int)
-        StoreInstruction('yStep1', y1int)
-        StoreInstruction('iv1', iv1int)
-    else:
-        x1int.set_dest_reg('xStep1')
-        y1int.set_dest_reg('yStep1')
-        iv1int.set_dest_reg('iv1')
+    x1int.set_dest_reg('xStep1')
+    y1int.set_dest_reg('yStep1')
+    iv1int.set_dest_reg('iv1')
 
     normX2 = normFactor * x2
     normY2 = normFactor * y2
@@ -556,14 +515,9 @@ with Program() as program:
         topLeft2 = Instruction(OpCode.or_, topLeft2_a, topLeft2_d)
         iv2int = Instruction(OpCode.select, topLeft2, Instruction(OpCode.iadd, iv2int, 1), iv2int)
 
-    if use_load_store:
-        StoreInstruction('xStep2', x2int)
-        StoreInstruction('yStep2', y2int)
-        StoreInstruction('iv2', iv2int)
-    else:
-        x2int.set_dest_reg('xStep2')
-        y2int.set_dest_reg('yStep2')
-        iv2int.set_dest_reg('iv2')
+    x2int.set_dest_reg('xStep2')
+    y2int.set_dest_reg('yStep2')
+    iv2int.set_dest_reg('iv2')
 
     program.print()
 
@@ -575,7 +529,6 @@ with Program() as program:
     print('---------------------------------------------------------------------')
 
     program = program.compile([
-        ('loadstore', 1, 1, [OpCode.load, OpCode.store]),
         ('multiply', 1, 2, [OpCode.fmul]),
         ('add', 1, 3, [OpCode.fsub, OpCode.fadd, OpCode.ftoi, OpCode.flte, OpCode.igtr, OpCode.eq, OpCode.and_, OpCode.or_, OpCode.select, OpCode.iadd, OpCode.move]),
         ('reciprocal', 1, 5, [OpCode.recip])])
