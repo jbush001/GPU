@@ -15,8 +15,8 @@
 #
 
 """
-This uses the z3 SMT solver to find an optimal program schedule for a given
-program and VLIW-ish datapath. We do this by structuring programs as proofs.
+This uses the z3 SMT solver to find an optimal encoding for a given program
+and VLIW-ish datapath. We do this by structuring programs as proofs.
 This allows exploration of different pipeline configurations to find the best
 program (for different criteria of "best").
 """
@@ -46,15 +46,6 @@ class OpCode(Enum):
 
 class Value:
     """A node in the immediate representation of the program."""
-    def __init__(self, name):
-        self.name = name
-
-    def __str__(self):
-        if isinstance(self.name, int):
-            return f'{self.name}'
-        else:
-            return f'%{self.name}'
-
     def __sub__(self, other):
         return Instruction(OpCode.fsub, self, other)
 
@@ -73,14 +64,26 @@ class Value:
     def ftoi(self):
         return Instruction(OpCode.ftoi, self)
 
+class Literal(Value):
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return str(self.value)
+
+class SpecialRegister(Value):
+    def __init__(self, name):
+        self.name = name
+
+    def __str__(self):
+        return f'%{self.name}'
+
 class Instruction(Value):
     """
     An instruction in the program DAG. All instructions are Values, which
     implicitly enforces SSA form.
     """
     def __init__(self, opcode, *operands):
-        name = f'inst_{len(Program.current.instructions)}'
-        super().__init__(name)
         self.opcode = opcode
         self.operands = list(operands)
         self.id = Program.current.emit(self)
@@ -408,9 +411,9 @@ with Program() as program:
         z1 = Instruction(OpCode.load, Value('z1'))
         z2 = Instruction(OpCode.load, Value('z2'))
     else:
-        z0 = Value('z0')
-        z1 = Value('z1')
-        z2 = Value('z2')
+        z0 = SpecialRegister('z0')
+        z1 = SpecialRegister('z1')
+        z2 = SpecialRegister('z2')
 
     invw0 = z0.recip()
     invw1 = z1.recip()
@@ -418,11 +421,11 @@ with Program() as program:
     invdw1 = invw1 - invw0
     invdw2 = invw2 - invw0
     if use_load_store:
-        StoreInstruction(Value('invw0'), invw0)
-        StoreInstruction(Value('invw1'), invw1)
-        StoreInstruction(Value('invw2'), invw2)
-        StoreInstruction(Value('invdw1'), invdw1)
-        StoreInstruction(Value('invdw2'), invdw2)
+        StoreInstruction('invw0', invw0)
+        StoreInstruction('invw1', invw1)
+        StoreInstruction('invw2', invw2)
+        StoreInstruction('invdw1', invdw1)
+        StoreInstruction('invdw2', invdw2)
     else:
         sprInvw0 = Instruction(OpCode.move, invw0)
         sprInvw1 = Instruction(OpCode.move, invw1)
@@ -435,46 +438,46 @@ with Program() as program:
 
     # Rasterizer
     if use_load_store:
-        x0 = Instruction(OpCode.load, Value('x0'))
-        y0 = Instruction(OpCode.load, Value('y0'))
-        x1 = Instruction(OpCode.load, Value('x1'))
-        y1 = Instruction(OpCode.load, Value('y1'))
-        x2 = Instruction(OpCode.load, Value('x2'))
-        y2 = Instruction(OpCode.load, Value('y2'))
+        x0 = Instruction(OpCode.load, 'x0')
+        y0 = Instruction(OpCode.load, 'y0')
+        x1 = Instruction(OpCode.load, 'x1')
+        y1 = Instruction(OpCode.load, 'y1')
+        x2 = Instruction(OpCode.load, 'x2')
+        y2 = Instruction(OpCode.load, 'y2')
     else:
-        x0 = Value('x0')
-        y0 = Value('y0')
-        x1 = Value('x1')
-        y1 = Value('y1')
-        x2 = Value('x2')
-        y2 = Value('y2')
+        x0 = SpecialRegister('x0')
+        y0 = SpecialRegister('y0')
+        x1 = SpecialRegister('x1')
+        y1 = SpecialRegister('y1')
+        x2 = SpecialRegister('x2')
+        y2 = SpecialRegister('y2')
 
     dx0 = y0 - y1
     dy0 = x1 - x0
-    iv0 = ((Value('bbleft') - x0) * dx0) + ((Value('bbTop') - y0) * dy0)
+    iv0 = ((SpecialRegister('bbleft') - x0) * dx0) + ((SpecialRegister('bbTop') - y0) * dy0)
     area2 = iv0
 
-    xStep0 = dx0 * Value('xPixelPitch')
-    yStep0 = dy0 * Value('yPixelPitch')
+    xStep0 = dx0 * SpecialRegister('xPixelPitch')
+    yStep0 = dy0 * SpecialRegister('yPixelPitch')
 
     dx1 = y1 - y2
     dy1 = x2 - x1
-    iv1 = ((Value('bbleft') - x1) * dx1) + ((Value('bbTop') - y1) * dy1)
+    iv1 = ((SpecialRegister('bbleft') - x1) * dx1) + ((SpecialRegister('bbTop') - y1) * dy1)
     area2 = area2 + iv1
 
-    xStep1 = dx1 * Value('xPixelPitch')
-    yStep1 = dy1 * Value('yPixelPitch')
+    xStep1 = dx1 * SpecialRegister('xPixelPitch')
+    yStep1 = dy1 * SpecialRegister('yPixelPitch')
 
     dx2 = y2 - y0
     dy2 = x0 - x2
-    iv2 = ((Value('bbleft') - x2) * dx2) + ((Value('bbTop') - y2) * dy2)
+    iv2 = ((SpecialRegister('bbleft') - x2) * dx2) + ((SpecialRegister('bbTop') - y2) * dy2)
     area2 = area2 + iv2
 
-    xStep2 = dx2 * Value('xPixelPitch')
-    yStep2 = dy2 * Value('yPixelPitch')
+    xStep2 = dx2 * SpecialRegister('xPixelPitch')
+    yStep2 = dy2 * SpecialRegister('yPixelPitch')
 
     # XXX implement backface/colinear culling if area2 <= 0
-    cull = area2 <= Value(0)
+    cull = area2 <= Literal(0)
 
     normFactor = area2.recip()
 
@@ -520,9 +523,9 @@ with Program() as program:
         iv1int = Instruction(OpCode.select, topLeft1, Instruction(OpCode.iadd, iv1int, 1), iv1int)
 
     if use_load_store:
-        StoreInstruction(Value('xStep1'), x1int)
-        StoreInstruction(Value('yStep1'), y1int)
-        StoreInstruction(Value('iv1'), iv1int)
+        StoreInstruction('xStep1', x1int)
+        StoreInstruction('yStep1', y1int)
+        StoreInstruction('iv1', iv1int)
     else:
         x1int.set_dest_reg('xStep1')
         y1int.set_dest_reg('yStep1')
@@ -545,9 +548,9 @@ with Program() as program:
         iv2int = Instruction(OpCode.select, topLeft2, Instruction(OpCode.iadd, iv2int, 1), iv2int)
 
     if use_load_store:
-        StoreInstruction(Value('xStep2'), x2int)
-        StoreInstruction(Value('yStep2'), y2int)
-        StoreInstruction(Value('iv2'), iv2int)
+        StoreInstruction('xStep2', x2int)
+        StoreInstruction('yStep2', y2int)
+        StoreInstruction('iv2', iv2int)
     else:
         x2int.set_dest_reg('xStep2')
         y2int.set_dest_reg('yStep2')
