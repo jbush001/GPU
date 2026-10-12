@@ -14,6 +14,9 @@
 #   limitations under the License.
 #
 
+# Setup:
+# sudo apt install python3-z3
+
 """
 The current design direction for the triangle setup engine is to use a
 microcoded state machine to control several computational pipelines. In

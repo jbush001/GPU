@@ -9,27 +9,12 @@ characterization. Major features:
 * Unified shader
 * Unified memory shared with host CPU
 
-
 ## Setup
 
 This uses the Chisel Hardware Description Language and Scala-CLI, which can
 be downloaded from here:
 
 https://www.chisel-lang.org/docs/installation
-
-Python packages:
-
-    sudo apt install -y python3-z3
-
-If you don't already have Docker installed:
-
-    sudo apt install -y docker.io util-linux-extra
-    sudo usermod -aG docker $USER
-    newgrp docker
-
-(log completely out of Linux and back in)
-
-    docker run --rm hello-world
 
 ## Building and Running
 
@@ -49,16 +34,18 @@ The output waveform will be written to build/chiselsim/.../workdir-verilator/tra
 
 **To Synthesize for ASIC**
 
-Using Nangate45 PDK and Yosys toolchain.
+This uses the Nangate45 PDK and Yosys/Openroad toolchain. This currently only
+runs through technology mapping and does not do placement, but is useful for
+basic area and timing analysis (this takes a long time).
+
+If you don't already have Docker installed, run this once:
+
+    sudo apt install -y docker.io util-linux-extra
+    sudo usermod -aG docker $USER
+    newgrp docker
+
+(log completely out of Linux and back in)
+
+To syntheize.
 
     ./synthesize-asic
-
-**Running Assembler**
-
-    python3 tools/assemble.py sw/test.s
-
-Generates a .hex and .list file
-
-**Test Tools**
-
-    python3 -m unittest discover tools
