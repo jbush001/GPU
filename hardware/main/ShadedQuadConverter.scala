@@ -25,8 +25,10 @@ import chisel3.util._
   */
 class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
+    /** From [[PixelShaderConductor]] */
     val shadedQuad = Valid(new ShadedQuad)
 
+    /** To [[TileBuffer]] */
     val floatQuad = Flipped(Valid(new Bundle {
       val location = Point2D()
       val mask = Bits(Consts.pixelsPerQuad.W)

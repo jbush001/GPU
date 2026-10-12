@@ -19,6 +19,10 @@ package gpu
 import circt.stage.ChiselStage
 import java.io.File
 
+/** Top level application for synthesizing the GPU design.
+  * This writes out System Verilog files that are used by downstream synthesis
+  * tools.
+  */
 object Synthesis extends App {
   val targetDir = "build/generated"
   new File(targetDir).mkdirs()

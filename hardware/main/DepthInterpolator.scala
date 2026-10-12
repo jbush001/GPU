@@ -33,20 +33,28 @@ class InterpolatedQuad(implicit cfg: GpuConfig) extends RasterizedQuad {
 
 /** Sits between [[Rasterizer]] and [[PixelShaderConductor]] and computes
   * per-pixel depth and perspective corrected barycentric coordinates.
-  * This has 17 cycles of latency.
+  * This is fully pipelined and can accept a new quad each cycle. It has 17
+  * cycles of latency. It will stall when the interpolated quad output
+  * deasserts its ready flag.
   * The formulae are fully documented in docs/maths.md
   */
 class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
+    // From Rasterizer
     val rasterizedQuad = Flipped(Decoupled(new RasterizedQuad))
+
+    // To Pixel Shader Conductor
     val interpolatedQuad = Decoupled(new InterpolatedQuad)
+
+    // From triangle setup
     val writeCoeffs = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val coeffs = new DepthInterpolatorCoeffs()
     }))
   })
 
-  val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(0.U.asTypeOf(new DepthInterpolatorCoeffs())))
+  val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(
+    0.U.asTypeOf(new DepthInterpolatorCoeffs())))
 
   when (io.writeCoeffs.valid) {
     coeffs(io.writeCoeffs.bits.triangleId) := io.writeCoeffs.bits.coeffs
@@ -80,7 +88,7 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     val sumC = FpAdd(a, b, !stall) // cycle 2
     val sumD = FpAdd(sumC, coeff5.invW0, !stall) // cycle 5
 
-    // Compute the depth at each pixel: depth = 1 / invW_pixel
+    // Compute the depth at each pixel: depth = 1.0 / invW_pixel
     val w = FpReciprocal(sumD, !stall) // cycle 8
 
     // Compute perspective corrected barycentric coordinates

@@ -23,23 +23,29 @@ import chisel3.util._
   * Represents a single precision floating point value, in IEEE754 binary32
   * format.
   * [[https://en.wikipedia.org/wiki/Single-precision_floating-point_format]]
-  * @note Subnormal numbers are not supported and are treated as zeroes.
-  * @note All arithmetic operations round towards zero.
+  *
+  * This and associated hardware blocks are optimized for area and latency,
+  * at the cost of strict compliance. Specifically:
+  * - Input subnormals are treated as zero (denormals-are-zero/DAZ).
+  *   However, operational stages do not guarantee a clean flush-to-zero
+  *   (FTZ) on output.
+  * - All arithmetic operations utilize truncation (round-towards-zero/RZ).
+  * - NaN payloads are not propagated. The bit patterns of the significand
+  *   field for an output NaN are undefined except that the field is
+  *   guaranteed to be non-zero. All NaNs are quiet (non-signaling).
   */
 class Float32 extends Bundle {
   val raw = UInt(32.W)
 
   def isNegative = raw(31)
-  def exponent = raw(30, 23).asUInt
-  def fraction = raw(22, 0).asUInt
+  def exponent = raw(30, 23)
+  def fraction = raw(22, 0)
 
-  // This adds the leading hidden bit
-  def fullFraction = (!this.isZero ## this.fraction).asUInt
+  def fullFraction = (!this.isZero ## this.fraction)
 
   def isNaN = (this.exponent === 0xff.U && this.fraction =/= 0.U)
   def isInf = (this.exponent === 0xff.U && this.fraction === 0.U)
 
-  // Note: this treats subnormal numbers as zero.
   def isZero = this.exponent === 0.U
 
   def abs = Float32(false.B, this.exponent, this.fraction)
@@ -49,6 +55,9 @@ class Float32 extends Bundle {
     this.abs.raw > that.abs.raw && !this.isNaN && !that.isNaN
   }
 
+  /** Convert to an unsigned number such that unsigned integer comparisons
+    * yield the same result as floating point comparisons.
+    */
   private def toOrderable: UInt = {
     Cat(!this.isNegative, this.raw(30, 0) ^ Fill(31, this.isNegative))
   }
@@ -122,6 +131,10 @@ class Float32 extends Bundle {
     result
   }
 
+  /** Returns an estimate with a maximum relative error bound of 2^-6
+    * (1.5625%). It's intended to be the seed for several Newton-Raphson
+    * iterations to refine it.
+    */
   def reciprocalEstimate(): Float32 = {
     val fraction = ReciprocalLut(this.fraction(22, 17))
     val exponent = 253.U - this.exponent

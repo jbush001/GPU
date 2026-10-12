@@ -36,6 +36,8 @@ import chisel3.util._
   *   - A burst completes on the clock edge the last word is consumed.
   *   - `data.valid` and `data.ready` MUST NOT be combinationally dependent
   *     on each other.
+  *   - The lowest addressed byte in `data` corresponds to bits 7..0 and so
+  *     on.
   */
 class MemReadPort(implicit cfg: GpuConfig) extends Bundle {
   val burst = Valid(new Bundle {

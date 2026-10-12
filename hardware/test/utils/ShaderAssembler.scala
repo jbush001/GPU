@@ -16,6 +16,9 @@
 
 package gpu.shader
 
+/**
+  * Simple embedded assembler for shader used to generate test programs.
+  */
 class ShaderAssembler {
   private val instructions = scala.collection.mutable.ArrayBuffer[Int]()
   private val labels = scala.collection.mutable.Map[String, Int]()

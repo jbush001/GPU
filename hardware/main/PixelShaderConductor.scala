@@ -32,9 +32,15 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
 /**
   * PixelShaderConductor handles batching requests for [[ShaderCore]],
   * It collects rasterized quads from the rasterizer, dispatches shading
-  * jobs to the shader core, and sends shaded quads to the tile buffer, tracking
-  * the state of all in-flight quads. The ShaderCore performs register reads
-  * and writes to access data for pixels.
+  * jobs to the shader core, and sends shaded quads to the tile buffer,
+  * tracking the state of all in-flight quads. It also mediates access to
+  * the texture cache. The ShaderCore performs register reads and writes
+  * to access data for pixels.
+  * Quads will always retire to the tile buffer in the same order they
+  * are received from the rasterizer, even though the ShaderCore may
+  * finish processing out of order. The `lastQuad` and `lastTriangle`
+  * signals are passed through in order as well, and can be used to
+  * definitively indicate when a batch is fully processed.
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

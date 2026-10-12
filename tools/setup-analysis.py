@@ -15,10 +15,15 @@
 #
 
 """
-This uses the z3 SMT solver to find an optimal encoding for a given program
-and VLIW-ish datapath. We do this by structuring programs as proofs.
-This allows exploration of different pipeline configurations to find the best
-program (for different criteria of "best").
+The current design direction for the triangle setup engine is to use a
+microcoded state machine to control several computational pipelines. In
+order to produce an optimal implementation from an area, latency, and
+throughput perspective, this uses the z3 SMT solver to find a the optimal
+encoding for a given microprogram and specified datapath. It works by first
+specifying the program in SSA/DAG format using an embedded domain specific
+language, then building mathematical proofs from that representation and
+solving for the set of parameters that satisfies them. This allows
+experimentation with various configurations to explore tradeoffs.
 """
 
 import z3
@@ -81,7 +86,7 @@ class SpecialRegister(Value):
 class Instruction(Value):
     """
     An instruction in the program DAG. All instructions are Values, which
-    implicitly enforces SSA form.
+    implicitly enforces static single assignment (SSA) form.
     """
     def __init__(self, opcode, *operands):
         self.opcode = opcode
@@ -403,9 +408,10 @@ class Program:
 
 use_load_store = False
 
-# Build the the program using an embedded DSL.
+# Generate the intermediate representation. These formula are implicitly
+# translated into instruction nodes.
 with Program() as program:
-    # Depth interpolator
+    # Set up depth interpolator coefficients
     if use_load_store:
         z0 = Instruction(OpCode.load, Value('z0'))
         z1 = Instruction(OpCode.load, Value('z1'))
@@ -436,7 +442,7 @@ with Program() as program:
         invdw1.set_dest_reg('invdw1')
         invdw2.set_dest_reg('invdw2')
 
-    # Rasterizer
+    # Set up rasterizer coefficients
     if use_load_store:
         x0 = Instruction(OpCode.load, 'x0')
         y0 = Instruction(OpCode.load, 'y0')
