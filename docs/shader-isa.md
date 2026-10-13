@@ -138,22 +138,30 @@ undefined. Attemping to write a read-only register will have no effect.
 | 64-95   | Vector general purpose registers                  |  r/w   |
 |   96    | Lambda0 (barycentric coordinate)                  |   r    |
 |   97    | Lambda1 (barycentric coordinate)                  |   r    |
-|   98    | Read varying coefficient                          |   r    |
-|   99    | Texture fetch R                                   |   r    |
-|  100    | Texture fetch G                                   |   r    |
-|  101    | Texture fetch B                                   |   r    |
-|  102    | Texture fetch A                                   |   r    |
+|   98    | Read varying coefficient<sup>1</sup>              |   r    |
+|   99    | Texture fetch red <sup>2</sup>                    |   r    |
+|  100    | Texture fetch green                               |   r    |
+|  101    | Texture fetch blue                                |   r    |
+|  102    | Texture fetch alpha                               |   r    |
 |  103    | Reserved                                          |   r    |
-|  104    | Output red                                        |   w    |
+|  104    | Output red<sup>3</sup>                            |   w    |
 |  105    | Output green                                      |   w    |
 |  106    | Output blue                                       |   w    |
 |  107    | Output alpha                                      |   w    |
-|  108    | Texture fetch S                                   |   w    |
-|  109    | Texture fetch T  (initiate)                       |   w    |
+|  108    | Texture fetch S coordinate                        |   w    |
+|  109    | Texture fetch T coordinate<sup>4</sup>            |   w    |
 |  110    | Reserved                                          |   w    |
 |  112    | Lane ID                                           |   r    |
 
 *Note that register 96-103 can only be used in the first register operand*
+
+1. This will read varying coefficients in order and will increment to
+   the next varying automatically as a side effect.
+2. This will block the current thread to wait for the texture fetch
+   to finish if it is not available yet.
+3. These are floating point values 0.0-1.0.
+4. Writing to the T coordinate will initiate the texture fetch as a side
+   effect, so this register should be written last.
 
 **Predicated execution**
 
