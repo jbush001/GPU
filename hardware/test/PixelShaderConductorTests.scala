@@ -156,13 +156,13 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("PixelShaderConductor flush") {
+  test("PixelShaderConductor drain") {
     simulate(new PixelShaderConductor) { dut =>
       dut.io.startJob.ready.poke(true)
 
       dut.io.startJob.valid.expect(false)
 
-      // Flush
+      // Set last triangle bit on an incomplete job.
       loadSourceQuad(dut, 3, 4, 15,
         Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)),
         Seq.fill(Consts.pixelsPerQuad)(0.0f),

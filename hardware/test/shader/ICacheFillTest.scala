@@ -185,7 +185,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
 
       val totalCycles = 100000
       for (cycle <- 0 until totalCycles) {
-        // Don't start a new burst during the flush period
+        // Don't start a new burst during the drain period
         if (rng.nextDouble() < 0.1 && cycle < totalCycles - maxLatency) {
           val threadIdx = rng.nextInt(cfg.shaderThreads)
           val state = missState(threadIdx)
@@ -244,7 +244,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       // Final check: everything should have drained within the timeout
       for (thread <- 0 until cfg.shaderThreads) {
         assert(!missState(thread).active,
-          s"Thread $thread still has outstanding miss after flush " +
+          s"Thread $thread still has outstanding miss after drain " +
           s"(address ${missState(thread).address}, issued cycle ${missState(thread).issueCycle})")
       }
     }

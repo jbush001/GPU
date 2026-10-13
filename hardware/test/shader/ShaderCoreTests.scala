@@ -203,7 +203,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       val maxJobs = 8 // Useful for debugging
       var activeJobs = 0
       val maxCycles = 40000
-      val flushCycles = 2000
+      val drainCycles = 2000
       var regReadResult = Seq.fill(cfg.shaderVectorLanes)(0)
       var hasRegReadResult = false
       for (cycle <- 0 until maxCycles) {
@@ -245,7 +245,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
         // Start a new job. We stop creating new jobs near the end of the simulation to
         // allow all jobs to finish.
-        if (dut.io.startJob.ready.peek().litToBoolean && cycle < (maxCycles - flushCycles) && activeJobs < maxJobs) {
+        if (dut.io.startJob.ready.peek().litToBoolean && cycle < (maxCycles - drainCycles) && activeJobs < maxJobs) {
           val jobIndex = findFreeJob()
           val job = initNewJob(jobIndex)
           if (DEBUG) {
