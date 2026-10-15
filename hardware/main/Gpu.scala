@@ -33,11 +33,6 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
       val value = Float32()
     }))
 
-    val writeDepthCoeffs = Flipped(Valid(new Bundle {
-      val triangleId = UInt(cfg.triangleIdBits.W)
-      val coeffs = new DepthInterpolatorCoeffs()
-    }))
-
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
     val lastTriangle = Output(Bool())
 
@@ -94,7 +89,6 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
   rasterizer.io.coeffs <> io.coeffs
-  depthInterpolator.io.writeCoeffs <> io.writeDepthCoeffs
 
   io.writeVaryingCoeff <> pixelShaderConductor.io.writeVaryingCoeff
 

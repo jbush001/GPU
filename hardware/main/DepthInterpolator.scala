@@ -45,20 +45,7 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
 
     // To Pixel Shader Conductor
     val interpolatedQuad = Decoupled(new InterpolatedQuad)
-
-    // From triangle setup
-    val writeCoeffs = Flipped(Valid(new Bundle {
-      val triangleId = UInt(cfg.triangleIdBits.W)
-      val coeffs = new DepthInterpolatorCoeffs()
-    }))
   })
-
-  val coeffs = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(
-    0.U.asTypeOf(new DepthInterpolatorCoeffs())))
-
-  when (io.writeCoeffs.valid) {
-    coeffs(io.writeCoeffs.bits.triangleId) := io.writeCoeffs.bits.coeffs
-  }
 
   val stall = io.interpolatedQuad.valid && !io.interpolatedQuad.ready
 
@@ -74,7 +61,7 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
 
   // Need to delay these so they are available at the correct cycle for
   // each stage in the pipeline where they are used.
-  val coeff0 = coeffs(io.rasterizedQuad.bits.triangleId)
+  val coeff0 = io.rasterizedQuad.bits.depthCoeffs
   val coeff5 = ShiftRegister(coeff0, 5, !stall)
   val coeff7 = ShiftRegister(coeff5, 2, !stall)
   val coeff15 = ShiftRegister(coeff7, 8, !stall)

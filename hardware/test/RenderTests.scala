@@ -35,11 +35,6 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
       val value = Float32()
     }))
 
-    val writeDepthCoeffs = Flipped(Valid(new Bundle {
-      val triangleId = UInt(cfg.triangleIdBits.W)
-      val coeffs = new DepthInterpolatorCoeffs()
-    }))
-
     val startFlush = Input(Bool())
     val flushColor = Decoupled(Bits(32.W))
     val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
@@ -65,7 +60,6 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 
   gpu.io.coeffs <> io.coeffs
   io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
-  gpu.io.writeDepthCoeffs <> io.writeDepthCoeffs
   gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
   io.flushColor.valid := gpu.io.flushData.valid
@@ -244,15 +238,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val invW0 = 1.0f / vertices(0)._3
     val invW1 = 1.0f / vertices(1)._3
     val invW2 = 1.0f / vertices(2)._3
-    dut.io.writeDepthCoeffs.bits.triangleId.poke(triangleId)
-    dut.io.writeDepthCoeffs.bits.coeffs.invW0.raw.poke(floatToRawBits(invW0))
-    dut.io.writeDepthCoeffs.bits.coeffs.invW1.raw.poke(floatToRawBits(invW1))
-    dut.io.writeDepthCoeffs.bits.coeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
-    dut.io.writeDepthCoeffs.bits.coeffs.invW2.raw.poke(floatToRawBits(invW2))
-    dut.io.writeDepthCoeffs.bits.coeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
-    dut.io.writeDepthCoeffs.valid.poke(true)
-    dut.clock.step()
-    dut.io.writeDepthCoeffs.valid.poke(false)
+    dut.io.coeffs.bits.depthCoeffs.invW0.raw.poke(floatToRawBits(invW0))
+    dut.io.coeffs.bits.depthCoeffs.invW1.raw.poke(floatToRawBits(invW1))
+    dut.io.coeffs.bits.depthCoeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
+    dut.io.coeffs.bits.depthCoeffs.invW2.raw.poke(floatToRawBits(invW2))
+    dut.io.coeffs.bits.depthCoeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
 
     // Set up varying interpolation coefficients
     dut.io.writeVaryingCoeff.valid.poke(true)

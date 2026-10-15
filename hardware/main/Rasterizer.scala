@@ -24,6 +24,7 @@ class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
   val lastTriangle = Bool()
   val offset = Point2D()
   val boundingBox = BoundingBox()
+  val depthCoeffs = new DepthInterpolatorCoeffs()
   val edges = Vec(Consts.triangleEdges, new Bundle {
     val initialValue = SInt(cfg.edgeFunctionBits.W)
     val xStep = SInt(cfg.edgeFunctionBits.W)
@@ -64,6 +65,11 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
     * [[https://en.wikipedia.org/wiki/Barycentric_coordinate_system]]
     */
   val lambda = Vec(Consts.pixelsPerQuad, Vec(2, Float32()))
+
+  /** Depth interpolation coefficients for the triangle, passed through
+    * from [[RasterizerCoeffs]] to [[DepthInterpolator]].
+    */
+  val depthCoeffs = new DepthInterpolatorCoeffs()
 }
 
 /** Determines pixel coverage for a triangle.
@@ -145,6 +151,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val nextQuad = Wire(new RasterizedQuad)
   nextQuad.location := quadLoc - activeCoeffs.offset
   nextQuad.triangleId := activeCoeffs.triangleId
+  nextQuad.depthCoeffs := activeCoeffs.depthCoeffs
   nextQuad.mask := pixelInside
   nextQuad.lastQuad := false.B
   nextQuad.lastTriangle := false.B
@@ -189,6 +196,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   // Explictly assign so it is correct for the dummy quad.
   io.quad.bits.triangleId := activeCoeffs.triangleId
+  io.quad.bits.depthCoeffs := activeCoeffs.depthCoeffs
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
