@@ -62,9 +62,9 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
   // Need to delay these so they are available at the correct cycle for
   // each stage in the pipeline where they are used.
   val coeff0 = io.rasterizedQuad.bits.depthCoeffs
-  val coeff5 = ShiftRegister(coeff0, 5, !stall)
-  val coeff7 = ShiftRegister(coeff5, 2, !stall)
-  val coeff15 = ShiftRegister(coeff7, 8, !stall)
+  val invW0_5 = ShiftRegister(coeff0.invW0, 5, !stall)
+  val invW1_15 = ShiftRegister(coeff0.invW1, 15, !stall)
+  val invW2_15 = ShiftRegister(coeff0.invW2, 15, !stall)
 
   for (pixel <- 0 until Consts.pixelsPerQuad) {
     // Compute inverse depth at each pixel
@@ -73,10 +73,10 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     val a = FpMul(coeff0.invdW1, lambda(0), !stall) // cycle 0
     val b = FpMul(coeff0.invdW2, lambda(1), !stall)
     val sumC = FpAdd(a, b, !stall) // cycle 2
-    val sumD = FpAdd(sumC, coeff5.invW0, !stall) // cycle 5
+    val invW = FpAdd(sumC, invW0_5, !stall) // cycle 5
 
     // Compute the depth at each pixel: depth = 1.0 / invW_pixel
-    val w = FpReciprocal(sumD, !stall) // cycle 8
+    val w = FpReciprocal(invW, !stall) // cycle 8
 
     // Compute perspective corrected barycentric coordinates
     // lambda_n_pixel_corrected = lambda_n_pixel * w_pixel * invW_n
@@ -86,8 +86,8 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     val e1 = FpMul(w, lambda1_13, !stall)
 
     // Replace the lambda values in the interpolated quad with perspective corrected ones.
-    io.interpolatedQuad.bits.lambda(pixel)(0) := FpMul(e0, coeff15.invW1, !stall) // Cycle 15
-    io.interpolatedQuad.bits.lambda(pixel)(1) := FpMul(e1, coeff15.invW2, !stall)
+    io.interpolatedQuad.bits.lambda(pixel)(0) := FpMul(e0, invW1_15, !stall) // Cycle 15
+    io.interpolatedQuad.bits.lambda(pixel)(1) := FpMul(e1, invW2_15, !stall)
     io.interpolatedQuad.bits.depths(pixel) := ShiftRegister(w, 4, !stall)
   }
 
