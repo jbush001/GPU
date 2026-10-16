@@ -20,7 +20,7 @@ import scala.util.Random
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class ComputedCoeffs {
+class ComputedParams {
   val edges = 3
   val xStep = Array.ofDim[Int](edges)
   val yStep = Array.ofDim[Int](edges)
@@ -32,24 +32,24 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def computeEdgeCoefficient(x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int,
-  startX: Int, startY: Int): ComputedCoeffs = {
-    val coeffs = new ComputedCoeffs()
-    coeffs.vertices(0) = (x0, y0)
-    coeffs.vertices(1) = (x1, y1)
-    coeffs.vertices(2) = (x2, y2)
-    coeffs.xStep(0) = y1 - y0
-    coeffs.yStep(0) = x0 - x1
-    coeffs.initialValue(0) = (startX - x0) * (y1 - y0) - (startY - y0) * (x1 - x0)
+  startX: Int, startY: Int): ComputedParams = {
+    val params = new ComputedParams()
+    params.vertices(0) = (x0, y0)
+    params.vertices(1) = (x1, y1)
+    params.vertices(2) = (x2, y2)
+    params.xStep(0) = y1 - y0
+    params.yStep(0) = x0 - x1
+    params.initialValue(0) = (startX - x0) * (y1 - y0) - (startY - y0) * (x1 - x0)
 
-    coeffs.xStep(1) = y2 - y1
-    coeffs.yStep(1) = x1 - x2
-    coeffs.initialValue(1) = (startX - x1) * (y2 - y1) - (startY - y1) * (x2 - x1)
+    params.xStep(1) = y2 - y1
+    params.yStep(1) = x1 - x2
+    params.initialValue(1) = (startX - x1) * (y2 - y1) - (startY - y1) * (x2 - x1)
 
-    coeffs.xStep(2) = y0 - y2
-    coeffs.yStep(2) = x2 - x0
-    coeffs.initialValue(2) = (startX - x2) * (y0 - y2) - (startY - y2) * (x0 - x2)
+    params.xStep(2) = y0 - y2
+    params.yStep(2) = x2 - x0
+    params.initialValue(2) = (startX - x2) * (y0 - y2) - (startY - y2) * (x0 - x2)
 
-    return coeffs
+    return params
   }
 
   def rawToFloat(raw: BigInt): Float = java.lang.Float.intBitsToFloat(raw.toInt)
@@ -79,7 +79,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   }
 
   def rasterizeTriangle(dut: Rasterizer,
-    coeffs: ComputedCoeffs,
+    params: ComputedParams,
     bbLeft: Int,
     bbTop: Int,
     bbRight: Int,
@@ -89,36 +89,36 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     dut.io.quad.ready.poke(true)
     dut.clock.step()
 
-    dut.io.coeffs.bits.offset.x.poke(bbLeft)
-    dut.io.coeffs.bits.offset.y.poke(bbTop)
-    dut.io.coeffs.bits.boundingBox.left.poke(bbLeft)
-    dut.io.coeffs.bits.boundingBox.top.poke(bbTop)
-    dut.io.coeffs.bits.boundingBox.right.poke(bbRight)
-    dut.io.coeffs.bits.boundingBox.bottom.poke(bbBottom)
-    dut.io.coeffs.bits.triangleId.poke(3)
+    dut.io.params.bits.offset.x.poke(bbLeft)
+    dut.io.params.bits.offset.y.poke(bbTop)
+    dut.io.params.bits.boundingBox.left.poke(bbLeft)
+    dut.io.params.bits.boundingBox.top.poke(bbTop)
+    dut.io.params.bits.boundingBox.right.poke(bbRight)
+    dut.io.params.bits.boundingBox.bottom.poke(bbBottom)
+    dut.io.params.bits.triangleId.poke(3)
 
     // Edge 0->1
-    dut.io.coeffs.bits.edges(0).xStep.poke(coeffs.xStep(0))
-    dut.io.coeffs.bits.edges(0).yStep.poke(coeffs.yStep(0))
-    dut.io.coeffs.bits.edges(0).initialValue.poke(coeffs.initialValue(0))
+    dut.io.params.bits.edges(0).xStep.poke(params.xStep(0))
+    dut.io.params.bits.edges(0).yStep.poke(params.yStep(0))
+    dut.io.params.bits.edges(0).initialValue.poke(params.initialValue(0))
 
     // Edge 1->2
-    dut.io.coeffs.bits.edges(1).xStep.poke(coeffs.xStep(1))
-    dut.io.coeffs.bits.edges(1).yStep.poke(coeffs.yStep(1))
-    dut.io.coeffs.bits.edges(1).initialValue.poke(coeffs.initialValue(1))
+    dut.io.params.bits.edges(1).xStep.poke(params.xStep(1))
+    dut.io.params.bits.edges(1).yStep.poke(params.yStep(1))
+    dut.io.params.bits.edges(1).initialValue.poke(params.initialValue(1))
 
     // Edge 2->0
-    dut.io.coeffs.bits.edges(2).xStep.poke(coeffs.xStep(2))
-    dut.io.coeffs.bits.edges(2).yStep.poke(coeffs.yStep(2))
-    dut.io.coeffs.bits.edges(2).initialValue.poke(coeffs.initialValue(2))
-    dut.io.coeffs.valid.poke(true)
+    dut.io.params.bits.edges(2).xStep.poke(params.xStep(2))
+    dut.io.params.bits.edges(2).yStep.poke(params.yStep(2))
+    dut.io.params.bits.edges(2).initialValue.poke(params.initialValue(2))
+    dut.io.params.valid.poke(true)
 
-    while (dut.io.coeffs.ready.peek().litValue.toLong == 0) {
+    while (dut.io.params.ready.peek().litValue.toLong == 0) {
       dut.clock.step()
     }
 
     dut.clock.step()
-    dut.io.coeffs.valid.poke(false)
+    dut.io.params.valid.poke(false)
 
     val outputBuffer = Array.ofDim[Boolean](bbRight - bbLeft + 2, bbBottom - bbTop + 2);
 
@@ -139,7 +139,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
           gotLastQuad = true
         }
 
-        dut.io.coeffs.ready.expect(0)
+        dut.io.params.ready.expect(0)
         dut.io.quad.bits.triangleId.expect(3)
 
         // Note: in the case where a triangle does not cover any pixels, it will issue a dummy
@@ -157,14 +157,14 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
           if ((mask & 2) != 0) outputBuffer(y)(x + 1) = true
           if ((mask & 4) != 0) outputBuffer(y + 1)(x) = true
           if ((mask & 8) != 0) outputBuffer(y + 1)(x + 1) = true
-          expectLambdas(dut, coeffs.vertices, x + bbLeft, y + bbTop)
+          expectLambdas(dut, params.vertices, x + bbLeft, y + bbTop)
         }
       }
 
       dut.clock.step()
     }
 
-    dut.io.coeffs.ready.expect(true)
+    dut.io.params.ready.expect(true)
 
     val sb = new StringBuilder()
     for (y <- 0 until outputBuffer.length) {
@@ -177,14 +177,14 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     sb.toString()
   }
 
-  def computeReference(coeffs: ComputedCoeffs, width: Int, height: Int): String = {
+  def computeReference(params: ComputedParams, width: Int, height: Int): String = {
     val sb = new StringBuilder()
     for (y <- 0 until height) {
       for (x <- 0 until width) {
         val covered = (0 until 3).forall(i =>
-          (coeffs.initialValue(i) +
-            coeffs.xStep(i) * x +
-            coeffs.yStep(i) * y
+          (params.initialValue(i) +
+            params.xStep(i) * x +
+            params.yStep(i) * y
           ) >= 0
         )
 
@@ -210,8 +210,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
 
   test("Rasterizer rasterize") {
     simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
+      val params = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
+      val output = rasterizeTriangle(dut, params, 0, 0, 14, 14, None);
       val expected = """
 ................
 ........X.......
@@ -238,8 +238,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   // Fill entire framebuffer
   test("Rasterizer fill") {
     simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(-1, -1, -1, 40, 40, -1, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
+      val params = computeEdgeCoefficient(-1, -1, -1, 40, 40, -1, 0, 0)
+      val output = rasterizeTriangle(dut, params, 0, 0, 14, 14, None);
       assert(output.filterNot(_.isWhitespace) == "X" * 256)
     }
   }
@@ -267,10 +267,10 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
         val right = left + blockSize
         val bottom = top + blockSize
 
-        val coeffs = computeEdgeCoefficient(x0, y0, x1, y1, x2, y2, left, top)
-        val expected = computeReference(coeffs, right - left, bottom - top)
+        val params = computeEdgeCoefficient(x0, y0, x1, y1, x2, y2, left, top)
+        val expected = computeReference(params, right - left, bottom - top)
 
-        val output = rasterizeTriangle(dut, coeffs, left, top, right - 2,
+        val output = rasterizeTriangle(dut, params, left, top, right - 2,
           bottom - 2, Some(rng));
         checkOutput(output, expected)
       }
@@ -280,8 +280,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
   // Won't display anything
   test("Rasterizer reverse winding") {
     simulate(new Rasterizer()) { dut =>
-      val coeffs = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
-      val output = rasterizeTriangle(dut, coeffs, 0, 0, 14, 14, None);
+      val params = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
+      val output = rasterizeTriangle(dut, params, 0, 0, 14, 14, None);
       val expected =  """................
 ................
 ................

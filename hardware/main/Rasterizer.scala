@@ -19,7 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-class RasterizerCoeffs(implicit cfg: GpuConfig) extends Bundle {
+class RasterizerParams(implicit cfg: GpuConfig) extends Bundle {
   val triangleId = UInt(cfg.triangleIdBits.W)
   val lastTriangle = Bool()
   val offset = Point2D()
@@ -86,7 +86,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     /** From triangle setup. When ready/valid are high, the values have been accepted
       * and the next value can be asserted.
       */
-    val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
+    val params = Flipped(Decoupled(new RasterizerParams))
 
     /** To the tile buffer. Outputs a rasterized 2x2 pixel quad with coverage
       * and interpolation data.
@@ -100,8 +100,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val stepCommand = Wire(StepCommand())
 
-  val activeCoeffs = RegEnable(io.coeffs.bits, io.coeffs.fire)
-  val startRasterize = RegNext(io.coeffs.fire)
+  val activeParams = RegEnable(io.params.bits, io.params.fire)
+  val startRasterize = RegNext(io.params.fire)
 
   val quadLoc = Reg(Point2D())
 
@@ -112,16 +112,16 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   for (edge <- 0 until Consts.triangleEdges) {
     switch(stepCommand) {
       is(StepCommand.Reset) {
-        edgeValue(edge) := activeCoeffs.edges(edge).initialValue
+        edgeValue(edge) := activeParams.edges(edge).initialValue
       }
       is(StepCommand.Right) {
-        edgeValue(edge) := edgeValue(edge) + doubled(activeCoeffs.edges(edge).xStep)
+        edgeValue(edge) := edgeValue(edge) + doubled(activeParams.edges(edge).xStep)
       }
       is(StepCommand.Down) {
-        edgeValue(edge) := edgeValue(edge) + doubled(activeCoeffs.edges(edge).yStep)
+        edgeValue(edge) := edgeValue(edge) + doubled(activeParams.edges(edge).yStep)
       }
       is(StepCommand.Left) {
-        edgeValue(edge) := edgeValue(edge) - doubled(activeCoeffs.edges(edge).xStep)
+        edgeValue(edge) := edgeValue(edge) - doubled(activeParams.edges(edge).xStep)
       }
     }
   }
@@ -141,17 +141,17 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // Derive the other pixels values from the current one.
   val pixelEdges = Seq.tabulate(Consts.triangleEdges) { e =>
     val ev = edgeValue(e)
-    val dx = activeCoeffs.edges(e).xStep
-    val dy = activeCoeffs.edges(e).yStep
+    val dx = activeParams.edges(e).xStep
+    val dy = activeParams.edges(e).yStep
     Seq(ev, ev + dx, ev + dy, ev + dx + dy)
   }.transpose
 
   val pixelInside = VecInit(pixelEdges.map(_.map(_ >= 0.S).reduce(_ && _))).asUInt
 
   val nextQuad = Wire(new RasterizedQuad)
-  nextQuad.location := quadLoc - activeCoeffs.offset
-  nextQuad.triangleId := activeCoeffs.triangleId
-  nextQuad.depthCoeffs := activeCoeffs.depthCoeffs
+  nextQuad.location := quadLoc - activeParams.offset
+  nextQuad.triangleId := activeParams.triangleId
+  nextQuad.depthCoeffs := activeParams.depthCoeffs
   nextQuad.mask := pixelInside
   nextQuad.lastQuad := false.B
   nextQuad.lastTriangle := false.B
@@ -192,23 +192,23 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // a dummy quad with the flags set to zero.
   io.quad.valid := (outputQuadLatched && nextQuadValid) || scanState === State.SendLast
   io.quad.bits.lastQuad := scanState === State.SendLast
-  io.quad.bits.lastTriangle := scanState === State.SendLast && activeCoeffs.lastTriangle
+  io.quad.bits.lastTriangle := scanState === State.SendLast && activeParams.lastTriangle
 
   // Explictly assign so it is correct for the dummy quad.
-  io.quad.bits.triangleId := activeCoeffs.triangleId
-  io.quad.bits.depthCoeffs := activeCoeffs.depthCoeffs
+  io.quad.bits.triangleId := activeParams.triangleId
+  io.quad.bits.depthCoeffs := activeParams.depthCoeffs
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
-  io.coeffs.ready := false.B
+  io.params.ready := false.B
   stepCommand := StepCommand.Wait
   switch (scanState) {
     // Waiting to start a new triangle
     is (State.Idle) {
-      io.coeffs.ready := true.B
+      io.params.ready := true.B
       when (startRasterize) {
         stepCommand := StepCommand.Reset
-        quadLoc := activeCoeffs.boundingBox.topLeft
+        quadLoc := activeParams.boundingBox.topLeft
         scanState := State.StepRight
       } otherwise {
         stepCommand := StepCommand.Wait
@@ -218,8 +218,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepRight) {
       nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
-        when (quadLoc.x === activeCoeffs.boundingBox.right) {
-          when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
+        when (quadLoc.x === activeParams.boundingBox.right) {
+          when (quadLoc.y === activeParams.boundingBox.bottom) {
             scanState := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
@@ -234,8 +234,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepLeft) {
       nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
-        when(quadLoc.x === activeCoeffs.boundingBox.left) {
-          when (quadLoc.y === activeCoeffs.boundingBox.bottom) {
+        when(quadLoc.x === activeParams.boundingBox.left) {
+          when (quadLoc.y === activeParams.boundingBox.bottom) {
             scanState := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down

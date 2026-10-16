@@ -28,7 +28,7 @@ import shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
+    val rasterizerParams = Flipped(Decoupled(new RasterizerParams))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(5.W)
@@ -58,7 +58,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     complete := false.B // Hack
   }
 
-  gpu.io.coeffs <> io.coeffs
+  gpu.io.rasterizerParams <> io.rasterizerParams
   io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
   gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
@@ -196,7 +196,7 @@ class RenderTests extends AnyFunSuite with ChiselSim {
         var triangleId = 0
         while (!dut.io.complete.peek().litToBoolean || triangleId * 3 < indices.length) {
           // Submit new triangles. This is a stand-in for the unimplemented setup unit.
-          if (dut.io.coeffs.ready.peek().litToBoolean && triangleId * 3 < indices.length) {
+          if (dut.io.rasterizerParams.ready.peek().litToBoolean && triangleId * 3 < indices.length) {
             val triangleIndices = (0 until 3).map(i => indices(triangleId * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
 
@@ -238,11 +238,11 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val invW0 = 1.0f / vertices(0)._3
     val invW1 = 1.0f / vertices(1)._3
     val invW2 = 1.0f / vertices(2)._3
-    dut.io.coeffs.bits.depthCoeffs.invW0.raw.poke(floatToRawBits(invW0))
-    dut.io.coeffs.bits.depthCoeffs.invW1.raw.poke(floatToRawBits(invW1))
-    dut.io.coeffs.bits.depthCoeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
-    dut.io.coeffs.bits.depthCoeffs.invW2.raw.poke(floatToRawBits(invW2))
-    dut.io.coeffs.bits.depthCoeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
+    dut.io.rasterizerParams.bits.depthCoeffs.invW0.raw.poke(floatToRawBits(invW0))
+    dut.io.rasterizerParams.bits.depthCoeffs.invW1.raw.poke(floatToRawBits(invW1))
+    dut.io.rasterizerParams.bits.depthCoeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
+    dut.io.rasterizerParams.bits.depthCoeffs.invW2.raw.poke(floatToRawBits(invW2))
+    dut.io.rasterizerParams.bits.depthCoeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
 
     // Set up varying interpolation coefficients
     dut.io.writeVaryingCoeff.valid.poke(true)
@@ -262,18 +262,18 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     dut.io.writeVaryingCoeff.valid.poke(false)
 
     // Set up rasterizer coefficients
-    dut.io.coeffs.valid.poke(true)
-    dut.io.coeffs.bits.offset.x.poke(tileLeft)
-    dut.io.coeffs.bits.offset.y.poke(tileTop)
-    dut.io.coeffs.bits.triangleId.poke(triangleId)
-    dut.io.coeffs.bits.lastTriangle.poke(lastTriangle)
+    dut.io.rasterizerParams.valid.poke(true)
+    dut.io.rasterizerParams.bits.offset.x.poke(tileLeft)
+    dut.io.rasterizerParams.bits.offset.y.poke(tileTop)
+    dut.io.rasterizerParams.bits.triangleId.poke(triangleId)
+    dut.io.rasterizerParams.bits.lastTriangle.poke(lastTriangle)
 
-    dut.io.coeffs.bits.boundingBox.left.poke(tileLeft)
-    dut.io.coeffs.bits.boundingBox.top.poke(tileTop)
-    dut.io.coeffs.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
-    dut.io.coeffs.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+    dut.io.rasterizerParams.bits.boundingBox.left.poke(tileLeft)
+    dut.io.rasterizerParams.bits.boundingBox.top.poke(tileTop)
+    dut.io.rasterizerParams.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+    dut.io.rasterizerParams.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
 
-    val rawCoeffs = new Array[(Float, Float, Float)](3)
+    val rawParams = new Array[(Float, Float, Float)](3)
     var area2 = 0.0f
     for (edge <- 0 until 3) {
       val (startX, startY, _) = vertices(edge)
@@ -282,29 +282,29 @@ class RenderTests extends AnyFunSuite with ChiselSim {
       val dy = endX - startX
       val iv = ((bbLeft - startX) * dx + (bbTop - startY) * dy)
       area2 += iv
-      rawCoeffs(edge) = (dx * xPixelStep, -dy * yPixelStep, iv)
+      rawParams(edge) = (dx * xPixelStep, -dy * yPixelStep, iv)
     }
 
     val normFactor = 1.0f / area2
 
-    for (edge <- rawCoeffs.indices) {
-      val (xs, ys, iv) = rawCoeffs(edge)
+    for (edge <- rawParams.indices) {
+      val (xs, ys, iv) = rawParams(edge)
       val normXs = (xs * normFactor * 0xffffL).toInt
       val normYs = (ys * normFactor * 0xffffL).toInt
       val isTopLeft = (normXs > 0) || (normXs == 0 && normYs > 0)
       val normIv = (iv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
 
-      dut.io.coeffs.bits.edges(edge).xStep.poke(normXs.S)
-      dut.io.coeffs.bits.edges(edge).yStep.poke(normYs.S)
-      dut.io.coeffs.bits.edges(edge).initialValue.poke(normIv.S)
+      dut.io.rasterizerParams.bits.edges(edge).xStep.poke(normXs.S)
+      dut.io.rasterizerParams.bits.edges(edge).yStep.poke(normYs.S)
+      dut.io.rasterizerParams.bits.edges(edge).initialValue.poke(normIv.S)
     }
 
-    while (dut.io.coeffs.ready.peek().litValue.toLong == 0) {
+    while (dut.io.rasterizerParams.ready.peek().litValue.toLong == 0) {
       dut.clock.step()
     }
 
     dut.clock.step()
-    dut.io.coeffs.valid.poke(false)
+    dut.io.rasterizerParams.valid.poke(false)
 
     dut.clock.step() // Wait for rasterizer to start to complete is false.
   }

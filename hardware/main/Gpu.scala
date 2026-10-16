@@ -26,7 +26,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     val axiBus = new AxiBus
 
     // Hack: pass throughs for testing
-    val coeffs = Flipped(Decoupled(new RasterizerCoeffs))
+    val rasterizerParams = Flipped(Decoupled(new RasterizerParams))
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(5.W)
@@ -88,7 +88,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.enableDepthWrite := true.B
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
-  rasterizer.io.coeffs <> io.coeffs
+  rasterizer.io.params <> io.rasterizerParams
 
   io.writeVaryingCoeff <> pixelShaderConductor.io.writeVaryingCoeff
 
