@@ -24,7 +24,7 @@ object RenderBufferId extends ChiselEnum {
 }
 
 class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
-  val location = Point2D()
+  val location = Point2D() // In pixels
   val mask = Bits(Consts.pixelsPerQuad.W)
   val colors = Vec(Consts.pixelsPerQuad, Color())
   val depths = Vec(Consts.pixelsPerQuad, Float32())
@@ -52,6 +52,7 @@ class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
   *
   * @todo Stencil buffers
   * @todo Implement configurable blend modes and depth check modes
+  * @todo Multisample anti-aliasing support
   */
 class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -167,13 +168,18 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
     val isClearLane = (flushBank === pixel.U)
 
-    val colorClearEnable = isClearLane && (io.flushBufferSel === RenderBufferId.Color) && io.flushData.fire
-    colorWriteMask(pixel) := Mux(flushActive, colorClearEnable, stage2.mask && !flushActive)
+    val colorClearEnable = isClearLane &&
+      (io.flushBufferSel === RenderBufferId.Color) &&
+      io.flushData.fire
+    colorWriteMask(pixel) := Mux(flushActive, colorClearEnable, stage2.mask)
     colorWriteVal(pixel) := Mux(flushActive, io.clearColor, blended)
 
-    val depthClearEnable = isClearLane && (io.flushBufferSel === RenderBufferId.Depth) && io.flushData.fire
-    depthWriteMask(pixel) := Mux(flushActive, depthClearEnable,
-      stage2.mask && !flushActive && io.enableDepthWrite)
+    val depthClearEnable = isClearLane &&
+      (io.flushBufferSel === RenderBufferId.Depth) &&
+      io.flushData.fire
+    depthWriteMask(pixel) := Mux(flushActive,
+      depthClearEnable,
+      stage2.mask && io.enableDepthWrite)
     depthWriteVal(pixel) := Mux(flushActive, io.clearDepth, stage2.newDepth)
   }
 
