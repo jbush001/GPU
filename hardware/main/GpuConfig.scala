@@ -38,6 +38,7 @@ case class GpuConfig(
   icacheLines: Int = 64,
   triangleIdBits: Int = 2,
   maxVaryings: Int = 16,
+  vertexParamIndexBits: Int = 16,
 
   traceEnable: Boolean = false
 ) {
