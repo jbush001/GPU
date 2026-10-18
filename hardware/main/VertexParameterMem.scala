@@ -22,23 +22,23 @@ import chisel3.util._
 class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val writeParam = Flipped(Valid(new Bundle{
-      val index = UInt(cfg.vertexParamIndexBits.W)
+      val addr = UInt(cfg.vertexParamIndexBits.W)
       val value = UInt(32.W)
     }))
 
-    val readParam = Flipped(Valid(UInt(cfg.vertexParamIndexBits.W)))
+    val readAddr = Flipped(Valid(UInt(cfg.vertexParamIndexBits.W)))
     val readValue = Output(UInt(32.W))
   })
 
   val mem = SyncReadMem(1 << cfg.vertexParamIndexBits, UInt(32.W))
 
   when (io.writeParam.valid) {
-    mem.write(io.writeParam.bits.index, io.writeParam.bits.value)
+    mem.write(io.writeParam.bits.addr, io.writeParam.bits.value)
   }
 
   io.readValue := 0.U
-  when (io.readParam.valid) {
-    io.readValue := mem.read(io.readParam.bits, true.B)
+  when (io.readAddr.valid) {
+    io.readValue := mem.read(io.readAddr.bits, true.B)
   }
 }
 
