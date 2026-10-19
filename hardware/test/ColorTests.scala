@@ -21,7 +21,7 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
 
-class ColorTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
+class ColorTests extends AnyFunSuite with ChiselSim with TestHelpers {
   test("Color scale") {
     simulate(new Module {
       val io = IO(new Bundle {
@@ -96,4 +96,3 @@ class ColorTests extends AnyFunSuite with ChiselSim with ColorTestHelpers {
     }
   }
 }
-

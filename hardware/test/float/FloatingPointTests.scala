@@ -20,16 +20,12 @@ import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class FloatingPointTests extends AnyFunSuite with ChiselSim {
+class FloatingPointTests extends AnyFunSuite with ChiselSim with TestHelpers {
   // Helper for reciprocal tests
   def fpTruncate(value: Float): Float =
     java.lang.Float.intBitsToFloat(java.lang.Float.floatToIntBits(value) & 0xfffe0000)
 
-  def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
-
-def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolean = {
-  val actualFloat = java.lang.Float.intBitsToFloat(actualBits.toInt)
-
+def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Boolean = {
   if (expected.isNaN) {
     actualFloat.isNaN
   } else if (actualFloat.isNaN) {
@@ -39,7 +35,7 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       if (bits < 0) (~bits) & 0xffffffffL else (bits ^ 0x80000000) & 0xffffffffL
 
     val expOrd = toLexicographical(java.lang.Float.floatToRawIntBits(expected))
-    val actOrd = toLexicographical(actualBits.toInt)
+    val actOrd = toLexicographical(java.lang.Float.floatToRawIntBits(actualFloat))
 
     math.abs(expOrd - actOrd) <= maxUlps
   }
@@ -69,8 +65,8 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
 
   def reportTestFailure(index: Int, a: Float, b: Float, expected: Float, actual: Float) = {
     println(f"mismatch at test entry $index: $a%.3f $b%.3f")
-    println(f"  expected = $expected%.6f  (0x${this.floatToRawBits(expected)}%08x)")
-    println(f"  actual   = $actual%.6f  (0x${this.floatToRawBits(actual)}%08x)")
+    println(f"  expected = $expected%.6f")
+    println(f"  actual   = $actual%.6f")
   }
 
   test("FpAdd") {
@@ -141,8 +137,8 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
         (-433.1484680175781f, 88.93685913085938f, -344.21160888671875f),
       )
 
-      dut.io.addend1.raw.poke(0)
-      dut.io.addend2.raw.poke(0)
+      dut.io.addend1.pokeFloat(0.0f)
+      dut.io.addend2.pokeFloat(0.0f)
       dut.io.en.poke(1)
 
       runFpPipelineTest(
@@ -150,14 +146,13 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
         3,
         testVectors,
         (dut:FpAdd, test: TestVector) => {
-          dut.io.addend1.raw.poke(this.floatToRawBits(test._1))
-          dut.io.addend2.raw.poke(this.floatToRawBits(test._2))
+          dut.io.addend1.pokeFloat(test._1)
+          dut.io.addend2.pokeFloat(test._2)
         },
         (dut: FpAdd, test: TestVector, index: Int) => {
-          val actualBits: Long = dut.io.sum.raw.peek().litValue.toLong & 0xffffffffL
-          if (!floatBitsMatch(test._3, actualBits)) {
-            reportTestFailure(index, test._1, test._2, test._3,
-              java.lang.Float.intBitsToFloat(actualBits.toInt))
+          val actual = dut.io.sum.peekFloat()
+          if (!floatBitsMatch(test._3, actual)) {
+            reportTestFailure(index, test._1, test._2, test._3, actual)
             fail()
           }
         }
@@ -244,14 +239,13 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
         2,
         testVectors,
         (dut: FpMul, test: TestVector) => {
-          dut.io.multiplier.raw.poke(this.floatToRawBits(test._1))
-          dut.io.multiplicand.raw.poke(this.floatToRawBits(test._2))
+          dut.io.multiplier.pokeFloat(test._1)
+          dut.io.multiplicand.pokeFloat(test._2)
         },
         (dut: FpMul, test: TestVector, index: Int) => {
-          val actualBits: Long = dut.io.product.raw.peek().litValue.toLong & 0xffffffffL
-          if (!floatBitsMatch(test._3, actualBits)) {
-            reportTestFailure(index, test._1, test._2, test._3,
-              java.lang.Float.intBitsToFloat(actualBits.toInt))
+          val actual = dut.io.product.peekFloat()
+          if (!floatBitsMatch(test._3, actual)) {
+            reportTestFailure(index, test._1, test._2, test._3, actual)
             fail()
           }
         }
@@ -266,7 +260,7 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
         val result = Output(Float32())
       })
 
-      io.result := Float32(io.operand.raw).reciprocalEstimate()
+      io.result :=io.operand.reciprocalEstimate()
     }) { dut =>
       type TestVector = (Float, Float)
       val testVectors: Seq[TestVector] = Seq(
@@ -285,15 +279,15 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
         (Float.NegativeInfinity, -0.0f), // Division by inf
         (Float.PositiveInfinity, 0.0f), // Division by inf
       )
-      dut.io.operand.raw.poke(0)
+      dut.io.operand.pokeFloat(0.0f)
       dut.clock.step() // Wait for reset to complete
 
       for ((a, expected) <- testVectors) {
-        dut.io.operand.raw.poke(floatToRawBits(a).U)
+        dut.io.operand.pokeFloat(a)
         dut.clock.step()
-        val actualBits: Long = dut.io.result.raw.peek().litValue.toLong & 0xffffffffL
-        if (!floatBitsMatch(expected, actualBits)) {
-          println(f"mismatch: $a%.3f reciprocal, expected $expected%.3f actual ${java.lang.Float.intBitsToFloat(dut.io.result.raw.peek().litValue.toInt)} (0x${dut.io.result.raw.peek().litValue.toInt}%08x)")
+        val actual = dut.io.result.peekFloat()
+        if (!floatBitsMatch(expected, actual)) {
+          println(f"mismatch: $a%.3f reciprocal, expected $expected%.3f actual $actual%.3f")
           fail()
         }
       }
@@ -303,13 +297,13 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
   test("Float32 toFixedPoint") {
     simulate(new Module {
       val io = IO(new Bundle {
-        val a = Input(UInt(32.W))
+        val a = Input(Float32())
         val result0 = Output(SInt(32.W))
         val result16_16 = Output(SInt(32.W))
       })
 
-      io.result0 := io.a.asTypeOf(Float32()).toFixedPoint()
-      io.result16_16 := io.a.asTypeOf(Float32()).toFixedPoint(16)
+      io.result0 := io.a.toFixedPoint()
+      io.result16_16 := io.a.toFixedPoint(16)
     }) { dut =>
       val testVectors = Seq(
         (1.0f, 1, (1 << 16)),
@@ -339,7 +333,7 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       )
 
       for ((a, expected0, expected16_16) <- testVectors) {
-        dut.io.a.poke(floatToRawBits(a).U)
+        dut.io.a.pokeFloat(a)
         dut.clock.step()
         if (dut.io.result0.peek().litValue.toInt != expected0) {
           println(f"mismatch: $a%.3f to int, expected $expected0 actual ${dut.io.result0.peek().litValue.toInt}")
@@ -356,11 +350,11 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
   test("Float32 toUnorm") {
     simulate(new Module {
       val io = IO(new Bundle {
-        val a = Input(UInt(32.W))
+        val a = Input(Float32())
         val result = Output(UInt(32.W))
       })
 
-      io.result := io.a.asTypeOf(Float32()).toUnorm(12)
+      io.result := io.a.toUnorm(12)
     }) { dut =>
       val testVectors = Seq(
         (0.0f, 0x000),
@@ -376,7 +370,7 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       )
 
       for ((a, expected) <- testVectors) {
-        dut.io.a.poke(floatToRawBits(a).U)
+        dut.io.a.pokeFloat(a)
         dut.clock.step()
         if (dut.io.result.peek().litValue.toInt != expected) {
           println(f"mismatch: $a%.3f to unorm, expected $expected actual ${dut.io.result.peek().litValue.toInt}")
@@ -391,10 +385,10 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
     simulate(new Module {
       val io = IO(new Bundle {
         val a = Input(SInt(32.W))
-        val result = Output(UInt(32.W))
+        val result = Output(Float32())
       })
 
-      io.result := Float32.fromFixedPoint(io.a).raw
+      io.result := Float32.fromFixedPoint(io.a)
     }) { dut =>
       val testVectors = Seq(
         (1, 1.0f),
@@ -413,9 +407,9 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       for ((a, expected) <- testVectors) {
         dut.io.a.poke(a.S)
         dut.clock.step()
-        val actual = dut.io.result.peek().litValue.toLong & 0xffffffffL
+        val actual = dut.io.result.peekFloat()
         if (!floatBitsMatch(expected, actual)) {
-          println(f"mismatch: int to fp, expected $expected actual ${java.lang.Float.intBitsToFloat(dut.io.result.peek().litValue.toInt)} (0x${dut.io.result.peek().litValue.toInt}%08x)")
+          println(f"mismatch: int to fp, expected $expected actual $actual")
           fail()
         }
       }
@@ -427,10 +421,10 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
     simulate(new Module {
       val io = IO(new Bundle {
         val a = Input(SInt(32.W))
-        val result = Output(UInt(32.W))
+        val result = Output(Float32())
       })
 
-      io.result := Float32.fromFixedPoint(io.a, 16).raw
+      io.result := Float32.fromFixedPoint(io.a, 16)
     }) { dut =>
       val testVectors = Seq(
         (0x10000, 1.0f),
@@ -451,9 +445,9 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       for ((a, expected) <- testVectors) {
         dut.io.a.poke(a.S)
         dut.clock.step()
-        val actual = dut.io.result.peek().litValue.toLong & 0xffffffffL
+        val actual = dut.io.result.peekFloat()
         if (!floatBitsMatch(expected, actual)) {
-          println(f"mismatch: int to fp, expected $expected actual ${java.lang.Float.intBitsToFloat(dut.io.result.peek().litValue.toInt)} (0x${dut.io.result.peek().litValue.toInt}%08x)")
+          println(f"mismatch: int to fp, expected $expected actual $actual")
           fail()
         }
       }
@@ -463,12 +457,12 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
   test("Float32 greaterThan") {
     simulate(new Module {
       val io = IO(new Bundle {
-        val a = Input(UInt(32.W))
-        val b = Input(UInt(32.W))
+        val a = Input(Float32())
+        val b = Input(Float32())
         val result = Output(Bool())
       })
 
-      io.result := io.a.asTypeOf(Float32()) > io.b.asTypeOf(Float32())
+      io.result := io.a > io.b
     }) { dut =>
       val testVectors = Seq(
         (1.0f, 2.0f, false),
@@ -504,8 +498,8 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       )
 
       for ((a, b, expected) <- testVectors) {
-        dut.io.a.poke(floatToRawBits(a).U)
-        dut.io.b.poke(floatToRawBits(b).U)
+        dut.io.a.pokeFloat(a)
+        dut.io.b.pokeFloat(b)
         dut.clock.step()
         if (dut.io.result.peek().litToBoolean != expected) {
           println(f"mismatch: $a%.3f > $b%.3f, expected $expected actual ${dut.io.result.peek().litToBoolean}")
@@ -518,11 +512,11 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
   test("Float32 abs") {
     simulate(new Module {
       val io = IO(new Bundle {
-        val a = Input(UInt(32.W))
-        val result = Output(UInt(32.W))
+        val a = Input(Float32())
+        val result = Output(Float32())
       })
 
-      io.result := io.a.asTypeOf(Float32()).abs.raw
+      io.result := io.a.abs
     }) { dut =>
       val testVectors = Seq(
         (-1.0f, 1.0f),
@@ -537,11 +531,11 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
       )
 
       for ((a, expected) <- testVectors) {
-        dut.io.a.poke(floatToRawBits(a).U)
+        dut.io.a.pokeFloat(a)
         dut.clock.step()
-        val actual = dut.io.result.peek().litValue.toLong & 0xffffffffL
+        val actual = dut.io.result.peekFloat()
         if (!floatBitsMatch(expected, actual)) {
-          println(f"mismatch: abs($a%.3f), expected $expected actual ${java.lang.Float.intBitsToFloat(dut.io.result.peek().litValue.toInt)} (0x${dut.io.result.peek().litValue.toInt}%08x)")
+          println(f"mismatch: abs($a%.3f), expected $expected actual $actual")
           fail()
         }
       }
@@ -583,12 +577,12 @@ def floatBitsMatch(expected: Float, actualBits: Long, maxUlps: Long = 1): Boolea
         5,
         testVectors,
         (dut: FpReciprocal, test: TestVector) => {
-          dut.io.divisor.raw.poke(this.floatToRawBits(test._1))
+          dut.io.divisor.pokeFloat(test._1)
         },
         (dut: FpReciprocal, test: TestVector, _) => {
-          val actualBits: Long = dut.io.reciprocal.raw.peek().litValue.toLong & 0xffffffffL
-          if (!floatBitsMatch(test._2, actualBits, 2)) {
-            println(f"mismatch: ${test._1}%.3f reciprocal, expected ${test._2} actual ${java.lang.Float.intBitsToFloat(dut.io.reciprocal.raw.peek().litValue.toInt)} (0x${dut.io.reciprocal.raw.peek().litValue.toInt}%08x)")
+          val actual = dut.io.reciprocal.peekFloat()
+          if (!floatBitsMatch(test._2, actual, 2)) {
+            println(f"mismatch: ${test._1}%.3f reciprocal, expected ${test._2} actual $actual")
             fail()
           }
         }

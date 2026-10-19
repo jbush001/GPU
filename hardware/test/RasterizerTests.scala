@@ -28,7 +28,7 @@ class ComputedParams {
   val vertices = Array.ofDim[(Int, Int)](3)
 }
 
-class RasterizerTests extends AnyFunSuite with ChiselSim {
+class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def computeEdgeCoefficient(x0: Int, y0: Int, x1: Int, y1: Int, x2: Int, y2: Int,
@@ -52,8 +52,6 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     return params
   }
 
-  def rawToFloat(raw: BigInt): Float = java.lang.Float.intBitsToFloat(raw.toInt)
-
   def computeExpectedLambda(vertices: Array[(Int, Int)], x: Int, y: Int): (Float, Float) = {
     val (x0, y0) = vertices(0)
     val (x1, y1) = vertices(1)
@@ -69,8 +67,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim {
     for (pixel <- 0 until Consts.pixelsPerQuad) {
       val (dx, dy) = pixelOffsets(pixel)
       val (expectedLambda0, expectedLambda1) = computeExpectedLambda(vertices, x + dx, y + dy)
-      val actualLambda0 = rawToFloat(dut.io.quad.bits.lambda(pixel)(0).raw.peek().litValue)
-      val actualLambda1 = rawToFloat(dut.io.quad.bits.lambda(pixel)(1).raw.peek().litValue)
+      val actualLambda0 = dut.io.quad.bits.lambda(pixel)(0).peekFloat()
+      val actualLambda1 = dut.io.quad.bits.lambda(pixel)(1).peekFloat()
       assert(math.abs(actualLambda0 - expectedLambda0) < 0.00001f,
         s"pixel $pixel lambda 0: expected $expectedLambda0, got $actualLambda0")
       assert(math.abs(actualLambda1 - expectedLambda1) < 0.00001f,

@@ -19,7 +19,7 @@ package gpu
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
+class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
@@ -37,7 +37,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     }
 
     for (i <- depths.indices) {
-      dut.io.sourceQuad.bits.depths(i).raw.poke(java.lang.Float.floatToRawIntBits(depths(i)))
+      dut.io.sourceQuad.bits.depths(i).pokeFloat(depths(i))
     }
 
     dut.io.sourceQuad.bits.lastQuad.poke(lastQuad || lastTriangle)
@@ -60,7 +60,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     }
 
     for (i <- depths.indices) {
-      dut.io.shadedQuad.bits.depths(i).raw.expect(java.lang.Float.floatToRawIntBits(depths(i)))
+      dut.io.shadedQuad.bits.depths(i).expectFloat(depths(i))
     }
 
     dut.clock.step()
@@ -93,7 +93,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim {
     dut.io.writeVaryingCoeff.valid.poke(true)
     dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
     dut.io.writeVaryingCoeff.bits.index.poke(index)
-    dut.io.writeVaryingCoeff.bits.value.raw.poke(java.lang.Float.floatToRawIntBits(data) & 0xffffffff)
+    dut.io.writeVaryingCoeff.bits.value.pokeFloat(data)
     dut.clock.step()
     dut.io.writeVaryingCoeff.valid.poke(false)
   }

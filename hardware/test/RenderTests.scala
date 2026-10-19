@@ -74,7 +74,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   memory.dap <> io.dap
 }
 
-class RenderTests extends AnyFunSuite with ChiselSim {
+class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
   test("render texture") {
@@ -222,8 +222,6 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     fbData
   }
 
-  def floatToRawBits(fval: Float) = java.lang.Float.floatToIntBits(fval) & 0xffffffffL
-
   def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Float, Float, Float)],
     tileLeft: Int, tileTop: Int, fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
     lastTriangle: Boolean): Unit = {
@@ -238,24 +236,24 @@ class RenderTests extends AnyFunSuite with ChiselSim {
     val invW0 = 1.0f / vertices(0)._3
     val invW1 = 1.0f / vertices(1)._3
     val invW2 = 1.0f / vertices(2)._3
-    dut.io.rasterizerParams.bits.depthCoeffs.invW0.raw.poke(floatToRawBits(invW0))
-    dut.io.rasterizerParams.bits.depthCoeffs.invW1.raw.poke(floatToRawBits(invW1))
-    dut.io.rasterizerParams.bits.depthCoeffs.invdW1.raw.poke(floatToRawBits(invW1 - invW0))
-    dut.io.rasterizerParams.bits.depthCoeffs.invW2.raw.poke(floatToRawBits(invW2))
-    dut.io.rasterizerParams.bits.depthCoeffs.invdW2.raw.poke(floatToRawBits(invW2 - invW0))
+    dut.io.rasterizerParams.bits.depthCoeffs.invW0.pokeFloat(invW0)
+    dut.io.rasterizerParams.bits.depthCoeffs.invW1.pokeFloat(invW1)
+    dut.io.rasterizerParams.bits.depthCoeffs.invdW1.pokeFloat(invW1 - invW0)
+    dut.io.rasterizerParams.bits.depthCoeffs.invW2.pokeFloat(invW2)
+    dut.io.rasterizerParams.bits.depthCoeffs.invdW2.pokeFloat(invW2 - invW0)
 
     // Set up varying interpolation coefficients
     dut.io.writeVaryingCoeff.valid.poke(true)
     dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
     for (i <- varyings(0).indices) {
       dut.io.writeVaryingCoeff.bits.index.poke(i * 3)
-      dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(varyings(1)(i) - varyings(0)(i))) // dQ1
+      dut.io.writeVaryingCoeff.bits.value.pokeFloat(varyings(1)(i) - varyings(0)(i)) // dQ1
       dut.clock.step()
       dut.io.writeVaryingCoeff.bits.index.poke(i * 3 + 1)
-      dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(varyings(2)(i) - varyings(0)(i))) // dQ2
+      dut.io.writeVaryingCoeff.bits.value.pokeFloat(varyings(2)(i) - varyings(0)(i)) // dQ2
       dut.clock.step()
       dut.io.writeVaryingCoeff.bits.index.poke(i * 3 + 2)
-      dut.io.writeVaryingCoeff.bits.value.raw.poke(floatToRawBits(varyings(0)(i))) // Q0
+      dut.io.writeVaryingCoeff.bits.value.pokeFloat(varyings(0)(i)) // Q0
       dut.clock.step()
     }
 

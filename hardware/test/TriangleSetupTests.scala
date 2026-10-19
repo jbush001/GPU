@@ -20,7 +20,7 @@ import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class TriangleSetupTests extends AnyFunSuite with ChiselSim {
+class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def floatCloseEnough(actual: Float, expected: Float, epsilon: Float = 1e-6f): Boolean = {
@@ -28,8 +28,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim {
   }
 
   def floatToRaw(value: Float): Int = java.lang.Float.floatToRawIntBits(value)
-  def rawToFloat(value: Int): Float = java.lang.Float.intBitsToFloat(value)
-
   def runSetup(dut: TriangleSetup, vertices: Seq[(Int, Int, Float)],
     tileLeft: Int, tileTop: Int, varyings: Seq[Seq[Float]]) = {
 
@@ -81,8 +79,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim {
 
         val index = dut.io.writeVaryingCoeff.bits.index.peek().litValue.toInt
         assert(index < varyingCoeffs.length)
-        val rawValue = dut.io.writeVaryingCoeff.bits.value.raw.peek().litValue.toInt
-        varyingCoeffs(index) = java.lang.Float.intBitsToFloat(rawValue)
+        varyingCoeffs(index) = dut.io.writeVaryingCoeff.bits.value.peekFloat()
       }
 
       // Simulate parameter memory read
@@ -106,11 +103,11 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim {
       case None => // If there are no params, this won't be set.
     }
 
-    assert(floatCloseEnough(rawToFloat(result.depthCoeffs.invW0.raw.peek().litValue.toInt), vertices(0)._3))
-    assert(floatCloseEnough(rawToFloat(result.depthCoeffs.invW1.raw.peek().litValue.toInt), vertices(1)._3))
-    assert(floatCloseEnough(rawToFloat(result.depthCoeffs.invW2.raw.peek().litValue.toInt), vertices(2)._3))
-    assert(floatCloseEnough(rawToFloat(result.depthCoeffs.invdW1.raw.peek().litValue.toInt), vertices(1)._3 - vertices(0)._3))
-    assert(floatCloseEnough(rawToFloat(result.depthCoeffs.invdW2.raw.peek().litValue.toInt), vertices(2)._3 - vertices(0)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invW0.peekFloat(), vertices(0)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invW1.peekFloat(), vertices(1)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invW2.peekFloat(), vertices(2)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invdW1.peekFloat(), vertices(1)._3 - vertices(0)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invdW2.peekFloat(), vertices(2)._3 - vertices(0)._3))
 
 
     val rawParams = new Array[(Int, Int, Int)](3)
