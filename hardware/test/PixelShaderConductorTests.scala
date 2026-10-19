@@ -37,7 +37,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
 
     for (i <- depths.indices) {
-      dut.io.sourceQuad.bits.depths(i).pokeFloat(depths(i))
+      dut.io.sourceQuad.bits.depths(i).poke(depths(i))
     }
 
     dut.io.sourceQuad.bits.lastQuad.poke(lastQuad || lastTriangle)
@@ -60,7 +60,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
 
     for (i <- depths.indices) {
-      dut.io.shadedQuad.bits.depths(i).expectFloat(depths(i))
+      dut.io.shadedQuad.bits.depths(i).expect(depths(i))
     }
 
     dut.clock.step()
@@ -93,7 +93,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.writeVaryingCoeff.valid.poke(true)
     dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
     dut.io.writeVaryingCoeff.bits.index.poke(index)
-    dut.io.writeVaryingCoeff.bits.value.pokeFloat(data)
+    dut.io.writeVaryingCoeff.bits.value.poke(data)
     dut.clock.step()
     dut.io.writeVaryingCoeff.valid.poke(false)
   }

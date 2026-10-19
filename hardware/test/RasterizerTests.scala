@@ -67,8 +67,8 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     for (pixel <- 0 until Consts.pixelsPerQuad) {
       val (dx, dy) = pixelOffsets(pixel)
       val (expectedLambda0, expectedLambda1) = computeExpectedLambda(vertices, x + dx, y + dy)
-      val actualLambda0 = dut.io.quad.bits.lambda(pixel)(0).peekFloat()
-      val actualLambda1 = dut.io.quad.bits.lambda(pixel)(1).peekFloat()
+      val actualLambda0 = dut.io.quad.bits.lambda(pixel)(0).peek()
+      val actualLambda1 = dut.io.quad.bits.lambda(pixel)(1).peek()
       assert(math.abs(actualLambda0 - expectedLambda0) < 0.00001f,
         s"pixel $pixel lambda 0: expected $expectedLambda0, got $actualLambda0")
       assert(math.abs(actualLambda1 - expectedLambda1) < 0.00001f,

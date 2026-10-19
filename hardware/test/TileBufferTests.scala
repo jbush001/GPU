@@ -122,7 +122,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.shadedQuad.bits.location.y.poke(y)
     for (pixel <- 0 until 4) {
       dut.io.shadedQuad.bits.colors(pixel).poke(r = colors(pixel).r, g = colors(pixel).g, b = colors(pixel).b, a = colors(pixel).a)
-      dut.io.shadedQuad.bits.depths(pixel).pokeFloat(depths(pixel))
+      dut.io.shadedQuad.bits.depths(pixel).poke(depths(pixel))
     }
 
     dut.io.shadedQuad.bits.mask.poke(mask)
@@ -158,7 +158,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       if (dut.io.flushData.valid.peek().litValue.toLong != 0 &&
         dut.io.flushData.ready.peek().litValue.toLong != 0) {
         if (select == RenderBufferId.Depth) {
-          depthResults += dut.io.flushData.bits.depth.peekFloat()
+          depthResults += dut.io.flushData.bits.depth.peek()
           totalRead += 1
         } else {
           val color = convertChannel(dut.io.flushData.bits.color.channels(0).peek().litValue.toInt) << 16 |
@@ -192,7 +192,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.clearColor.channels(3).poke(0)
     this.flush(dut, RenderBufferId.Color)
 
-    dut.io.clearDepth.pokeFloat(1.0f)
+    dut.io.clearDepth.poke(1.0f)
     this.flush(dut, RenderBufferId.Depth)
   }
 

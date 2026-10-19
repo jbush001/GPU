@@ -50,11 +50,11 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     val invW0 = 1.0f / coefficients._1
     val invW1 = 1.0f / coefficients._2
     val invW2 = 1.0f / coefficients._3
-    dut.io.rasterizedQuad.bits.depthCoeffs.invW0.pokeFloat(invW0)
-    dut.io.rasterizedQuad.bits.depthCoeffs.invW1.pokeFloat(invW1)
-    dut.io.rasterizedQuad.bits.depthCoeffs.invW2.pokeFloat(invW2)
-    dut.io.rasterizedQuad.bits.depthCoeffs.invdW1.pokeFloat(invW1 - invW0)
-    dut.io.rasterizedQuad.bits.depthCoeffs.invdW2.pokeFloat(invW2 - invW0)
+    dut.io.rasterizedQuad.bits.depthCoeffs.invW0.poke(invW0)
+    dut.io.rasterizedQuad.bits.depthCoeffs.invW1.poke(invW1)
+    dut.io.rasterizedQuad.bits.depthCoeffs.invW2.poke(invW2)
+    dut.io.rasterizedQuad.bits.depthCoeffs.invdW1.poke(invW1 - invW0)
+    dut.io.rasterizedQuad.bits.depthCoeffs.invdW2.poke(invW2 - invW0)
   }
 
   def pokeQuadBits(
@@ -71,8 +71,8 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     dut.io.rasterizedQuad.bits.location.y.poke(location._2)
     dut.io.rasterizedQuad.bits.mask.poke(mask)
     for (i <- 0 until Consts.pixelsPerQuad) {
-      dut.io.rasterizedQuad.bits.lambda(i)(0).pokeFloat(lambdas(i)._1)
-      dut.io.rasterizedQuad.bits.lambda(i)(1).pokeFloat(lambdas(i)._2)
+      dut.io.rasterizedQuad.bits.lambda(i)(0).poke(lambdas(i)._1)
+      dut.io.rasterizedQuad.bits.lambda(i)(1).poke(lambdas(i)._2)
     }
   }
 
@@ -91,14 +91,14 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     dut.io.rasterizedQuad.valid.poke(false)
 
     for (i <- 0 until Consts.pixelsPerQuad) {
-      dut.io.rasterizedQuad.bits.lambda(i)(0).pokeFloat(0.0f)
-      dut.io.rasterizedQuad.bits.lambda(i)(1).pokeFloat(0.0f)
+      dut.io.rasterizedQuad.bits.lambda(i)(0).poke(0.0f)
+      dut.io.rasterizedQuad.bits.lambda(i)(1).poke(0.0f)
     }
   }
 
   def expectDepths(dut: DepthInterpolator, expected: Seq[Double]): Unit = {
     for (i <- 0 until Consts.pixelsPerQuad) {
-      val actual = dut.io.interpolatedQuad.bits.depths(i).peekFloat()
+      val actual = dut.io.interpolatedQuad.bits.depths(i).peek()
       assert(
         math.abs(actual - expected(i)) < 0.00001f,
         s"pixel $i: expected depth ${expected(i)}, got $actual")
@@ -118,7 +118,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
         lambdas(i)._1 / vertexW._2 / perspectiveDenominator,
         lambdas(i)._2 / vertexW._3 / perspectiveDenominator)
       for (component <- 0 until 2) {
-        val actual = dut.io.interpolatedQuad.bits.lambda(i)(component).peekFloat()
+        val actual = dut.io.interpolatedQuad.bits.lambda(i)(component).peek()
         assert(
           math.abs(actual - expected(component)) < 0.00001f,
           s"pixel $i lambda $component: expected ${expected(component)}, got $actual")
@@ -184,13 +184,13 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
       dut.io.interpolatedQuad.ready.poke(false)
       dut.io.rasterizedQuad.ready.expect(false.B)
 
-      val depthBeforeStall = dut.io.interpolatedQuad.bits.depths(0).peekFloat()
+      val depthBeforeStall = dut.io.interpolatedQuad.bits.depths(0).peek()
       val triangleBeforeStall = dut.io.interpolatedQuad.bits.triangleId.peek().litValue
       val locationBeforeStall = dut.io.interpolatedQuad.bits.location.x.peek().litValue
 
       dut.clock.step(3)
       dut.io.interpolatedQuad.valid.expect(true.B)
-      dut.io.interpolatedQuad.bits.depths(0).expectFloat(depthBeforeStall)
+      dut.io.interpolatedQuad.bits.depths(0).expect(depthBeforeStall)
       dut.io.interpolatedQuad.bits.triangleId.expect(triangleBeforeStall)
       dut.io.interpolatedQuad.bits.location.x.expect(locationBeforeStall)
 

@@ -17,12 +17,16 @@
 package gpu
 
 import chisel3._
-import chisel3.simulator.scalatest.ChiselSim // or your test framework trait
+import chisel3.simulator.scalatest.ChiselSim
 import chisel3.experimental.SourceInfo
 
-/** This mixin allows tests to directly poke or expect a Color bundle. */
+/**
+  * This mixin allows tests to directly poke or expect custom [[Bundle]] types
+  * The implicit classes here wrap these Bundle types and create new
+  * overridden versions of these functions.
+  */
 trait TestHelpers { this: ChiselSim =>
-  implicit class ColorTestOps(c: Color) {
+  implicit class ColorOps(c: Color) {
     def poke(r: Int, g: Int, b: Int, a: Int): Unit = {
       c.red.poke(r.U(Color.channelBits.W))
       c.green.poke(g.U(Color.channelBits.W))
@@ -40,15 +44,14 @@ trait TestHelpers { this: ChiselSim =>
     }
   }
 
-  /** This mixin allows tests to directly poke, peek, or expect a Float32 bundle. */
   implicit class Float32Ops(private val f: Float32) {
-    def pokeFloat(value: Float): Unit = {
+    def poke(value: Float): Unit = {
       f.raw.poke((java.lang.Float.floatToRawIntBits(value).toLong & 0xffffffffL).U)
     }
 
-    def peekFloat(): Float = java.lang.Float.intBitsToFloat(f.raw.peek().litValue.toInt)
-    def expectFloat(value: Float, epsilon: Float = 1e-6f)(implicit sourceInfo: SourceInfo): Unit = {
-      val actual = f.peekFloat()
+    def peek(): Float = java.lang.Float.intBitsToFloat(f.raw.peek().litValue.toInt)
+    def expect(value: Float, epsilon: Float = 1e-6f)(implicit sourceInfo: SourceInfo): Unit = {
+      val actual = f.peek()
       chisel3.assert(
         (actual - value).abs <= epsilon,
         s"Expected $value, got $actual (line ${sourceInfo.makeMessage(x => x)})"

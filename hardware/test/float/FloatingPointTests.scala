@@ -137,8 +137,8 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         (-433.1484680175781f, 88.93685913085938f, -344.21160888671875f),
       )
 
-      dut.io.addend1.pokeFloat(0.0f)
-      dut.io.addend2.pokeFloat(0.0f)
+      dut.io.addend1.poke(0.0f)
+      dut.io.addend2.poke(0.0f)
       dut.io.en.poke(1)
 
       runFpPipelineTest(
@@ -146,11 +146,11 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         3,
         testVectors,
         (dut:FpAdd, test: TestVector) => {
-          dut.io.addend1.pokeFloat(test._1)
-          dut.io.addend2.pokeFloat(test._2)
+          dut.io.addend1.poke(test._1)
+          dut.io.addend2.poke(test._2)
         },
         (dut: FpAdd, test: TestVector, index: Int) => {
-          val actual = dut.io.sum.peekFloat()
+          val actual = dut.io.sum.peek()
           if (!floatBitsMatch(test._3, actual)) {
             reportTestFailure(index, test._1, test._2, test._3, actual)
             fail()
@@ -239,11 +239,11 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         2,
         testVectors,
         (dut: FpMul, test: TestVector) => {
-          dut.io.multiplier.pokeFloat(test._1)
-          dut.io.multiplicand.pokeFloat(test._2)
+          dut.io.multiplier.poke(test._1)
+          dut.io.multiplicand.poke(test._2)
         },
         (dut: FpMul, test: TestVector, index: Int) => {
-          val actual = dut.io.product.peekFloat()
+          val actual = dut.io.product.peek()
           if (!floatBitsMatch(test._3, actual)) {
             reportTestFailure(index, test._1, test._2, test._3, actual)
             fail()
@@ -279,13 +279,13 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         (Float.NegativeInfinity, -0.0f), // Division by inf
         (Float.PositiveInfinity, 0.0f), // Division by inf
       )
-      dut.io.operand.pokeFloat(0.0f)
+      dut.io.operand.poke(0.0f)
       dut.clock.step() // Wait for reset to complete
 
       for ((a, expected) <- testVectors) {
-        dut.io.operand.pokeFloat(a)
+        dut.io.operand.poke(a)
         dut.clock.step()
-        val actual = dut.io.result.peekFloat()
+        val actual = dut.io.result.peek()
         if (!floatBitsMatch(expected, actual)) {
           println(f"mismatch: $a%.3f reciprocal, expected $expected%.3f actual $actual%.3f")
           fail()
@@ -333,7 +333,7 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
       )
 
       for ((a, expected0, expected16_16) <- testVectors) {
-        dut.io.a.pokeFloat(a)
+        dut.io.a.poke(a)
         dut.clock.step()
         if (dut.io.result0.peek().litValue.toInt != expected0) {
           println(f"mismatch: $a%.3f to int, expected $expected0 actual ${dut.io.result0.peek().litValue.toInt}")
@@ -370,7 +370,7 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
       )
 
       for ((a, expected) <- testVectors) {
-        dut.io.a.pokeFloat(a)
+        dut.io.a.poke(a)
         dut.clock.step()
         if (dut.io.result.peek().litValue.toInt != expected) {
           println(f"mismatch: $a%.3f to unorm, expected $expected actual ${dut.io.result.peek().litValue.toInt}")
@@ -407,7 +407,7 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
       for ((a, expected) <- testVectors) {
         dut.io.a.poke(a.S)
         dut.clock.step()
-        val actual = dut.io.result.peekFloat()
+        val actual = dut.io.result.peek()
         if (!floatBitsMatch(expected, actual)) {
           println(f"mismatch: int to fp, expected $expected actual $actual")
           fail()
@@ -445,7 +445,7 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
       for ((a, expected) <- testVectors) {
         dut.io.a.poke(a.S)
         dut.clock.step()
-        val actual = dut.io.result.peekFloat()
+        val actual = dut.io.result.peek()
         if (!floatBitsMatch(expected, actual)) {
           println(f"mismatch: int to fp, expected $expected actual $actual")
           fail()
@@ -498,8 +498,8 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
       )
 
       for ((a, b, expected) <- testVectors) {
-        dut.io.a.pokeFloat(a)
-        dut.io.b.pokeFloat(b)
+        dut.io.a.poke(a)
+        dut.io.b.poke(b)
         dut.clock.step()
         if (dut.io.result.peek().litToBoolean != expected) {
           println(f"mismatch: $a%.3f > $b%.3f, expected $expected actual ${dut.io.result.peek().litToBoolean}")
@@ -531,9 +531,9 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
       )
 
       for ((a, expected) <- testVectors) {
-        dut.io.a.pokeFloat(a)
+        dut.io.a.poke(a)
         dut.clock.step()
-        val actual = dut.io.result.peekFloat()
+        val actual = dut.io.result.peek()
         if (!floatBitsMatch(expected, actual)) {
           println(f"mismatch: abs($a%.3f), expected $expected actual $actual")
           fail()
@@ -577,10 +577,10 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         5,
         testVectors,
         (dut: FpReciprocal, test: TestVector) => {
-          dut.io.divisor.pokeFloat(test._1)
+          dut.io.divisor.poke(test._1)
         },
         (dut: FpReciprocal, test: TestVector, _) => {
-          val actual = dut.io.reciprocal.peekFloat()
+          val actual = dut.io.reciprocal.peek()
           if (!floatBitsMatch(test._2, actual, 2)) {
             println(f"mismatch: ${test._1}%.3f reciprocal, expected ${test._2} actual $actual")
             fail()

@@ -79,7 +79,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
         val index = dut.io.writeVaryingCoeff.bits.index.peek().litValue.toInt
         assert(index < varyingCoeffs.length)
-        varyingCoeffs(index) = dut.io.writeVaryingCoeff.bits.value.peekFloat()
+        varyingCoeffs(index) = dut.io.writeVaryingCoeff.bits.value.peek()
       }
 
       // Simulate parameter memory read
@@ -103,11 +103,11 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       case None => // If there are no params, this won't be set.
     }
 
-    assert(floatCloseEnough(result.depthCoeffs.invW0.peekFloat(), vertices(0)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invW1.peekFloat(), vertices(1)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invW2.peekFloat(), vertices(2)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invdW1.peekFloat(), vertices(1)._3 - vertices(0)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invdW2.peekFloat(), vertices(2)._3 - vertices(0)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invW0.peek(), vertices(0)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invW1.peek(), vertices(1)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invW2.peek(), vertices(2)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invdW1.peek(), vertices(1)._3 - vertices(0)._3))
+    assert(floatCloseEnough(result.depthCoeffs.invdW2.peek(), vertices(2)._3 - vertices(0)._3))
 
 
     val rawParams = new Array[(Int, Int, Int)](3)
@@ -148,8 +148,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   test("TriangleSetup basic operation") {
     simulate(new TriangleSetup) { dut =>
-      dut.clock.step()
-    /*
       runSetup(dut,
         Seq((27, 13, 0.5f), (65, 110, 0.6f), (123, 25, 0.7f)),
         0, 0,
@@ -159,7 +157,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
           Seq(5.0f, 6.0f)
         )
       )
-    */
     }
   }
 }
