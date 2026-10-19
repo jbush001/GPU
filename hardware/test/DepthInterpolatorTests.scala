@@ -67,8 +67,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
   ) = {
     pokeCoefficients(dut, coefficients)
     dut.io.rasterizedQuad.bits.triangleId.poke(triangleId)
-    dut.io.rasterizedQuad.bits.location.x.poke(location._1)
-    dut.io.rasterizedQuad.bits.location.y.poke(location._2)
+    dut.io.rasterizedQuad.bits.location.poke(location._1, location._2)
     dut.io.rasterizedQuad.bits.mask.poke(mask)
     for (i <- 0 until Consts.pixelsPerQuad) {
       dut.io.rasterizedQuad.bits.lambda(i)(0).poke(lambdas(i)._1)
@@ -133,8 +132,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     mask: Int
   ): Unit = {
     dut.io.interpolatedQuad.bits.triangleId.expect(triangleId)
-    dut.io.interpolatedQuad.bits.location.x.expect(location._1)
-    dut.io.interpolatedQuad.bits.location.y.expect(location._2)
+    dut.io.interpolatedQuad.bits.location.expect(location._1, location._2)
     dut.io.interpolatedQuad.bits.mask.expect(mask)
   }
 
@@ -186,13 +184,14 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
 
       val depthBeforeStall = dut.io.interpolatedQuad.bits.depths(0).peek()
       val triangleBeforeStall = dut.io.interpolatedQuad.bits.triangleId.peek().litValue
-      val locationBeforeStall = dut.io.interpolatedQuad.bits.location.x.peek().litValue
+      val xBeforeStall = dut.io.interpolatedQuad.bits.location.x.peek().litValue.toInt
+      val yBeforeStall = dut.io.interpolatedQuad.bits.location.y.peek().litValue.toInt
 
       dut.clock.step(3)
       dut.io.interpolatedQuad.valid.expect(true.B)
       dut.io.interpolatedQuad.bits.depths(0).expect(depthBeforeStall)
       dut.io.interpolatedQuad.bits.triangleId.expect(triangleBeforeStall)
-      dut.io.interpolatedQuad.bits.location.x.expect(locationBeforeStall)
+      dut.io.interpolatedQuad.bits.location.expect(xBeforeStall, yBeforeStall)
 
       dut.io.interpolatedQuad.ready.poke(true)
       dut.clock.step()

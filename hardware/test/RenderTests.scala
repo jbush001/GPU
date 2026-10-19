@@ -261,8 +261,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     // Set up rasterizer coefficients
     dut.io.rasterizerParams.valid.poke(true)
-    dut.io.rasterizerParams.bits.offset.x.poke(tileLeft)
-    dut.io.rasterizerParams.bits.offset.y.poke(tileTop)
+    dut.io.rasterizerParams.bits.offset.poke(tileLeft, tileTop)
     dut.io.rasterizerParams.bits.triangleId.poke(triangleId)
     dut.io.rasterizerParams.bits.lastTriangle.poke(lastTriangle)
 

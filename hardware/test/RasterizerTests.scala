@@ -87,8 +87,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.quad.ready.poke(true)
     dut.clock.step()
 
-    dut.io.params.bits.offset.x.poke(bbLeft)
-    dut.io.params.bits.offset.y.poke(bbTop)
+    dut.io.params.bits.offset.poke(bbLeft, bbTop)
     dut.io.params.bits.boundingBox.left.poke(bbLeft)
     dut.io.params.bits.boundingBox.top.poke(bbTop)
     dut.io.params.bits.boundingBox.right.poke(bbRight)

@@ -21,8 +21,8 @@ import chisel3.simulator.scalatest.ChiselSim
 import chisel3.experimental.SourceInfo
 
 /**
-  * This mixin allows tests to directly poke or expect custom [[Bundle]] types
-  * The implicit classes here wrap these Bundle types and create new
+  * This mixin allows tests to directly poke/peek/expect custom [[Bundle]]
+  * types. The implicit classes here wrap these types and create new
   * overridden versions of these functions.
   */
 trait TestHelpers { this: ChiselSim =>
@@ -56,6 +56,18 @@ trait TestHelpers { this: ChiselSim =>
         (actual - value).abs <= epsilon,
         s"Expected $value, got $actual (line ${sourceInfo.makeMessage(x => x)})"
       )
+    }
+  }
+
+  implicit class Point2DOps(c: Point2D) {
+    def poke(x: Int, y: Int): Unit = {
+      c.x.poke(x.S)
+      c.y.poke(y.S)
+    }
+
+    def expect(x: Int, y: Int)(implicit sourceInfo: SourceInfo): Unit = {
+      c.x.expect(x.S)
+      c.y.expect(y.S)
     }
   }
 }

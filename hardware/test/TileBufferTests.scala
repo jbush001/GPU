@@ -118,8 +118,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   def writeQuad(dut: TileBuffer, x: Int, y: Int, mask: Int, colors: Seq[ColorRef],
     depths: Seq[Float]) = {
 
-    dut.io.shadedQuad.bits.location.x.poke(x)
-    dut.io.shadedQuad.bits.location.y.poke(y)
+    dut.io.shadedQuad.bits.location.poke(x, y)
     for (pixel <- 0 until 4) {
       dut.io.shadedQuad.bits.colors(pixel).poke(r = colors(pixel).r, g = colors(pixel).g, b = colors(pixel).b, a = colors(pixel).a)
       dut.io.shadedQuad.bits.depths(pixel).poke(depths(pixel))

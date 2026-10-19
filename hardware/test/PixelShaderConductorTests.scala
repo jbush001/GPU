@@ -26,8 +26,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     lambda: Seq[Seq[Int]], depths: Seq[Float],triangleId: Int = 0,
     lastQuad: Boolean = false, lastTriangle: Boolean = false): Unit = {
     dut.io.sourceQuad.valid.poke(true)
-    dut.io.sourceQuad.bits.location.x.poke(x)
-    dut.io.sourceQuad.bits.location.y.poke(y)
+    dut.io.sourceQuad.bits.location.poke(x, y)
     dut.io.sourceQuad.bits.mask.poke(mask)
     dut.io.sourceQuad.bits.triangleId.poke(triangleId)
     for (i <- lambda.indices) {
@@ -49,8 +48,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
   def drainShadedQuad(dut: PixelShaderConductor, expectedX: Int,
     expectedY: Int, expectedMask: Int, colors: Seq[Seq[Int]], depths: Seq[Float]): Unit = {
-    dut.io.shadedQuad.bits.location.x.expect(expectedX)
-    dut.io.shadedQuad.bits.location.y.expect(expectedY)
+    dut.io.shadedQuad.bits.location.expect(expectedX, expectedY)
     dut.io.shadedQuad.bits.mask.expect(expectedMask)
     dut.io.shadedQuad.valid.expect(true)
     for (i <- colors.indices) {
@@ -180,8 +178,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
       // Valid pixel
       dut.io.shadedQuad.valid.expect(true)
-      dut.io.shadedQuad.bits.location.x.expect(3)
-      dut.io.shadedQuad.bits.location.y.expect(4)
+      dut.io.shadedQuad.bits.location.expect(3, 4)
       dut.io.shadedQuad.bits.mask.expect(15)
       dut.clock.step()
 
@@ -283,8 +280,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
           }
 
           dut.io.sourceQuad.valid.poke(true)
-          dut.io.sourceQuad.bits.location.x.poke(tilex)
-          dut.io.sourceQuad.bits.location.y.poke(tiley)
+          dut.io.sourceQuad.bits.location.poke(tilex, tiley)
           dut.io.sourceQuad.bits.mask.poke(15)
           if (cycle >= maxCycles - finalizeCycles && !sentLastTriangle) {
             dut.io.sourceQuad.bits.lastTriangle.poke(true)
