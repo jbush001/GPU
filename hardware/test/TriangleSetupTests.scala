@@ -60,8 +60,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.startTriangle.bits.bbLeft.poke(tileLeft)
     dut.io.startTriangle.bits.bbTop.poke(tileTop)
     dut.io.startTriangle.valid.poke(true.B)
-    dut.clock.step()
-    dut.io.startTriangle.valid.poke(false.B)
 
     var triangleId = Option.empty[Int]
     val varyingCoeffs = Array.fill(varyings(0).length * 3)(Float.NaN)
@@ -84,10 +82,16 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
       // Simulate parameter memory read
       if (dut.io.paramReadAddr.valid.peek().litToBoolean) {
+        val readVal = vertexParamMem(dut.io.paramReadAddr.bits.peek().litValue.toInt)
         dut.clock.step()
-        dut.io.readValue.poke(vertexParamMem(dut.io.paramReadAddr.bits.peek().litValue.toInt))
+        dut.io.readValue.poke(readVal)
       } else {
         dut.clock.step()
+        dut.io.readValue.poke(0xffffffff)
+      }
+
+      if (cycleCount == 0) {
+        dut.io.startTriangle.valid.poke(false.B)
       }
 
       cycleCount += 1
@@ -103,12 +107,11 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       case None => // If there are no params, this won't be set.
     }
 
-    assert(floatCloseEnough(result.depthCoeffs.invW0.peek(), vertices(0)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invW1.peek(), vertices(1)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invW2.peek(), vertices(2)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invdW1.peek(), vertices(1)._3 - vertices(0)._3))
-    assert(floatCloseEnough(result.depthCoeffs.invdW2.peek(), vertices(2)._3 - vertices(0)._3))
-
+    result.depthCoeffs.invW0.expect(vertices(0)._3)
+    result.depthCoeffs.invW1.expect(vertices(1)._3)
+    result.depthCoeffs.invW2.expect(vertices(2)._3)
+    result.depthCoeffs.invdW1.expect(vertices(1)._3 - vertices(0)._3)
+    result.depthCoeffs.invdW2.expect(vertices(2)._3 - vertices(0)._3)
 
     val rawParams = new Array[(Int, Int, Int)](3)
     var area2 = 0.0f
@@ -116,20 +119,20 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       val (startX, startY, _) = vertices(edge)
       val (endX, endY, _) = vertices((edge + 1) % 3)
       val dx = startY - endY
-      val dy = endX - startX
-      val iv = ((tileLeft - startX) * dx + (tileTop - startY) * dy)
+      val dy = startX - endX
+      val iv = ((tileLeft - startX) * dx) - ((tileTop - startY) * dy)
       area2 += iv
-      rawParams(edge) = (dx, -dy, iv)
+      rawParams(edge) = (dx, dy, iv)
     }
 
-    val normFactor = 1.0 / area2
+//    val normFactor = 1.0 / area2
+    val normFactor = 1.0 / 0xffff // XXX Unnormalized for now
 
     for (edge <- rawParams.indices) {
       val (xs, ys, iv) = rawParams(edge)
       val normXs = (xs * normFactor * 0xffffL).toInt
       val normYs = (ys * normFactor * 0xffffL).toInt
-      val isTopLeft = (normXs > 0) || (normXs == 0 && normYs > 0)
-      val normIv = (iv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
+      val normIv = (iv * normFactor * 0xffffL).toInt
 
       dut.io.rasterizerParams.bits.edges(edge).xStep.expect(normXs)
       dut.io.rasterizerParams.bits.edges(edge).yStep.expect(normYs)
@@ -148,18 +151,11 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   test("TriangleSetup basic operation") {
     simulate(new TriangleSetup) { dut =>
-      dut.clock.step()
-    /*
       runSetup(dut,
         Seq((27, 13, 0.5f), (65, 110, 0.6f), (123, 25, 0.7f)),
         0, 0,
-        Seq(
-          Seq(1.0f, 2.0f),
-          Seq(3.0f, 4.0f),
-          Seq(5.0f, 6.0f)
-        )
+        Seq(Seq(), Seq(), Seq()) // No parameters
       )
-    */
     }
   }
 }

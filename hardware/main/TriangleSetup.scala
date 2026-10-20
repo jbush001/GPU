@@ -34,6 +34,9 @@ class SetupParams(implicit cfg: GpuConfig) extends Bundle {
   *  2 - varying 0...
   *
   *  XXX WIP, incomplete
+  *  - Does not normalize edge equations
+  *  - Does not write varying coefficients.
+  *  - Does not implement top-left rule for pixel hits.
   */
 class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -69,6 +72,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.rasterizerParams.bits := rasterizerParamsReg
 
   val state = RegInit(0.U(5.W))
+  val setupParamsReg = Reg(new SetupParams)
 
   io.rasterizerParams.valid := false.B
   io.startTriangle.ready := state === 0.U && triangleIdFree.reduce(_ || _)
@@ -90,33 +94,34 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
-  val a = WireInit(0.S(16.W))
+  val a = setupParamsReg.bbLeft
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
   val d = WireInit(0.S(16.W))
-  val e = WireInit(0.S(16.W))
+  val e = setupParamsReg.bbTop
   val f = WireInit(0.S(16.W))
   val g = WireInit(0.S(16.W))
   val h = WireInit(0.S(16.W))
 
   val d0 = c - d
   val d1 = g - h
-  val determinant = RegNext(((a - b) * d0) + ((d - e) * d1))
+  val determinant = RegNext(((a - b) * d0) - ((e - f) * d1))
   val d0Reg = RegNext(d0)
   val d1Reg = RegNext(d1)
 
-  val setupParamsReg = Reg(new SetupParams)
   val varyingIndex = Reg(UInt(5.W))
   val c0 = Reg(Float32())
   val area2 = RegInit(0.S(32.W))
 
-  def paramReadAddr(vertex: UInt, value: UInt) = {
+  /**
+   * Initiate read for a value from the parameter memory.
+   * Has one cycle of latency.
+   */
+  def readParameterMem(vertex: UInt, value: UInt) = {
     io.paramReadAddr.valid := true.B
     val params = Mux(state === 0.U, io.startTriangle.bits, setupParamsReg)
     io.paramReadAddr.bits := params.vertexBaseAddr(vertex) + value
   }
-
-  printf(cf"state = ${state}\n")
 
   switch (state) {
     is (0.U) {
@@ -127,7 +132,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         rasterizerParamsReg.triangleId := nextTriangleId
         setupParamsReg := io.startTriangle.bits
         varyingIndex := 0.U
-        paramReadAddr(0.U, 0.U) // read X0/Y0
+        readParameterMem(0.U, 0.U) // read X0/Y0
         state := 1.U
       }
     }
@@ -135,7 +140,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     is (1.U) {
       x0 := io.readValue(31, 16).asSInt
       y0 := io.readValue(15, 0).asSInt
-      paramReadAddr(1.U, 0.U) // Read X1/Y1
+      readParameterMem(1.U, 0.U) // Read X1/Y1
       state := 2.U
     }
 
@@ -145,16 +150,14 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       x1 := readX
       y1 := readY
 
-      a := setupParamsReg.bbLeft
       b := x0
       c := y0
       d := readY
-      e := setupParamsReg.bbTop
       f := y0
-      g := readX
-      h := x0
+      g := x0
+      h := readX
 
-      paramReadAddr(2.U, 0.U) // Read X2/Y2
+      readParameterMem(2.U, 0.U) // Read X2/Y2
       state := 3.U
     }
 
@@ -170,16 +173,14 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(0).initialValue := determinant
       area2 := determinant
 
-      a := setupParamsReg.bbLeft
       b := x1
       c := y1
       d := readY
-      e := setupParamsReg.bbTop
       f := y1
-      g := readX
-      h := x1
+      g := x1
+      h := readX
 
-      paramReadAddr(0.U, 1.U) // read invW0
+      readParameterMem(0.U, 1.U) // read invW0
       state := 4.U
     }
 
@@ -191,42 +192,41 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(1).initialValue := determinant
       area2 := area2 + determinant
 
-      a := setupParamsReg.bbLeft
       b := x2
       c := y2
       d := y0
-      e := setupParamsReg.bbTop
       f := y2
-      g := x0
-      h := x2
+      g := x2
+      h := x0
 
-      paramReadAddr(1.U, 1.U) // read invW1
+      readParameterMem(1.U, 1.U) // read invW1
       state := 5.U
     }
 
     is (5.U) {
       rasterizerParamsReg.depthCoeffs.invW1 := Float32(io.readValue)
-      fpAdd.io.addend1 := rasterizerParamsReg.depthCoeffs.invW1
-      fpAdd.io.addend2 := Float32(io.readValue).neg
+      fpAdd.io.addend1 := Float32(io.readValue)
+      fpAdd.io.addend2 := rasterizerParamsReg.depthCoeffs.invW0.neg
       state := 6.U
 
-      rasterizerParamsReg.edges(1).xStep := d0Reg
-      rasterizerParamsReg.edges(1).yStep := d1Reg
-      rasterizerParamsReg.edges(1).initialValue := determinant
+      rasterizerParamsReg.edges(2).xStep := d0Reg
+      rasterizerParamsReg.edges(2).yStep := d1Reg
+      rasterizerParamsReg.edges(2).initialValue := determinant
       area2 := area2 + determinant
 
-      paramReadAddr(2.U, 1.U) // Read invW2
+      // XXX perform backface/sliver culling if area2 <= some small value.
+      // Kick off reciprocal calculation for area2 to normalize
+
+      readParameterMem(2.U, 1.U) // Read invW2
       state := 6.U
     }
 
     is (6.U) {
-      // XXX perform backface/sliver culling if area2 <= some small value.
-
       rasterizerParamsReg.depthCoeffs.invW2 := Float32(io.readValue)
-      fpAdd.io.addend1 := rasterizerParamsReg.depthCoeffs.invW1
-      fpAdd.io.addend2 := Float32(io.readValue).neg
+      fpAdd.io.addend1 := Float32(io.readValue)
+      fpAdd.io.addend2 := rasterizerParamsReg.depthCoeffs.invW0.neg
       when (setupParamsReg.numVaryings =/= 0.U) {
-        paramReadAddr(0.U, 2.U) // Read first parameter
+        readParameterMem(0.U, 2.U) // Read first varying value C0
       }
 
       state := 7.U
@@ -236,9 +236,9 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       when (setupParamsReg.numVaryings =/= 0.U) {
         io.writeVaryingCoeff.valid := true.B
         io.writeVaryingCoeff.bits.index := 0.U
-        io.writeVaryingCoeff.bits.value := Float32(io.readValue) // Write C0
+        io.writeVaryingCoeff.bits.value := Float32(io.readValue) // Save C0
         c0 := Float32(io.readValue)
-        paramReadAddr(1.U, 2.U) // Read C1
+        readParameterMem(1.U, 2.U) // Read varying value C1
       }
 
       state := 8.U
@@ -247,7 +247,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     is (8.U) {
       rasterizerParamsReg.depthCoeffs.invdW1 := fpAdd.io.sum
       when (setupParamsReg.numVaryings =/= 0.U) {
-        paramReadAddr(2.U, 2.U) // Read C2
+        readParameterMem(2.U, 2.U) // Read varying value C2
       }
 
       fpAdd.io.addend1 := Float32(io.readValue)
@@ -257,13 +257,15 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
     is (9.U) {
       rasterizerParamsReg.depthCoeffs.invdW2 := fpAdd.io.sum
-      when (setupParamsReg.numVaryings < 2.U) {
-        paramReadAddr(0.U, 3.U)
+      when (setupParamsReg.numVaryings > 1.U) {
+        readParameterMem(0.U, 3.U)
+        state := 10.U
+      }.otherwise {
+        state := 14.U
       }
 
       fpAdd.io.addend1 := Float32(io.readValue)
       fpAdd.io.addend2 := c0.neg
-      state := 10.U
     }
 
     // Param read loop
@@ -272,25 +274,17 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (11.U) {
-      when (setupParamsReg.numVaryings =/= 0.U) {
-        io.writeVaryingCoeff.valid := true.B
-        io.writeVaryingCoeff.bits.index := 1.U
-        io.writeVaryingCoeff.bits.value := fpAdd.io.sum // Write dC1
-        state := 12.U
-      }.otherwise {
-        state := 14.U
-      }
+      io.writeVaryingCoeff.valid := true.B
+      io.writeVaryingCoeff.bits.index := 1.U
+      io.writeVaryingCoeff.bits.value := fpAdd.io.sum // Write dC1
+      state := 12.U
     }
 
     is (12.U) {
-      when (setupParamsReg.numVaryings =/= 0.U) {
-        io.writeVaryingCoeff.valid := true.B
-        io.writeVaryingCoeff.bits.index := 1.U
-        io.writeVaryingCoeff.bits.value := fpAdd.io.sum // Write dC2
-        state := 13.U
-      }.otherwise {
-        state := 14.U
-      }
+      io.writeVaryingCoeff.valid := true.B
+      io.writeVaryingCoeff.bits.index := 1.U
+      io.writeVaryingCoeff.bits.value := fpAdd.io.sum // Write dC2
+      state := 13.U
     }
 
     is (13.U) {
