@@ -35,7 +35,6 @@ class SetupParams(implicit cfg: GpuConfig) extends Bundle {
   *
   *  XXX WIP, incomplete
   *  - Does not normalize edge equations
-  *  - Does not write varying coefficients.
   *  - Does not implement top-left rule for pixel hits.
   */
 class TriangleSetup(implicit cfg: GpuConfig) extends Module {
@@ -74,6 +73,13 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val state = RegInit(0.U(5.W))
   val setupParamsReg = Reg(new SetupParams)
 
+  // Varying Pipeline Valid Signals
+  val varyingStage1Valid = RegInit(false.B)
+  val varyingStage2Valid = RegInit(false.B)
+  val varyingStage3Valid = RegInit(false.B)
+  val varyingStage4Valid = RegInit(false.B)
+  val writeVaryingIndex = RegInit(0.U(cfg.varyingCoeffIndexBits.W))
+
   io.rasterizerParams.valid := false.B
   io.startTriangle.ready := state === 0.U && triangleIdFree.reduce(_ || _)
   io.writeVaryingCoeff.valid := false.B
@@ -109,8 +115,6 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val d0Reg = RegNext(d0)
   val d1Reg = RegNext(d1)
 
-  val varyingIndex = Reg(UInt(5.W))
-  val c0 = Reg(Float32())
   val area2 = RegInit(0.S(32.W))
 
   /**
@@ -123,6 +127,10 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     io.paramReadAddr.bits := params.vertexBaseAddr(vertex) + value
   }
 
+  val varyingSetupActive = RegInit(false.B)
+  val varyingVertex = RegInit(0.U(2.W))
+  val varyingIndex = RegInit(0.U(5.W))
+
   switch (state) {
     is (0.U) {
       // Waiting for the next triangle
@@ -131,7 +139,6 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         triangleIdFree(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
         setupParamsReg := io.startTriangle.bits
-        varyingIndex := 0.U
         readParameterMem(0.U, 0.U) // read X0/Y0
         state := 1.U
       }
@@ -226,78 +233,95 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       fpAdd.io.addend1 := Float32(io.readValue)
       fpAdd.io.addend2 := rasterizerParamsReg.depthCoeffs.invW0.neg
       when (setupParamsReg.numVaryings =/= 0.U) {
-        readParameterMem(0.U, 2.U) // Read first varying value C0
+        varyingSetupActive := true.B
+        varyingVertex := 0.U
+        varyingIndex := 0.U
       }
 
       state := 7.U
     }
 
     is (7.U) {
-      when (setupParamsReg.numVaryings =/= 0.U) {
-        io.writeVaryingCoeff.valid := true.B
-        io.writeVaryingCoeff.bits.index := 0.U
-        io.writeVaryingCoeff.bits.value := Float32(io.readValue) // Save C0
-        c0 := Float32(io.readValue)
-        readParameterMem(1.U, 2.U) // Read varying value C1
-      }
-
       state := 8.U
     }
 
     is (8.U) {
       rasterizerParamsReg.depthCoeffs.invdW1 := fpAdd.io.sum
-      when (setupParamsReg.numVaryings =/= 0.U) {
-        readParameterMem(2.U, 2.U) // Read varying value C2
-      }
-
-      fpAdd.io.addend1 := Float32(io.readValue)
-      fpAdd.io.addend2 := c0.neg
       state := 9.U
     }
 
     is (9.U) {
       rasterizerParamsReg.depthCoeffs.invdW2 := fpAdd.io.sum
-      when (setupParamsReg.numVaryings > 1.U) {
-        readParameterMem(0.U, 3.U)
-        state := 10.U
-      }.otherwise {
-        state := 14.U
-      }
+      state := 10.U
+    }
 
-      fpAdd.io.addend1 := Float32(io.readValue)
+    is (10.U) {
+      // Finish
+      when (!varyingSetupActive && !varyingStage1Valid && !varyingStage2Valid && !varyingStage3Valid && !varyingStage4Valid) {
+        io.rasterizerParams.valid := true.B
+        when (io.rasterizerParams.ready) {
+          state := 0.U
+        }
+      }
+    }
+  }
+
+  // Varying setup pipeline
+  // Default values
+  io.writeVaryingCoeff.valid := false.B
+  io.writeVaryingCoeff.bits  := DontCare
+
+  val c0 = Reg(Float32())
+
+  // Pipelined Metadata Registers
+  val stage1Vertex = RegInit(0.U(2.W))
+
+  // Stage 1: Issue fetch address
+  when (varyingSetupActive) {
+    varyingStage1Valid  := true.B
+    stage1Vertex := varyingVertex
+    readParameterMem(varyingVertex, varyingIndex + 2.U)
+
+    when (varyingVertex === 2.U) {
+      varyingVertex := 0.U
+      when (varyingIndex === setupParamsReg.numVaryings - 1.U) {
+        varyingSetupActive := false.B // Disable fetch engine, let pipeline drain
+      } .otherwise {
+        varyingIndex := varyingIndex + 1.U
+      }
+    } .otherwise {
+      varyingVertex := varyingVertex + 1.U
+    }
+  } .otherwise {
+    varyingStage1Valid := false.B
+  }
+
+  // Stage 2: memory read result
+  varyingStage2Valid := varyingStage1Valid
+
+  val readVal = Float32(io.readValue)
+
+  when (varyingStage1Valid) {
+    when (stage1Vertex === 0.U) {
+      // Latch base parameter C0 and write out directly
+      c0 := readVal
+      fpAdd.io.addend1 := readVal
+      fpAdd.io.addend2 := Float32.Zero
+    } .otherwise {
+      // Launch dC1 (vertex 1) or dC2 (vertex 2) into FPAdd
+      fpAdd.io.addend1 := readVal
       fpAdd.io.addend2 := c0.neg
     }
+  }
 
-    // Param read loop
-    is (10.U) {
-      state := 11.U
-    }
+  varyingStage3Valid := varyingStage2Valid
+  varyingStage4Valid := varyingStage3Valid
 
-    is (11.U) {
-      io.writeVaryingCoeff.valid := true.B
-      io.writeVaryingCoeff.bits.index := 1.U
-      io.writeVaryingCoeff.bits.value := fpAdd.io.sum // Write dC1
-      state := 12.U
-    }
-
-    is (12.U) {
-      io.writeVaryingCoeff.valid := true.B
-      io.writeVaryingCoeff.bits.index := 1.U
-      io.writeVaryingCoeff.bits.value := fpAdd.io.sum // Write dC2
-      state := 13.U
-    }
-
-    is (13.U) {
-      // XXX keep reading varyings...
-      state := 14.U
-    }
-
-    is (14.U) {
-      // Finish
-      io.rasterizerParams.valid := true.B
-      when (io.rasterizerParams.ready) {
-        state := 0.U
-      }
-    }
+  // Write out completed dC1 / dC2 slope
+  when (varyingStage4Valid) {
+    io.writeVaryingCoeff.valid := true.B
+    io.writeVaryingCoeff.bits.index := writeVaryingIndex
+    writeVaryingIndex := writeVaryingIndex + 1.U
+    io.writeVaryingCoeff.bits.value := fpAdd.io.sum
   }
 }

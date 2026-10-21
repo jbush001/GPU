@@ -76,7 +76,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
         }
 
         val index = dut.io.writeVaryingCoeff.bits.index.peek().litValue.toInt
-        assert(index < varyingCoeffs.length)
+        assert(index < varyingCoeffs.length * 3)
         varyingCoeffs(index) = dut.io.writeVaryingCoeff.bits.value.peek()
       }
 
@@ -144,8 +144,8 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       val c1 = varyingCoeffs(i * 3 + 1)
       val c2 = varyingCoeffs(i * 3 + 2)
       assert(floatCloseEnough(varyings(0)(i), c0))
-      assert(floatCloseEnough(varyings(1)(i), c1 - c0))
-      assert(floatCloseEnough(varyings(2)(i), c2 - c0))
+      assert(floatCloseEnough(varyings(1)(i) - varyings(0)(i), c1))
+      assert(floatCloseEnough(varyings(2)(i) - varyings(0)(i), c2))
     }
   }
 
@@ -155,6 +155,16 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
         Seq((27, 13, 0.5f), (65, 110, 0.6f), (123, 25, 0.7f)),
         0, 0,
         Seq(Seq(), Seq(), Seq()) // No parameters
+      )
+    }
+  }
+
+  test("TriangleSetup with varying parameters") {
+    simulate(new TriangleSetup) { dut =>
+      runSetup(dut,
+        Seq((27, 13, 0.5f), (65, 110, 0.6f), (123, 25, 0.7f)),
+        0, 0,
+        Seq(Seq(1.0f, 2.0f, 3.0f), Seq(4.0f, 5.0f, 6.0f), Seq(7.0f, 8.0f, 9.0f))
       )
     }
   }
