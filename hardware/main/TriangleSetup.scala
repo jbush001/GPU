@@ -127,6 +127,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     io.paramReadAddr.bits := params.vertexBaseAddr(vertex) + value
   }
 
+  def normalizeAndRound(value: SInt, multiplier: SInt): SInt = {
+    val product = value * multiplier
+    val result = (product >> 16) + Mux(product(31), 1.S(32.W), 0.S)
+    result
+  }
+
   val varyingSetupActive = RegInit(false.B)
   val varyingVertex = RegInit(0.U(2.W))
   val varyingIndex = RegInit(0.U(5.W))
@@ -246,6 +252,16 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (8.U) {
+      // XXX placeholder, this is really inefficient, will replace with a pipeline.
+      val multiplier = 0xffff0000L.S / area2
+
+
+      for (edge <- 0 until 3) {
+        rasterizerParamsReg.edges(edge).xStep := normalizeAndRound(rasterizerParamsReg.edges(edge).xStep, multiplier)
+        rasterizerParamsReg.edges(edge).yStep := normalizeAndRound(rasterizerParamsReg.edges(edge).yStep, multiplier)
+        rasterizerParamsReg.edges(edge).initialValue := normalizeAndRound(rasterizerParamsReg.edges(edge).initialValue, multiplier)
+      }
+
       rasterizerParamsReg.depthCoeffs.invdW1 := fpAdd.io.sum
       state := 9.U
     }
@@ -317,7 +333,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   varyingStage3Valid := varyingStage2Valid
   varyingStage4Valid := varyingStage3Valid
 
-  // Write out completed dC1 / dC2 slope
+  // Write out completed coefficients
   when (varyingStage4Valid) {
     io.writeVaryingCoeff.valid := true.B
     io.writeVaryingCoeff.bits.index := writeVaryingIndex

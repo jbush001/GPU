@@ -125,8 +125,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       rawParams(edge) = (dx, dy, iv)
     }
 
-//    val normFactor = 1.0 / area2
-    val normFactor = 1.0 / 0xffff // XXX Unnormalized for now
+    val normFactor = 1.0 / area2
 
     for (edge <- rawParams.indices) {
       val (xs, ys, iv) = rawParams(edge)
