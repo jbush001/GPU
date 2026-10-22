@@ -39,15 +39,15 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     params.vertices(2) = (x2, y2)
     params.xStep(0) = y1 - y0
     params.yStep(0) = x0 - x1
-    params.initialValue(0) = (startX - x0) * (y1 - y0) - (startY - y0) * (x1 - x0)
+    params.initialValue(0) = (startY - y0) * params.yStep(0) + (startX - x0) * params.xStep(0)
 
     params.xStep(1) = y2 - y1
     params.yStep(1) = x1 - x2
-    params.initialValue(1) = (startX - x1) * (y2 - y1) - (startY - y1) * (x2 - x1)
+    params.initialValue(1) =  (startY - y1) * params.yStep(1) + (startX - x1) * params.xStep(1)
 
     params.xStep(2) = y0 - y2
     params.yStep(2) = x2 - x0
-    params.initialValue(2) = (startX - x2) * (y0 - y2) - (startY - y2) * (x0 - x2)
+    params.initialValue(2) = (startY - y2) * params.yStep(2) + (startX - x2) * params.xStep(2)
 
     return params
   }

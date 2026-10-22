@@ -118,9 +118,9 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     for (edge <- 0 until 3) {
       val (startX, startY, _) = vertices(edge)
       val (endX, endY, _) = vertices((edge + 1) % 3)
-      val dx = startY - endY
+      val dx = endY - startY
       val dy = startX - endX
-      val iv = ((tileLeft - startX) * dx) - ((tileTop - startY) * dy)
+      val iv = (tileTop - startY) * dy + ((tileLeft - startX) * dx)
       area2 += iv
       rawParams(edge) = (dx, dy, iv)
     }

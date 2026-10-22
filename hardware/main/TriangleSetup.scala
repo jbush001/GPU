@@ -100,25 +100,25 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
-  val a = setupParamsReg.bbLeft
+  val a = setupParamsReg.bbTop
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
   val d = WireInit(0.S(16.W))
-  val e = setupParamsReg.bbTop
+  val e = setupParamsReg.bbLeft
   val f = WireInit(0.S(16.W))
-  val g = WireInit(0.S(16.W))
   val h = WireInit(0.S(16.W))
+  val g = WireInit(0.S(16.W))
 
-  val d0 = c - d
-  val d1 = g - h
-  val determinant = RegNext(((a - b) * d0) - ((e - f) * d1))
-  val d0Reg = RegNext(d0)
-  val d1Reg = RegNext(d1)
+  val xStep = g - h
+  val yStep = c - d
+  val determinant = RegNext(((a - b) * yStep) + ((e - f) * xStep))
+  val d0Reg = RegNext(xStep)
+  val d1Reg = RegNext(yStep)
 
   val area2 = RegInit(0.S(32.W))
 
   /**
-   * Initiate read for a value from the parameter memory.
+   * Initiate read for e value from the parameter memory.
    * Has one cycle of latency.
    */
   def readParameterMem(vertex: UInt, value: UInt) = {
@@ -157,12 +157,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       x1 := readX
       y1 := readY
 
-      b := x0
-      c := y0
-      d := readY
-      f := y0
-      g := x0
-      h := readX
+      b := y0
+      c := x0
+      d := readX
+      f := x0
+      g := readY
+      h := y0
 
       readParameterMem(2.U, 0.U) // Read X2/Y2
       state := 3.U
@@ -180,12 +180,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(0).initialValue := determinant
       area2 := determinant
 
-      b := x1
-      c := y1
-      d := readY
-      f := y1
-      g := x1
-      h := readX
+      b := y1
+      c := x1
+      d := readX
+      f := x1
+      g := readY
+      h := y1
 
       readParameterMem(0.U, 1.U) // read invW0
       state := 4.U
@@ -199,12 +199,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(1).initialValue := determinant
       area2 := area2 + determinant
 
-      b := x2
-      c := y2
-      d := y0
-      f := y2
-      g := x2
-      h := x0
+      b := y2
+      c := x2
+      d := x0
+      f := x2
+      g := y0
+      h := y2
 
       readParameterMem(1.U, 1.U) // read invW1
       state := 5.U
