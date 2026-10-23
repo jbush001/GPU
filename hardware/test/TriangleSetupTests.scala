@@ -41,6 +41,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.startTriangle.bits.vertexBaseAddr(0).poke(baseAddresses(0))
     dut.io.startTriangle.bits.vertexBaseAddr(1).poke(baseAddresses(1))
     dut.io.startTriangle.bits.vertexBaseAddr(2).poke(baseAddresses(2))
+    dut.io.startTriangle.bits.lastTriangle.poke(true.B)
 
     // Vertex memory layout
     //  0 - x, y (12.4 fixed point each)
@@ -57,8 +58,12 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
 
     dut.io.startTriangle.bits.numVaryings.poke(varyings(0).length)
-    dut.io.startTriangle.bits.bbLeft.poke(tileLeft)
-    dut.io.startTriangle.bits.bbTop.poke(tileTop)
+    dut.io.startTriangle.bits.boundingBox.left.poke(tileLeft)
+    dut.io.startTriangle.bits.boundingBox.top.poke(tileTop)
+    dut.io.startTriangle.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+    dut.io.startTriangle.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+    dut.io.startTriangle.bits.offset.x.poke(tileLeft)
+    dut.io.startTriangle.bits.offset.y.poke(tileTop)
     dut.io.startTriangle.valid.poke(true.B)
 
     var triangleId = Option.empty[Int]
@@ -112,6 +117,13 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     result.depthCoeffs.invW2.expect(vertices(2)._3)
     result.depthCoeffs.invdW1.expect(vertices(1)._3 - vertices(0)._3)
     result.depthCoeffs.invdW2.expect(vertices(2)._3 - vertices(0)._3)
+    result.offset.x.expect(tileLeft)
+    result.offset.y.expect(tileTop)
+    result.boundingBox.left.expect(tileLeft)
+    result.boundingBox.top.expect(tileTop)
+    result.boundingBox.right.expect(tileLeft + cfg.tileSizePixels - 2)
+    result.boundingBox.bottom.expect(tileTop + cfg.tileSizePixels - 2)
+    result.lastTriangle.expect(true.B)
 
     val rawParams = new Array[(Int, Int, Int)](3)
     var area2 = 0.0f
@@ -139,9 +151,9 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
 
     for (i <- 0 until varyings(0).length) {
-      val c0 = varyingCoeffs(i * 3 + 0)
-      val c1 = varyingCoeffs(i * 3 + 1)
-      val c2 = varyingCoeffs(i * 3 + 2)
+      val c1 = varyingCoeffs(i * 3 + 0)
+      val c2 = varyingCoeffs(i * 3 + 1)
+      val c0 = varyingCoeffs(i * 3 + 2)
       assert(floatCloseEnough(varyings(0)(i), c0))
       assert(floatCloseEnough(varyings(1)(i) - varyings(0)(i), c1))
       assert(floatCloseEnough(varyings(2)(i) - varyings(0)(i), c2))

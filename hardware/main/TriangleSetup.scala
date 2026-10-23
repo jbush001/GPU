@@ -20,10 +20,11 @@ import chisel3._
 import chisel3.util._
 
 class SetupParams(implicit cfg: GpuConfig) extends Bundle {
+  val offset = Point2D()
+  val lastTriangle = Bool()
   val vertexBaseAddr = Vec(3, UInt(cfg.vertexParamIndexBits.W))
   val numVaryings = UInt(5.W)
-  val bbLeft = SInt(cfg.coordinateBits.W)
-  val bbTop = SInt(cfg.coordinateBits.W)
+  val boundingBox = BoundingBox()
 }
 
 /**
@@ -78,7 +79,6 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val varyingStage2Valid = RegInit(false.B)
   val varyingStage3Valid = RegInit(false.B)
   val varyingStage4Valid = RegInit(false.B)
-  val writeVaryingIndex = RegInit(0.U(cfg.varyingCoeffIndexBits.W))
 
   io.rasterizerParams.valid := false.B
   io.startTriangle.ready := state === 0.U && triangleIdFree.reduce(_ || _)
@@ -100,11 +100,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
-  val a = setupParamsReg.bbTop
+  val a = setupParamsReg.boundingBox.top
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
   val d = WireInit(0.S(16.W))
-  val e = setupParamsReg.bbLeft
+  val e = setupParamsReg.boundingBox.left
   val f = WireInit(0.S(16.W))
   val h = WireInit(0.S(16.W))
   val g = WireInit(0.S(16.W))
@@ -144,6 +144,9 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         assert(triangleIdFree(nextTriangleId))
         triangleIdFree(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
+        rasterizerParamsReg.offset := io.startTriangle.bits.offset
+        rasterizerParamsReg.boundingBox := io.startTriangle.bits.boundingBox
+        rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
         setupParamsReg := io.startTriangle.bits
         readParameterMem(0.U, 0.U) // read X0/Y0
         state := 1.U
@@ -289,6 +292,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   // Pipelined Metadata Registers
   val stage1Vertex = RegInit(0.U(2.W))
+  val writeVaryingIndex0 = WireInit(0.U(cfg.varyingCoeffIndexBits.W))
 
   // Stage 1: Issue fetch address
   when (varyingSetupActive) {
@@ -309,6 +313,17 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   } .otherwise {
     varyingStage1Valid := false.B
   }
+
+  // These are stored in varying coefficient memory in the order dC1, dC2, d0,
+  // but we read them out of vertex parameter memory as d0, dC1, dC2, so we
+  // need to adjust the destination address here.
+  val writeVaryingIndex = varyingIndex * 3.U + MuxLookup(
+    varyingVertex, 0.U)(Seq(
+      0.U -> 2.U,
+      1.U -> 0.U,
+      2.U -> 1.U
+    )
+  )
 
   // Stage 2: memory read result
   varyingStage2Valid := varyingStage1Valid
@@ -332,10 +347,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   varyingStage4Valid := varyingStage3Valid
 
   // Write out completed coefficients
-  when (varyingStage4Valid) {
-    io.writeVaryingCoeff.valid := true.B
-    io.writeVaryingCoeff.bits.index := writeVaryingIndex
-    writeVaryingIndex := writeVaryingIndex + 1.U
-    io.writeVaryingCoeff.bits.value := fpAdd.io.sum
-  }
+  io.writeVaryingCoeff.valid := varyingStage4Valid
+  io.writeVaryingCoeff.bits.index := ShiftRegister(writeVaryingIndex, 4)
+  io.writeVaryingCoeff.bits.value := fpAdd.io.sum
 }
