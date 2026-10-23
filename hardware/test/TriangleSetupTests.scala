@@ -129,9 +129,9 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     for (edge <- rawParams.indices) {
       val (xs, ys, iv) = rawParams(edge)
-      val normXs = (xs * normFactor * 0xffffL).toInt
-      val normYs = (ys * normFactor * 0xffffL).toInt
-      val normIv = (iv * normFactor * 0xffffL).toInt
+      val normXs = (xs * normFactor * 0xffffffL).toInt
+      val normYs = (ys * normFactor * 0xffffffL).toInt
+      val normIv = (iv * normFactor * 0xffffffL).toInt
 
       dut.io.rasterizerParams.bits.edges(edge).xStep.expect(normXs)
       dut.io.rasterizerParams.bits.edges(edge).yStep.expect(normYs)

@@ -286,10 +286,10 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     for (edge <- rawParams.indices) {
       val (xs, ys, iv) = rawParams(edge)
-      val normXs = (xs * normFactor * 0xffffL).toInt
-      val normYs = (ys * normFactor * 0xffffL).toInt
+      val normXs = (xs * normFactor * 0xffffffL).toInt
+      val normYs = (ys * normFactor * 0xffffffL).toInt
       val isTopLeft = (normXs > 0) || (normXs == 0 && normYs > 0)
-      val normIv = (iv * normFactor * 0xffffL).toInt - (if (isTopLeft) 0 else 1)
+      val normIv = (iv * normFactor * 0xffffffL).toInt - (if (isTopLeft) 0 else 1)
 
       dut.io.rasterizerParams.bits.edges(edge).xStep.poke(normXs.S)
       dut.io.rasterizerParams.bits.edges(edge).yStep.poke(normYs.S)

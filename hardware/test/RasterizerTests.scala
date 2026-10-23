@@ -59,7 +59,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     val lambda0 = (x - x2) * (y0 - y2) - (y - y2) * (x0 - x2)
     val lambda1 = (x - x0) * (y1 - y0) - (y - y0) * (x1 - x0)
 
-    (lambda0 / 65536.0f, lambda1 / 65536.0f)
+    (lambda0 / 16777215.0f, lambda1 / 16777215.0f)
   }
 
   def expectLambdas(dut: Rasterizer, vertices: Array[(Int, Int)], x: Int, y: Int): Unit = {

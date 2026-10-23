@@ -129,7 +129,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   def normalizeAndRound(value: SInt, multiplier: SInt): SInt = {
     val product = value * multiplier
-    val result = (product >> 16) + Mux(product(31), 1.S(32.W), 0.S)
+    val result = (product >> 24) + Mux(product(47), 1.S(48.W), 0.S)
     result
   }
 
@@ -253,9 +253,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
     is (8.U) {
       // XXX placeholder, this is really inefficient, will replace with a pipeline.
-      val multiplier = 0xffff0000L.S / area2
-
-
+      val multiplier = 0xffffff000000L.S / area2
       for (edge <- 0 until 3) {
         rasterizerParamsReg.edges(edge).xStep := normalizeAndRound(rasterizerParamsReg.edges(edge).xStep, multiplier)
         rasterizerParamsReg.edges(edge).yStep := normalizeAndRound(rasterizerParamsReg.edges(edge).yStep, multiplier)
