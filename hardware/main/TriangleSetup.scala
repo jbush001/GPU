@@ -30,7 +30,7 @@ class SetupParams(implicit cfg: GpuConfig) extends Bundle {
 /**
   * Set up edge functions and other coefficints.
   * Parameter memory format:
-  *  0 - x, y (12.4 fixed point each)
+  *  0 - x, y (16 bit point each)
   *  1 - 1.0 / w (float)
   *  2 - varying 0...
   *
@@ -348,6 +348,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   // Write out completed coefficients
   io.writeVaryingCoeff.valid := varyingStage4Valid
+  io.writeVaryingCoeff.bits.triangleId := rasterizerParamsReg.triangleId
   io.writeVaryingCoeff.bits.index := ShiftRegister(writeVaryingIndex, 4)
   io.writeVaryingCoeff.bits.value := fpAdd.io.sum
 }

@@ -25,12 +25,10 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val axiBus = new AxiBus
 
-    // Hack: pass throughs for testing
-    val rasterizerParams = Flipped(Decoupled(new RasterizerParams))
-    val writeVaryingCoeff = Flipped(Valid(new Bundle {
-      val triangleId = UInt(cfg.triangleIdBits.W)
-      val index = UInt(5.W)
-      val value = Float32()
+    val startTriangle = Flipped(Decoupled(new SetupParams))
+    val writeVertexParam = Flipped(Valid(new Bundle {
+      val addr = UInt(cfg.vertexParamIndexBits.W)
+      val value = UInt(32.W)
     }))
 
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
@@ -46,6 +44,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   })
 
   val rasterizer = Module(new Rasterizer)
+  val triangleSetup = Module(new TriangleSetup)
+  val vertexParameterMem = Module(new VertexParameterMem)
   val depthInterpolator = Module(new DepthInterpolator)
   val tileBuffer = Module(new TileBuffer)
   val pixelShaderConductor = Module(new PixelShaderConductor)
@@ -56,6 +56,12 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
 
   io.triangleFinished <> pixelShaderConductor.io.triangleFinished
   io.lastTriangle := pixelShaderConductor.io.lastTriangle
+
+  triangleSetup.io.startTriangle <> io.startTriangle
+  vertexParameterMem.io.writeParam <> io.writeVertexParam
+  triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr
+  triangleSetup.io.readValue := vertexParameterMem.io.readValue
+  triangleSetup.io.triangleFinished <> pixelShaderConductor.io.triangleFinished
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
@@ -88,9 +94,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   tileBuffer.io.enableDepthWrite := true.B
   tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
-  rasterizer.io.params <> io.rasterizerParams
-
-  io.writeVaryingCoeff <> pixelShaderConductor.io.writeVaryingCoeff
+  rasterizer.io.params <> triangleSetup.io.rasterizerParams
+  pixelShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff
 
   pixelShaderConductor.io.textureFetchRequest <> texturePatternGenerator.io.textureFetchRequest
   texturePatternGenerator.io.textureFetchResponse <> pixelShaderConductor.io.textureFetchResponse

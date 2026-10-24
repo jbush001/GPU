@@ -174,7 +174,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     simulate(new TriangleSetup) { dut =>
       runSetup(dut,
         Seq((27, 13, 0.5f), (65, 110, 0.6f), (123, 25, 0.7f)),
-        0, 0,
+        64, 64,
         Seq(Seq(1.0f, 2.0f, 3.0f), Seq(4.0f, 5.0f, 6.0f), Seq(7.0f, 8.0f, 9.0f))
       )
     }

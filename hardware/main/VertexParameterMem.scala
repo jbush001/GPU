@@ -36,9 +36,6 @@ class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
     mem.write(io.writeParam.bits.addr, io.writeParam.bits.value)
   }
 
-  io.readValue := 0.U
-  when (io.readAddr.valid) {
-    io.readValue := mem.read(io.readAddr.bits, true.B)
-  }
+  io.readValue := mem.read(io.readAddr.bits, true.B)
 }
 

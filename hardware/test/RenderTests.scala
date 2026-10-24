@@ -28,11 +28,10 @@ import shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val rasterizerParams = Flipped(Decoupled(new RasterizerParams))
-    val writeVaryingCoeff = Flipped(Valid(new Bundle {
-      val triangleId = UInt(cfg.triangleIdBits.W)
-      val index = UInt(5.W)
-      val value = Float32()
+    val startTriangle = Flipped(Decoupled(new SetupParams))
+    val writeVertexParam = Flipped(Valid(new Bundle {
+      val addr = UInt(cfg.vertexParamIndexBits.W)
+      val value = UInt(32.W)
     }))
 
     val startFlush = Input(Bool())
@@ -58,8 +57,8 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     complete := false.B // Hack
   }
 
-  gpu.io.rasterizerParams <> io.rasterizerParams
-  io.writeVaryingCoeff <> gpu.io.writeVaryingCoeff
+  gpu.io.startTriangle <> io.startTriangle
+  gpu.io.writeVertexParam <> io.writeVertexParam
   gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
   io.flushColor.valid := gpu.io.flushData.valid
@@ -192,18 +191,16 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         val tileLeft = tileColumn * cfg.tileSizePixels
         val tileTop = tileRow * cfg.tileSizePixels
 
-        // XXX for now does not check for deallocation of triangle IDs
-        var triangleId = 0
-        while (!dut.io.complete.peek().litToBoolean || triangleId * 3 < indices.length) {
-          // Submit new triangles. This is a stand-in for the unimplemented setup unit.
-          if (dut.io.rasterizerParams.ready.peek().litToBoolean && triangleId * 3 < indices.length) {
-            val triangleIndices = (0 until 3).map(i => indices(triangleId * 3 + i))
+        var triangleIndex = 0
+        while (!dut.io.complete.peek().litToBoolean || triangleIndex * 3 < indices.length) {
+          if (triangleIndex * 3 < indices.length) {
+            val triangleIndices = (0 until 3).map(i => indices(triangleIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
 
-            setUpTriangle(dut, triangleId, triangleVerts, tileLeft, tileTop, fbSize, fbSize,
+            setUpTriangle(dut, triangleVerts, tileLeft, tileTop, fbSize, fbSize,
               triangleIndices.map(i => varyings(i)),
-              triangleId >= (indices.length / 3) - 1)
-            triangleId += 1
+              triangleIndex >= (indices.length / 3) - 1)
+            triangleIndex += 1
           }
 
           dut.clock.step()
@@ -222,88 +219,50 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     fbData
   }
 
-  def setUpTriangle(dut: SimTop, triangleId: Int, vertices: Seq[(Float, Float, Float)],
+  var nextVertexBaseAddress = 0
+
+  def setUpTriangle(dut: SimTop, vertices: Seq[(Float, Float, Float)],
     tileLeft: Int, tileTop: Int, fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
     lastTriangle: Boolean): Unit = {
+    val vertexBaseAddresses = Seq(nextVertexBaseAddress, nextVertexBaseAddress + 15, nextVertexBaseAddress + 30)
+    nextVertexBaseAddress += 45
 
-    // Tile constants
-    val xPixelStep = 2.0f / fbWidth.toFloat
-    val yPixelStep = 2.0f / fbHeight.toFloat
-    val bbLeft = ((tileLeft.toFloat / fbWidth.toFloat) - 0.5f) * 2.0f
-    val bbTop = (0.5f - (tileTop.toFloat / fbHeight.toFloat)) * 2.0f
-
-    // Set up depth interpolation coefficients
-    val invW0 = 1.0f / vertices(0)._3
-    val invW1 = 1.0f / vertices(1)._3
-    val invW2 = 1.0f / vertices(2)._3
-    dut.io.rasterizerParams.bits.depthCoeffs.invW0.poke(invW0)
-    dut.io.rasterizerParams.bits.depthCoeffs.invW1.poke(invW1)
-    dut.io.rasterizerParams.bits.depthCoeffs.invdW1.poke(invW1 - invW0)
-    dut.io.rasterizerParams.bits.depthCoeffs.invW2.poke(invW2)
-    dut.io.rasterizerParams.bits.depthCoeffs.invdW2.poke(invW2 - invW0)
-
-    // Set up varying interpolation coefficients
-    dut.io.writeVaryingCoeff.valid.poke(true)
-    dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
-    for (i <- varyings(0).indices) {
-      dut.io.writeVaryingCoeff.bits.index.poke(i * 3)
-      dut.io.writeVaryingCoeff.bits.value.poke(varyings(1)(i) - varyings(0)(i)) // dQ1
-      dut.clock.step()
-      dut.io.writeVaryingCoeff.bits.index.poke(i * 3 + 1)
-      dut.io.writeVaryingCoeff.bits.value.poke(varyings(2)(i) - varyings(0)(i)) // dQ2
-      dut.clock.step()
-      dut.io.writeVaryingCoeff.bits.index.poke(i * 3 + 2)
-      dut.io.writeVaryingCoeff.bits.value.poke(varyings(0)(i)) // Q0
+    def writeParameter(addr: Int, value: Long): Unit = {
+      dut.io.writeVertexParam.valid.poke(true.B)
+      dut.io.writeVertexParam.bits.addr.poke(addr)
+      dut.io.writeVertexParam.bits.value.poke(value)
       dut.clock.step()
     }
 
-    dut.io.writeVaryingCoeff.valid.poke(false)
-
-    // Set up rasterizer coefficients
-    dut.io.rasterizerParams.valid.poke(true)
-    dut.io.rasterizerParams.bits.offset.poke(tileLeft, tileTop)
-    dut.io.rasterizerParams.bits.triangleId.poke(triangleId)
-    dut.io.rasterizerParams.bits.lastTriangle.poke(lastTriangle)
-
-    dut.io.rasterizerParams.bits.boundingBox.left.poke(tileLeft)
-    dut.io.rasterizerParams.bits.boundingBox.top.poke(tileTop)
-    dut.io.rasterizerParams.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
-    dut.io.rasterizerParams.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
-
-    val rawParams = new Array[(Float, Float, Float)](3)
-    var area2 = 0.0f
-    for (edge <- 0 until 3) {
-      val (startX, startY, _) = vertices(edge)
-      val (endX, endY, _) = vertices((edge + 1) % 3)
-      val dx = startY - endY
-      val dy = endX - startX
-      val iv = ((bbLeft - startX) * dx + (bbTop - startY) * dy)
-      area2 += iv
-      rawParams(edge) = (dx * xPixelStep, -dy * yPixelStep, iv)
+    for (((x, y, w), vertex) <- vertices.zipWithIndex) {
+      val screenX = (((x + 1.0f) * fbWidth * 0.5f).toInt) & 0xffff
+      val screenY = (((1.0f - y) * fbHeight * 0.5f).toInt) & 0xffff
+      val baseAddr = vertexBaseAddresses(vertex)
+      writeParameter(baseAddr, (screenX << 16) | screenY)
+      writeParameter(baseAddr + 1, java.lang.Float.floatToRawIntBits(1.0f / w) & 0xffffffffL)
+      for ((value, index) <- varyings(vertex).zipWithIndex) {
+        writeParameter(baseAddr + index + 2,
+          java.lang.Float.floatToRawIntBits(value) & 0xffffffffL)
+      }
     }
+    dut.io.writeVertexParam.valid.poke(false.B)
 
-    val normFactor = 1.0f / area2
-
-    for (edge <- rawParams.indices) {
-      val (xs, ys, iv) = rawParams(edge)
-      val normXs = (xs * normFactor * 0xffffffL).toInt
-      val normYs = (ys * normFactor * 0xffffffL).toInt
-      val isTopLeft = (normXs > 0) || (normXs == 0 && normYs > 0)
-      val normIv = (iv * normFactor * 0xffffffL).toInt - (if (isTopLeft) 0 else 1)
-
-      dut.io.rasterizerParams.bits.edges(edge).xStep.poke(normXs.S)
-      dut.io.rasterizerParams.bits.edges(edge).yStep.poke(normYs.S)
-      dut.io.rasterizerParams.bits.edges(edge).initialValue.poke(normIv.S)
+    dut.io.startTriangle.bits.offset.poke(tileLeft, tileTop)
+    dut.io.startTriangle.bits.lastTriangle.poke(lastTriangle.B)
+    dut.io.startTriangle.bits.numVaryings.poke(varyings.head.length)
+    dut.io.startTriangle.bits.boundingBox.left.poke(tileLeft)
+    dut.io.startTriangle.bits.boundingBox.top.poke(tileTop)
+    dut.io.startTriangle.bits.boundingBox.right.poke(tileLeft + cfg.tileSizePixels - 2)
+    dut.io.startTriangle.bits.boundingBox.bottom.poke(tileTop + cfg.tileSizePixels - 2)
+    for (vertex <- 0 until 3) {
+      dut.io.startTriangle.bits.vertexBaseAddr(vertex).poke(vertexBaseAddresses(vertex))
     }
-
-    while (dut.io.rasterizerParams.ready.peek().litValue.toLong == 0) {
+    dut.io.startTriangle.valid.poke(true.B)
+    while (!dut.io.startTriangle.ready.peek().litToBoolean) {
       dut.clock.step()
     }
-
     dut.clock.step()
-    dut.io.rasterizerParams.valid.poke(false)
-
-    dut.clock.step() // Wait for rasterizer to start to complete is false.
+    dut.io.startTriangle.valid.poke(false.B)
   }
 
   // XXX placeholder until we implement proper memory interface for TileBuffer
