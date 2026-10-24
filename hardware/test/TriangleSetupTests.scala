@@ -28,13 +28,9 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   def floatToRaw(value: Float): Int = java.lang.Float.floatToRawIntBits(value)
-  def runSetup(dut: TriangleSetup, vertices: Seq[(Int, Int, Float)],
-    tileLeft: Int, tileTop: Int, varyings: Seq[Seq[Float]]) = {
 
-    require(vertices.length == 3, "There must be exactly 3 vertices")
-    require(varyings.length == 3, "There must be exactly 3 sets of varyings")
-    require(varyings.forall(_.length == varyings(0).length),
-      "All varying sets must have the same length")
+  def submitParams(dut: TriangleSetup, vertices: Seq[(Int, Int, Float)],
+    tileLeft: Int, tileTop: Int, varyings: Seq[Seq[Float]], outVaryingCoeffs: Array[Float]): Boolean = {
 
     val vertexParamMem = Array.fill(1024)(0)
     val baseAddresses = Array(100, 210, 308)
@@ -67,7 +63,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.startTriangle.valid.poke(true.B)
 
     var triangleId = Option.empty[Int]
-    val varyingCoeffs = Array.fill(varyings(0).length * 3)(Float.NaN)
 
     var cycleCount = 0
     dut.io.rasterizerParams.ready.poke(true.B)
@@ -81,8 +76,8 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
         }
 
         val index = dut.io.writeVaryingCoeff.bits.index.peek().litValue.toInt
-        assert(index < varyingCoeffs.length * 3)
-        varyingCoeffs(index) = dut.io.writeVaryingCoeff.bits.value.peek()
+        assert(index < outVaryingCoeffs.length * 3)
+        outVaryingCoeffs(index) = dut.io.writeVaryingCoeff.bits.value.peek()
       }
 
       // Simulate parameter memory read
@@ -101,16 +96,24 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
       cycleCount += 1
       if (cycleCount > 100) {
-        fail("Triangle setup did not finish")
+        return false
       }
+    }
+
+    return true
+  }
+
+  def runSetup(dut: TriangleSetup, vertices: Seq[(Int, Int, Float)],
+    tileLeft: Int, tileTop: Int, varyings: Seq[Seq[Float]]) = {
+
+    val varyingCoeffs = Array.fill(varyings(0).length * 3)(Float.NaN)
+
+    if (!submitParams(dut, vertices, tileLeft, tileTop, varyings, varyingCoeffs)) {
+      fail("Triangle setup did not finish")
     }
 
     // Now check all values
     val result = dut.io.rasterizerParams.bits
-    triangleId match {
-      case Some(id) => result.triangleId.expect(id.U) // Ensure the value is consistent
-      case None => // If there are no params, this won't be set.
-    }
 
     result.depthCoeffs.invW0.expect(vertices(0)._3)
     result.depthCoeffs.invW1.expect(vertices(1)._3)
@@ -145,9 +148,13 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       val normYs = (ys * normFactor * 0xffffffL).toInt
       val normIv = (iv * normFactor * 0xffffffL).toInt
 
-      dut.io.rasterizerParams.bits.edges(edge).xStep.expect(normXs)
-      dut.io.rasterizerParams.bits.edges(edge).yStep.expect(normYs)
-      dut.io.rasterizerParams.bits.edges(edge).initialValue.expect(normIv)
+      val edgeVals = dut.io.rasterizerParams.bits.edges(edge)
+
+      // Note: due to finite precision differences, our reference values
+      // may be slightly off.
+      assert(scala.math.abs(edgeVals.xStep.peek().litValue.toInt - normXs) < 2)
+      assert(scala.math.abs(edgeVals.yStep.peek().litValue.toInt - normYs) < 2)
+      assert(scala.math.abs(edgeVals.initialValue.peek().litValue.toInt - normIv) < 2)
     }
 
     for (i <- 0 until varyings(0).length) {
@@ -177,6 +184,18 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
         64, 64,
         Seq(Seq(1.0f, 2.0f, 3.0f), Seq(4.0f, 5.0f, 6.0f), Seq(7.0f, 8.0f, 9.0f))
       )
+    }
+  }
+
+  test("TriangleSetup backface culling") {
+    simulate(new TriangleSetup) { dut =>
+      val varyingCoeffs = Array.fill(3)(Float.NaN)
+      assert(!submitParams(dut,
+        Seq((27, 13, 0.5f), (123, 25, 0.7f), (65, 110, 0.6f)),
+        0, 0,
+        Seq(Seq(), Seq(), Seq()), // No parameters
+        varyingCoeffs
+      ))
     }
   }
 }

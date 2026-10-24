@@ -230,11 +230,15 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(2).initialValue := determinant
       area2 := area2 + determinant
 
-      // XXX perform backface/sliver culling if area2 <= some small value.
-      // Kick off reciprocal calculation for area2 to normalize
+      when (area2 <= 0.S) {
+        // Backface/edge-on culling
+        state := 0.U
+      }.otherwise {
+        // XXX Kick off reciprocal calculation for area2 to normalize
 
-      readParameterMem(2.U, 1.U) // Read invW2
-      state := 6.U
+        readParameterMem(2.U, 1.U) // Read invW2
+        state := 6.U
+      }
     }
 
     is (6.U) {
