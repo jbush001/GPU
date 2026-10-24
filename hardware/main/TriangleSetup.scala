@@ -19,17 +19,18 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-class SetupParams(implicit cfg: GpuConfig) extends Bundle {
+class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val offset = Point2D()
   val lastTriangle = Bool()
-  val vertexBaseAddr = Vec(3, UInt(cfg.vertexParamIndexBits.W))
+  val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vertexParamIndexBits.W))
   val numVaryings = UInt(5.W)
   val boundingBox = BoundingBox()
 }
 
 /**
-  * Set up edge functions and other coefficints.
-  * Parameter memory format:
+  * Compute edge functions and other coefficients for rasterization
+  * and interpolation.
+  * Parameter memory format (for each vertex)
   *  0 - x, y (16 bit point each)
   *  1 - 1.0 / w (float)
   *  2 - varying 0...
@@ -38,7 +39,7 @@ class SetupParams(implicit cfg: GpuConfig) extends Bundle {
   */
 class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val startTriangle = Flipped(Decoupled(new SetupParams))
+    val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
 
     // To VertexParameterMem
     val paramReadAddr = Valid(UInt(cfg.vertexParamIndexBits.W))
@@ -70,7 +71,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.rasterizerParams.bits := rasterizerParamsReg
 
   val state = RegInit(0.U(5.W))
-  val setupParamsReg = Reg(new SetupParams)
+  val setupParamsReg = Reg(new TriangleSetupParams)
 
   // Varying Pipeline Valid Signals
   val varyingStage1Valid = RegInit(false.B)

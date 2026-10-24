@@ -20,6 +20,7 @@ import chisel3.util._
 
 object Consts {
   final val triangleEdges = 3
+  final val triangleVertices = 3
   final val pixelsPerQuad = 4
 }
 

@@ -28,7 +28,7 @@ import shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val startTriangle = Flipped(Decoupled(new SetupParams))
+    val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
     val writeVertexParam = Flipped(Valid(new Bundle {
       val addr = UInt(cfg.vertexParamIndexBits.W)
       val value = UInt(32.W)
