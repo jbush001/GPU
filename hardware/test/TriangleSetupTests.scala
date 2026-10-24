@@ -34,10 +34,11 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     val vertexParamMem = Array.fill(1024)(0)
     val baseAddresses = Array(100, 210, 308)
+    dut.io.startTriangle.ready.expect(true)
     dut.io.startTriangle.bits.vertexBaseAddr(0).poke(baseAddresses(0))
     dut.io.startTriangle.bits.vertexBaseAddr(1).poke(baseAddresses(1))
     dut.io.startTriangle.bits.vertexBaseAddr(2).poke(baseAddresses(2))
-    dut.io.startTriangle.bits.lastTriangle.poke(true.B)
+    dut.io.startTriangle.bits.lastTriangle.poke(true)
 
     // Vertex memory layout
     //  0 - x, y (12.4 fixed point each)
@@ -190,12 +191,18 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
   test("TriangleSetup backface culling") {
     simulate(new TriangleSetup) { dut =>
       val varyingCoeffs = Array.fill(3)(Float.NaN)
-      assert(!submitParams(dut,
-        Seq((27, 13, 0.5f), (123, 25, 0.7f), (65, 110, 0.6f)),
-        0, 0,
-        Seq(Seq(), Seq(), Seq()), // No parameters
-        varyingCoeffs
-      ))
+
+      // Run this multiple times to ensure the triangle ID is freed when
+      // the triangle is culled.
+      for (_ <- 0 until cfg.maxConcurrentTriangles + 1) {
+        dut.io.startTriangle.ready.expect(true)
+        assert(!submitParams(dut,
+          Seq((27, 13, 0.5f), (123, 25, 0.7f), (65, 110, 0.6f)),
+          0, 0,
+          Seq(Seq(), Seq(), Seq()), // No parameters
+          varyingCoeffs
+        ))
+      }
     }
   }
 }

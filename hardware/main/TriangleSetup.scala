@@ -34,9 +34,7 @@ class SetupParams(implicit cfg: GpuConfig) extends Bundle {
   *  1 - 1.0 / w (float)
   *  2 - varying 0...
   *
-  *  XXX WIP, incomplete
-  *  - Does not normalize edge equations
-  *  - Does not implement top-left rule for pixel hits.
+  *  @todo Does not implement top-left rule for pixel hits.
   */
 class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -232,6 +230,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
       when (area2 <= 0.S) {
         // Backface/edge-on culling
+        triangleIdFree(rasterizerParamsReg.triangleId) := true.B
         state := 0.U
       }.otherwise {
         // XXX Kick off reciprocal calculation for area2 to normalize
