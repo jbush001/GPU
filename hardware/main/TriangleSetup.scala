@@ -99,6 +99,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
+  val recip = Module(new FixedPointReciprocal) // 3 cycles of latency
+
   val a = setupParamsReg.boundingBox.top
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
@@ -115,6 +117,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val d1Reg = RegNext(yStep)
 
   val area2 = RegInit(0.S(32.W))
+  recip.io.in := area2 + determinant
 
   /**
    * Initiate read for e value from the parameter memory.
@@ -229,12 +232,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(2).initialValue := determinant
       area2 := area2 + determinant
 
-      when (area2 <= 0.S) {
+      when (area2 + determinant <= 0.S) {
         // Backface/edge-on culling
         triangleIdFree(rasterizerParamsReg.triangleId) := true.B
         state := 0.U
       }.otherwise {
-        // XXX Kick off reciprocal calculation for area2 to normalize
+        // XXX this is where area2 gets enqueued in the reciprocal pipeline
 
         readParameterMem(2.U, 1.U) // Read invW2
         state := 6.U
@@ -259,8 +262,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (8.U) {
-      // XXX placeholder, this is really inefficient, will replace with a pipeline.
-      val multiplier = 0xffffff000000L.S / area2
+      // Pull the result that was enqueued in the reciprocal pipeline in cycle 5
+      val multiplier = recip.io.result
       for (edge <- 0 until 3) {
         rasterizerParamsReg.edges(edge).xStep := normalizeAndRound(rasterizerParamsReg.edges(edge).xStep, multiplier)
         rasterizerParamsReg.edges(edge).yStep := normalizeAndRound(rasterizerParamsReg.edges(edge).yStep, multiplier)
@@ -355,4 +358,15 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.writeVaryingCoeff.bits.triangleId := rasterizerParamsReg.triangleId
   io.writeVaryingCoeff.bits.index := ShiftRegister(writeVaryingIndex, 4)
   io.writeVaryingCoeff.bits.value := fpAdd.io.sum
+}
+
+// XXX this is a stub.
+// 3 cycles of latency
+class FixedPointReciprocal extends Module {
+  val io = IO(new Bundle {
+    val in = Input(SInt(32.W))
+    val result = Output(SInt(48.W))
+  })
+
+  io.result := ShiftRegister(0xffffff000000L.S / io.in, 3)
 }
