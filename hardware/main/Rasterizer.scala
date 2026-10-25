@@ -156,8 +156,11 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   nextQuad.lastQuad := false.B
   nextQuad.lastTriangle := false.B
   for ((edges, pixel) <- pixelEdges.zipWithIndex) {
-    nextQuad.lambda(pixel)(0) := Float32.fromFixedPoint(edges(2), 24)
-    nextQuad.lambda(pixel)(1) := Float32.fromFixedPoint(edges(0), 24)
+    // Note:inside the triangle, the edge function values will always fit
+    // within 32 bits, we truncate here to fit within the floating point
+    // representation.
+    nextQuad.lambda(pixel)(0) := Float32.fromFixedPoint(edges(2)(31, 0).asSInt, 24)
+    nextQuad.lambda(pixel)(1) := Float32.fromFixedPoint(edges(0)(31, 0).asSInt, 24)
   }
 
   val nextQuadValid = WireInit(false.B)
