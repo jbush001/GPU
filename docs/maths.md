@@ -2,7 +2,8 @@
 
 ## Triangle setup, rasterization, pixel processing
 
-We compute pixel coverage using the classic Pineda rasterization algorithm[^1].  For each of three edges in the triangle in screen space, we
+We compute pixel coverage using the classic Pineda rasterization algorithm[^1].
+For each of three edges in the triangle in screen space, we
 assume $(X, Y)$ represents the start of the edge (in winding order)
 and $(X + dX, Y + dY)$ is the end point. From there, the edge equation
 for any arbitrary point on the plane $(x,y)$ using the cross product is:
@@ -39,9 +40,10 @@ p_{(\lambda_0, \lambda_1, \lambda_2)} = P_0\lambda_0 + P_1\lambda_1 + P_2\lambda
 ```
 
 This allows us to linearly interpolate any value across the triangle in screen
-space, but we need to do this in a *perspective correct* manner (meaning things get closer together as they are farther from the viewer), which is
-described in [^3]. The full formula for perspective correct interpolated value is
-(note, we use W here, which is the pre-divide clip space depth)
+space, but we need to do this in a *perspective correct* manner (meaning things get
+closer together as they are farther from the viewer), which is described in [^3].
+The full formula for perspective correct interpolated value is (note, we use W here,
+which is the pre-divide clip space depth)
 
 ```math
 p'_{(\lambda_0, \lambda_1, \lambda_2)} = \frac{\lambda_0 P_0 W_0^{-1} + \lambda_1 P_1 W_1^{-1} + \lambda_2 P_2 W_2^{-1}}{\lambda_0 W_0^{-1} + \lambda_1 W_1^{-1} + \lambda_2 W_2^{-1}}
@@ -72,7 +74,8 @@ p_{pixel} = \lambda_0'P_0 + \lambda_1'P_1 + \lambda_2'P_2
 
 We can further optimize the original linear interpolation. Before talking about
 how this can be applied to perspective correct rendering, let's focus on the
-linear form. Since the three normalized $\lambda$ values add up to 1, we can simplify the calculation, given:
+linear form. Since the three normalized $\lambda$ values add up to 1, we can
+simplify the calculation, given:
 
 ```math
 \lambda_0 + \lambda_1 + \lambda_2  = 1
@@ -104,7 +107,9 @@ Resulting in this formula:
 q_{(\lambda_1, \lambda_2)} = Q_0 + \lambda_1 dQ_1 + \lambda_2 dQ_2
 ```
 
-In a perspective-correct hardware pipeline, we apply this subtraction optimization to the screen-space interpolation of both the depth reciprocal ($\frac{1}{W}$) and the attributes.
+In a perspective-correct hardware pipeline, we apply this subtraction
+optimization to the screen-space interpolation of both the depth reciprocal
+($\frac{1}{W}$) and the attributes.
 
 Putting this all together:
 
