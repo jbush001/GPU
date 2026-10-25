@@ -291,10 +291,6 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   }
 
   // Varying setup pipeline
-  // Default values
-  io.writeVaryingCoeff.valid := false.B
-  io.writeVaryingCoeff.bits  := DontCare
-
   val c0 = Reg(Float32())
 
   // Pipelined Metadata Registers
@@ -360,7 +356,9 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.writeVaryingCoeff.bits.value := fpAdd.io.sum
 }
 
-// XXX this is a stub.
+// XXX this is a stub. Doing a division like this in one stage is going to
+// have poor latency and area. This will be implemented as a pipelined
+// implementation with estimate/ Newton-Raphsonrefinement.
 // 3 cycles of latency
 class FixedPointReciprocal(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

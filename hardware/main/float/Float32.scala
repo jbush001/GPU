@@ -26,12 +26,11 @@ import chisel3.util._
   *
   * This and associated hardware blocks are optimized for area and latency,
   * at the cost of strict compliance. Specifically:
-  * - Input subnormals are treated as zero (denormals-are-zero/DAZ).
-  *   However, operational stages do not guarantee a clean flush-to-zero
-  *   (FTZ) on output.
-  * - All arithmetic operations utilize truncation (round-towards-zero/RZ).
+  * - Input denormals are treated as zero, however, operational stages do not
+  *   guarantee flush to zero on output.
+  * - All arithmetic operations utilize truncation (round towards zero).
   * - NaN payloads are not propagated. The bit patterns of the significand
-  *   field for an output NaN are undefined except that the field is
+  *   field for an result NaN are undefined except that the field is
   *   guaranteed to be non-zero. All NaNs are quiet (non-signaling).
   */
 class Float32 extends Bundle {

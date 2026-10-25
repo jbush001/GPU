@@ -56,7 +56,7 @@ class Color extends Bundle {
     val roundConst = (1 << (shift - 1)).U
 
     val rounded = (this.channels(chidx) +& roundConst) >> shift
-    val clamped = Mux(rounded > 255.U, 255.U, rounded)
+    val clamped = rounded.min(255.U)
 
     clamped(7, 0)
   }

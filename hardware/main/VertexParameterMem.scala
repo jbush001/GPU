@@ -19,6 +19,10 @@ package gpu
 import chisel3._
 import chisel3.util._
 
+/**
+  * Stores raw and shaded vertex parameters, acting as a communication
+  * channel between vertex processing stages and the [[TriangleSetup]].
+  */
 class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val writeParam = Flipped(Valid(new Bundle{
@@ -36,6 +40,6 @@ class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
     mem.write(io.writeParam.bits.addr, io.writeParam.bits.value)
   }
 
-  io.readValue := mem.read(io.readAddr.bits, true.B)
+  io.readValue := mem.read(io.readAddr.bits, io.readAddr.valid)
 }
 
