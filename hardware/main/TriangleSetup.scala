@@ -116,7 +116,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val d0Reg = RegNext(xStep)
   val d1Reg = RegNext(yStep)
 
-  val area2 = RegInit(0.S(32.W))
+  val area2 = RegInit(0.S(cfg.edgeFunctionBits.W))
   recip.io.in := area2 + determinant
 
   /**
@@ -362,9 +362,9 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
 // XXX this is a stub.
 // 3 cycles of latency
-class FixedPointReciprocal extends Module {
+class FixedPointReciprocal(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val in = Input(SInt(32.W))
+    val in = Input(SInt(cfg.edgeFunctionBits.W))
     val result = Output(SInt(48.W))
   })
 
