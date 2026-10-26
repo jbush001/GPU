@@ -31,16 +31,16 @@ can subsequently dispatch work to other fixed function units.
 Instructions use fixed width, 32-bit instructions, encoded as follows.
 
 ```
-              31      27         21 20         14 13          7 6           0
-             +-------+-------------+-------------+-------------+-------------+
-R: Arith     |       |   rs2 (7)   |    rs1 (7)  |    rd (7)   |  opcode (7) |
-             +-------+-------------+-+-----------+-------------+-------------+
-B: Branch    |       offset[18:7]    |  rs1 (6)  | offset[6:0] |  opcode (7) |
-             +-----------------------+-----------+-------------+-------------+
+              31             23 22           15 14            7 6           0
+             +-+---------------+---------------+---------------+-------------+
+R: Arith     | |     rs2 (8)   |     rs1 (8)   |    rd (8)     |  opcode (7) |
+             +-+---------------+-+-------------+---------------+-------------+
+B: Branch    |    offset[17:8]   |    rs1 (7)  |   offset[7:0] |  opcode (7) |
+             +-------------------+-------------+---------------+-------------+
 X: Inherent  |                    unused (25)                  |  opcode (7) |
-             +-------------------------------+---+-------------+-------------+
-K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
-             +-------------------------------+---+-------------+-------------+
+             +-------------------------------+-+---------------+-------------+
+K: Constant  |            value (16)         | |    rd (8)     |  opcode (7) |
+             +-------------------------------+-+---------------+-------------+
 ```
 
 `opcode`
@@ -122,38 +122,36 @@ undefined. Attemping to write a read-only register will have no effect.
 
 |  Index  | Meaning                                           | Access |
 |---------|---------------------------------------------------|--------|
-|  0-31   | Scalar general purpose registers                  |  r/w   |
-|   32    | Exec mask                                         |  r/w   |
-|   53    | Constant 0                                        |   r    |
-|   54    | Constant 1                                        |   r    |
-|   55    | Constant -1                                       |   r    |
-|   56    | Constant 2                                        |   r    |
-|   57    | Constant 4                                        |   r    |
-|   58    | Constant 0.5f                                     |   r    |
-|   59    | Constant -0.5f                                    |   r    |
-|   60    | Constant 1.0f                                     |   r    |
-|   61    | Constant -1.0f                                    |   r    |
-|   62    | Constant 2.0f                                     |   r    |
-|   63    | Constant -2.0f                                    |   r    |
-| 64-95   | Vector general purpose registers                  |  r/w   |
-|   96    | Lambda0 (barycentric coordinate)                  |   r    |
-|   97    | Lambda1 (barycentric coordinate)                  |   r    |
-|   98    | Read varying coefficient<sup>1</sup>              |   r    |
-|   99    | Texture fetch red <sup>2</sup>                    |   r    |
-|  100    | Texture fetch green                               |   r    |
-|  101    | Texture fetch blue                                |   r    |
-|  102    | Texture fetch alpha                               |   r    |
-|  103    | Reserved                                          |   r    |
-|  104    | Output red<sup>3</sup>                            |   w    |
-|  105    | Output green                                      |   w    |
-|  106    | Output blue                                       |   w    |
-|  107    | Output alpha                                      |   w    |
-|  108    | Texture fetch S coordinate                        |   w    |
-|  109    | Texture fetch T coordinate<sup>4</sup>            |   w    |
-|  110    | Reserved                                          |   w    |
-|  112    | Lane ID                                           |   r    |
+|  0-63   | Scalar general purpose registers                  |  r/w   |
+|   64    | Exec mask                                         |  r/w   |
+|   65    | Constant 0                                        |   r    |
+|   66    | Constant 1                                        |   r    |
+|   67    | Constant -1                                       |   r    |
+|   68    | Constant 2                                        |   r    |
+|   69    | Constant 4                                        |   r    |
+|   70    | Constant 0.5f                                     |   r    |
+|   71    | Constant -0.5f                                    |   r    |
+|   72    | Constant 1.0f                                     |   r    |
+|   73    | Constant -1.0f                                    |   r    |
+|   74    | Constant 2.0f                                     |   r    |
+|   75    | Constant -2.0f                                    |   r    |
+| 128-191 | Vector general purpose registers                  |  r/w   |
+|   192   | Lambda0 (barycentric coordinate)                  |   r    |
+|   193   | Lambda1 (barycentric coordinate)                  |   r    |
+|   194   | Read varying coefficient<sup>1</sup>              |   r    |
+|   195   | Texture fetch red <sup>2</sup>                    |   r    |
+|   196   | Texture fetch green                               |   r    |
+|   197   | Texture fetch blue                                |   r    |
+|   198   | Texture fetch alpha                               |   r    |
+|   208   | Output red<sup>3</sup>                            |   w    |
+|   209   | Output green                                      |   w    |
+|   210   | Output blue                                       |   w    |
+|   211   | Output alpha                                      |   w    |
+|   212   | Texture fetch S coordinate                        |   w    |
+|   213   | Texture fetch T coordinate<sup>4</sup>            |   w    |
+|   224   | Lane ID                                           |   r    |
 
-*Note that register 96-103 can only be used in the first register operand*
+*Note that register 192-198 can only be used in the first register operand*
 
 1. This will read varying coefficients in order and will increment to
    the next varying automatically as a side effect.

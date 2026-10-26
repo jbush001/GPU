@@ -23,16 +23,16 @@ import scala.annotation.nowarn
 
 //  Instruction formats:
 //
-//               31      27         21 20         14 13          7 6           0
-//              +-------+-------------+-------------+-------------+-------------+
-// R: Arith     |       |   rs2 (7)   |    rs1 (7)  |    rd (7)   |  opcode (7) |
-//              +-------+-------------+-+-----------+-------------+-------------+
-// B: Branch    |       offset[18:7]    |  rs1 (6)  | offset[6:0] |  opcode (7) |
-//              +-----------------------+-----------+-------------+-------------+
+//               31             23 22           15 14            7 6           0
+//              +-+---------------+---------------+---------------+-------------+
+// R: Arith     | |     rs2 (8)   |     rs1 (8)   |    rd (8)     |  opcode (7) |
+//              +-+---------------+-+-------------+---------------+-------------+
+// B: Branch    |    offset[17:8]   |    rs1 (7)  |   offset[7:0] |  opcode (7) |
+//              +-------------------+-------------+---------------+-------------+
 // X: Inherent  |                    unused (25)                  |  opcode (7) |
-//              +-------------------------------+---+-------------+-------------+
-// K: Constant  |            value (16)         |   |    rd (7)   |  opcode (7) |
-//              +-------------------------------+---+-------------+-------------+
+//              +-------------------------------+-+---------------+-------------+
+// K: Constant  |            value (16)         | |    rd (8)     |  opcode (7) |
+//              +-------------------------------+-+---------------+-------------+
 
 object OpCode extends ChiselEnum {
   val Halt = Value(0.U)
@@ -75,33 +75,38 @@ object OpCode extends ChiselEnum {
 }
 
 object SpecialReg {
-  val ExecMask        = 32
+  val ExecMask        = 64
 
-  val Const0          = 53
-  val Const1          = 54
-  val ConstNeg1       = 55
-  val Const2          = 56
-  val Const4          = 57
-  val Const0_5f       = 58
-  val ConstNeg0_5f    = 59
-  val Const1_0f       = 60
-  val ConstNeg1_0f    = 61
-  val Const2_0f       = 62
-  val ConstNeg2_0f    = 63
-  val Lambda0         = 96
-  val Lambda1         = 97
-  val Varying         = 98
-  val TexelR          = 99
-  val TexelG          = 100
-  val TexelB          = 101
-  val TexelA          = 102
-  val OutputR         = 104
-  val OutputG         = 105
-  val OutputB         = 106
-  val OutputA         = 107
-  val TexelS          = 108
-  val TexelT          = 109
-  val LaneId          = 112
+  val Const0          = 65
+  val Const1          = 66
+  val ConstNeg1       = 67
+  val Const2          = 68
+  val Const4          = 69
+  val Const0_5f       = 70
+  val ConstNeg0_5f    = 71
+  val Const1_0f       = 72
+  val ConstNeg1_0f    = 73
+  val Const2_0f       = 74
+  val ConstNeg2_0f    = 75
+
+  // There are 16 slots reserved for special register reads
+  val Lambda0         = 192
+  val Lambda1         = 193
+  val Varying         = 194
+  val TexelR          = 195
+  val TexelG          = 196
+  val TexelB          = 197
+  val TexelA          = 198
+
+  // 16 slots reserved for special register writes
+  val OutputR         = 208
+  val OutputG         = 209
+  val OutputB         = 210
+  val OutputA         = 211
+  val TexelS          = 212
+  val TexelT          = 213
+
+  val LaneId          = 224
 }
 
 /**
@@ -113,14 +118,14 @@ class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val jobId = UInt(cfg.shaderJobIdBits.W)
   val opcode = OpCode()
   val hasWriteback = Bool()
-  val destReg = UInt(7.W)
-  val immediateValue = UInt(19.W)
+  val destReg = UInt(8.W)
+  val immediateValue = UInt(18.W)
 }
 
 class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val thread = UInt(log2Up(cfg.shaderThreads).W)
   val jobId = UInt(cfg.shaderJobIdBits.W)
-  val destReg = UInt(7.W)
+  val destReg = UInt(8.W)
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
 }
 
@@ -152,18 +157,20 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
     val regRead = Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
-      val addr = UInt(3.W)
+      val addr = UInt(4.W)
     })
 
     val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
 
     val regWrite = Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
-      val addr = UInt(3.W)
+      val addr = UInt(4.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     })
   })
 
+  // Note: we only allocate 32 general purpose reigsters, although there are
+  // 64 slots reserved.
   val numRegisters = 32
 
   val scalarRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
@@ -191,7 +198,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   decodedMetadata.pc := io.fetchedInstruction.bits.pc
   decodedMetadata.thread := io.fetchedInstruction.bits.thread
   decodedMetadata.jobId := io.fetchedInstruction.bits.jobId
-  decodedMetadata.destReg := io.fetchedInstruction.bits.instruction(13, 7)
+  decodedMetadata.destReg := io.fetchedInstruction.bits.instruction(14, 7)
 
   val decodeTable: Seq[(OpCode.Type, UInt)] = Seq(
     // Opcode         hasWriteback    hasReg1Op
@@ -250,11 +257,11 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   def broadcast(v: UInt): Vec[UInt] = VecInit.fill(cfg.shaderVectorLanes)(v)
 
   val operand1Reg = Mux(isLoadConst(decodedOpcode),
-    io.fetchedInstruction.bits.instruction(13, 7), // Dest reg is first operand for load const.
-    io.fetchedInstruction.bits.instruction(20, 14)
+    io.fetchedInstruction.bits.instruction(14, 7), // Dest reg is first operand for load const.
+    io.fetchedInstruction.bits.instruction(22, 15)
   )
 
-  val operand2Reg = io.fetchedInstruction.bits.instruction(27, 21)
+  val operand2Reg = io.fetchedInstruction.bits.instruction(30, 23)
 
   val scalarRead1 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand1Reg(4, 0)))
   val scalarRead2 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand2Reg(4, 0)))
@@ -273,21 +280,29 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val operand2RegStage2 = RegNext(operand2Reg)
   val validCycle2 = RegNext(io.fetchedInstruction.valid, init = false.B)
 
-  io.regRead.valid := operand1Reg(6, 3) === 12.U && io.fetchedInstruction.valid && hasReg1Op
-  io.regRead.bits.addr := operand1Reg(2, 0)
+  io.regRead.valid := operand1Reg(7, 4) === "b1100".U && io.fetchedInstruction.valid && hasReg1Op
+  io.regRead.bits.addr := operand1Reg(3, 0)
   io.regRead.bits.jobId := decodedMetadata.jobId
+
+  def isSpecialReadReg(regId: UInt): Bool = {
+    regId(7, 4) === "b1100".U
+  }
+
+  def isSpecialWriteReg(regId: UInt): Bool = {
+    regId(7, 4) === "b1101".U
+  }
 
   def resolveOperand(regId: UInt, scalarData: UInt, vectorData: Vec[UInt]): Vec[UInt] = {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
-    when (regId(6, 5) === 0.U) {
-      // 0-31: scalar general purpose registers
+    when (regId(7, 6) === 0.U) {
+      // 0-63: scalar general purpose registers
       result := broadcast(scalarData)
-    }.elsewhen (regId(6, 5) === 2.U) {
-      // 64-95: vector general purpose registers
+    }.elsewhen (regId(7, 6) === 2.U) {
+      // 128-192: vector general purpose registers
       result := vectorData
-    }.elsewhen (regId(6, 3) === 12.U) {
-      // 96-103: special purpose input registers
+    }.elsewhen (isSpecialReadReg(regId)) {
+      // 192-208: special purpose input registers
       result := io.regReadData.bits
     } .otherwise {
       result := DontCare  // Default
@@ -315,11 +330,11 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand1 := resolveOperand(operand1RegStage2, scalarRead1, vectorRead1)
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegStage2, scalarRead2, vectorRead2)
 
-  io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && operand1RegStage2(6, 3) === 12.U && hasReg1OpStage2
+  io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && isSpecialReadReg(operand1RegStage2) && hasReg1OpStage2
   io.ioWaitThread.bits := io.decodedInstruction.bits.meta.thread
 
   io.regWrite.bits.jobId := io.writeback.bits.jobId
-  io.regWrite.bits.addr := io.writeback.bits.destReg(2, 0)
+  io.regWrite.bits.addr := io.writeback.bits.destReg(3, 0)
   io.regWrite.bits.data := io.writeback.bits.value
   io.regWrite.valid := false.B
   when (io.writeback.valid) {
@@ -327,22 +342,22 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))
 
     if (cfg.traceEnable) {
-      when (destReg < 64.U) {
+      when (destReg < 128.U) {
         printf(cf"r$destReg%0d[th${io.writeback.bits.thread}%0d] = ${io.writeback.bits.value(0)}%0x\n")
       }.otherwise {
-        printf(cf"v${destReg - 64.U}%0d[th${io.writeback.bits.thread}%0d](${execMask(io.writeback.bits.thread)}%b) = ${io.writeback.bits.value}\n")
+        printf(cf"v${destReg - 128.U}%0d[th${io.writeback.bits.thread}%0d](${execMask(io.writeback.bits.thread)}%b) = ${io.writeback.bits.value}\n")
       }
     }
 
-    when (destReg(6, 5) === 0.U) {
-      // 0-31: scalar general purpose registers
+    when (destReg(7, 6) === 0.U) {
+      // 0-128: scalar general purpose registers
       scalarRegisters.write(gprIndex, io.writeback.bits.value(0))
-    }.elsewhen (destReg(6, 5) === 2.U) {
-      // 64-95: vector general purpose registers
+    }.elsewhen (destReg(7, 6) === 2.U) {
+      // 128-191: vector general purpose registers
       vectorRegisters.write(gprIndex,
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
-    }.elsewhen (destReg(6, 3) === 13.U) {
-      // 104-111: special purpose output registers
+    }.elsewhen (isSpecialWriteReg(destReg)) {
+      // 208-224: special purpose output registers
       io.regWrite.valid := true.B
     }.elsewhen (destReg === SpecialReg.ExecMask.U) {
       execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)

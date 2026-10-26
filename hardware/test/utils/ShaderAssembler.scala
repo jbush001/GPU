@@ -29,14 +29,14 @@ class ShaderAssembler {
   }
 
   def rInst(opcode: OpCode.Type, rd: Int, rs1: Int, rs2: Int): this.type = {
-    val instruction = opcode.litValue.toInt | (rd << 7) | (rs1 << 14) | (rs2 << 21)
+    val instruction = opcode.litValue.toInt | (rd << 7) | (rs1 << 15) | (rs2 << 23)
     addInstruction(instruction)
     this
   }
 
   def bInst(opcode: OpCode.Type, rs1: Int, label: String): this.type = {
     fixups += ((label, instructions.length))
-    val instruction = opcode.litValue.toInt | (rs1 << 14)
+    val instruction = opcode.litValue.toInt | (rs1 << 15)
     addInstruction(instruction)
     this
   }
@@ -48,7 +48,7 @@ class ShaderAssembler {
   }
 
   def move(rd: Int, rs: Int): this.type = {
-    rInst(OpCode.Or, rd, rs, 53) // Const zero
+    rInst(OpCode.Or, rd, rs, 65) // Const zero
     this
   }
 
@@ -70,8 +70,8 @@ class ShaderAssembler {
       val targetIndex = labels.getOrElse(label, throw new Exception(s"Label $label not found"))
       val offset = targetIndex - (index + 1)
       val instruction = instructions(index)
-      val newInstruction = instruction | (((offset & 0x7f) << 7)
-                                          | ((offset >> 7) << 20))
+      val newInstruction = instruction | (((offset & 0xff) << 7)
+                                          | ((offset >> 8) << 20))
       instructions(index) = newInstruction
     }
 

@@ -72,7 +72,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       */
     val shaderRegRead = Flipped(Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
-      val addr = UInt(3.W)
+      val addr = UInt(4.W)
     }))
 
     /** This is the response to shaderRegRead.
@@ -93,7 +93,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       */
     val shaderRegWrite = Flipped(Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
-      val addr = UInt(3.W)
+      val addr = UInt(4.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 

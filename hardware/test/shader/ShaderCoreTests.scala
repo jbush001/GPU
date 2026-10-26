@@ -96,8 +96,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     val program = new ShaderAssembler()
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .kInst(OpCode.LoadLo, 1, 0x5678)
-      .move(65, 112) // v2 = lane ID
-      .rInst(OpCode.Addi, 105, 1, 65) // output = r1 + v2
+      .move(128, SpecialReg.LaneId) // v2 = lane ID
+      .rInst(OpCode.Addi, SpecialReg.OutputG, 1, 128) // output = r1 + v2
       .halt()
 
     runShaderTest(program.finish(), 0) { dut =>
@@ -128,21 +128,21 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     // Euclidean algorithm to compute GCD of two numbers. This has
     // nested conditionals, and a loop.
     val program = new ShaderAssembler()
-      .move(64, 96) // v0 = a
-      .move(65, 97) // v1 = b
+      .move(128, 192) // v0 = a
+      .move(129, 193) // v1 = b
       .emitLabel("loop")
-      .rInst(OpCode.Setne, 0, 64, 65)   // if (a != b) {
+      .rInst(OpCode.Setne, 0, 128, 129)   // if (a != b) {
       .bInst(OpCode.Bz, 0, "done")
-      .rInst(OpCode.Setlti, 1, 64, 65)  //   if (a < b) {
-      .rInst(OpCode.And, 32, 1, 0)      //     exec mask = exec mask & (a < b)
-      .rInst(OpCode.Subi, 65, 65, 64)   //     b = b - a
-      .rInst(OpCode.Xor, 1, 1, 55)      //   } else {
-      .rInst(OpCode.And, 32, 1, 0)      //     exec mask = exec mask & (a >= b)
-      .rInst(OpCode.Subi, 64, 64, 65)   //     a = a - b
+      .rInst(OpCode.Setlti, 1, 128, 129)  //   if (a < b) {
+      .rInst(OpCode.And, SpecialReg.ExecMask, 1, 0)      //     exec mask = exec mask & (a < b)
+      .rInst(OpCode.Subi, 129, 129, 128)   //     b = b - a
+      .rInst(OpCode.Xor, 1, 1, SpecialReg.ConstNeg1)      //   } else {
+      .rInst(OpCode.And, SpecialReg.ExecMask, 1, 0)      //     exec mask = exec mask & (a >= b)
+      .rInst(OpCode.Subi, 128, 128, 129)   //     a = a - b
       .bInst(OpCode.Jump, 0, "loop")    //   }
       .emitLabel("done")                // }
-      .move(32, 55)                     // (Restore exec mask)
-      .move(105, 64)                    // result = a
+      .move(SpecialReg.ExecMask, SpecialReg.ConstNeg1)                     // (Restore exec mask)
+      .move(SpecialReg.OutputG, 128)                    // result = a
       .halt()
       .finish()
 
@@ -276,8 +276,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   test("ShaderCore register read wait") {
     val program = new ShaderAssembler()
       .kInst(OpCode.LoadHi, 1, 0x1234)
-      .move(64, 99)
-      .move(104, 64)
+      .move(128, SpecialReg.TexelR)
+      .move(SpecialReg.OutputR, 128)
       .halt()
 
     runShaderTest(program.finish(), 0) { dut =>

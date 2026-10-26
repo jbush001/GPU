@@ -81,21 +81,21 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
       val asm = new ShaderAssembler()
       asm
         // Compute s
-        .move(64, SpecialReg.Lambda0)
-        .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
-        .move(65, SpecialReg.Lambda1)
-        .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
-        .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
-        .rInst(OpCode.Addf, SpecialReg.TexelS, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+        .move(128, SpecialReg.Lambda0)
+        .rInst(OpCode.Mulf, 128, SpecialReg.Varying, 128) // dQ1 * lambda0
+        .move(129, SpecialReg.Lambda1)
+        .rInst(OpCode.Mulf, 129, SpecialReg.Varying, 129) // dQ2 * lambda1
+        .rInst(OpCode.Addf, 128, 128, 129) // (dQ1 * lambda0) + (dQ2 * lambda1)
+        .rInst(OpCode.Addf, SpecialReg.TexelS, SpecialReg.Varying, 128) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
         // Compute t
         // The last instruction will kick off the texture fetch
-        .move(64, SpecialReg.Lambda0)
-        .rInst(OpCode.Mulf, 64, SpecialReg.Varying, 64) // dQ1 * lambda0
-        .move(65, SpecialReg.Lambda1)
-        .rInst(OpCode.Mulf, 65, SpecialReg.Varying, 65) // dQ2 * lambda1
-        .rInst(OpCode.Addf, 64, 64, 65) // (dQ1 * lambda0) + (dQ2 * lambda1)
-        .rInst(OpCode.Addf, SpecialReg.TexelT, SpecialReg.Varying, 64) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
+        .move(128, SpecialReg.Lambda0)
+        .rInst(OpCode.Mulf, 128, SpecialReg.Varying, 128) // dQ1 * lambda0
+        .move(129, SpecialReg.Lambda1)
+        .rInst(OpCode.Mulf, 129, SpecialReg.Varying, 129) // dQ2 * lambda1
+        .rInst(OpCode.Addf, 128, 128, 129) // (dQ1 * lambda0) + (dQ2 * lambda1)
+        .rInst(OpCode.Addf, SpecialReg.TexelT, SpecialReg.Varying, 128) // (dQ1 * lambda0) + (dQ2 * lambda1) + Q0
 
         // Read back texture data, store in output registers
         .move(SpecialReg.OutputR, SpecialReg.TexelR) // red
