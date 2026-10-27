@@ -40,6 +40,7 @@ case class GpuConfig(
   triangleIdBits: Int = 2,
   maxVaryings: Int = 16,
   vertexParamIndexBits: Int = 16,
+  numRegisters: Int = 32,
 
   traceEnable: Boolean = false
 ) {
@@ -61,4 +62,6 @@ case class GpuConfig(
 
   val maxVaryingCoeffs = maxVaryings * 3 // 3 coefficients per varying
   val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
+
+  val gprIndexBits = log2Up(numRegisters)
 }

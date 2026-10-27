@@ -24,9 +24,9 @@ import org.scalatest.funsuite.AnyFunSuite
 class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  val EXEC_MASK = 64
+  val EXEC_MASK = 127
   val VECTOR_GPR_BASE = 128
-  val CONST_ZERO = 65
+  val CONST_ZERO = 116
 
   def rInst(opcode: OpCode.Type, rd: Int, rs1: Int, rs2: Int): Long = {
     opcode.litValue.toLong | (rd << 7) | (rs1 << 15) | (rs2 << 23)
@@ -232,17 +232,17 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       def intToUInt(ival: Int): UInt = (ival & 0xffffffffL).U
 
       val constants = Seq(
-        (65, intToUInt(0)), // constant 0
-        (66, intToUInt(1)),
-        (67, intToUInt(-1)),
-        (68, intToUInt(2)),
-        (69, intToUInt(4)),
-        (70, floatToUInt(0.5f)),
-        (71, floatToUInt(-0.5f)),
-        (72, floatToUInt(1.0f)),
-        (73, floatToUInt(-1.0f)),
-        (74, floatToUInt(2.0f)),
-        (75, floatToUInt(-2.0f))
+        (116, intToUInt(0)), // constant 0
+        (117, intToUInt(1)),
+        (118, intToUInt(-1)),
+        (119, intToUInt(2)),
+        (120, intToUInt(4)),
+        (121, floatToUInt(0.5f)),
+        (122, floatToUInt(-0.5f)),
+        (123, floatToUInt(1.0f)),
+        (124, floatToUInt(-1.0f)),
+        (125, floatToUInt(2.0f)),
+        (126, floatToUInt(-2.0f))
       )
 
       // Test as first operand
@@ -278,7 +278,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
 
-      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Subf, 0, 224, 0).U) // lane id
+      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Subf, 0, 223, 0).U) // lane id
       dut.clock.step(1)
 
       // Set these to zero to ensure unit uses values from first cycle.
@@ -357,10 +357,10 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
       dut.io.fetchedInstruction.bits.jobId.poke(15.U)
-      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 192, CONST_ZERO).U)
+      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 224, CONST_ZERO).U)
 
       dut.io.regRead.valid.expect(true.B)
-      dut.io.regRead.bits.addr.expect(0.U) // Corresponds to register 192
+      dut.io.regRead.bits.addr.expect(0.U) // Corresponds to register 224
       dut.io.regRead.bits.jobId.expect(15.U)
       dut.clock.step(1)
       dut.io.fetchedInstruction.valid.poke(false.B)
@@ -384,10 +384,10 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1.U)
       dut.io.fetchedInstruction.bits.jobId.poke(15.U)
-      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 192, CONST_ZERO).U)
+      dut.io.fetchedInstruction.bits.instruction.poke(rInst(OpCode.Or, 0, 224, CONST_ZERO).U)
 
       dut.io.regRead.valid.expect(true.B)
-      dut.io.regRead.bits.addr.expect(0.U) // Corresponds to register 192
+      dut.io.regRead.bits.addr.expect(0.U) // Corresponds to register 224
       dut.io.regRead.bits.jobId.expect(15.U)
       dut.clock.step(1)
 
@@ -408,13 +408,13 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
       dut.io.writeback.valid.poke(true.B)
       dut.io.writeback.bits.thread.poke(1.U)
       dut.io.writeback.bits.jobId.poke(15.U)
-      dut.io.writeback.bits.destReg.poke(209.U)
+      dut.io.writeback.bits.destReg.poke(241.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.writeback.bits.value(lane).poke((200 + lane).U)
       }
 
       dut.io.regWrite.valid.expect(true.B)
-      dut.io.regWrite.bits.addr.expect(1.U) // Corresponds to register 209
+      dut.io.regWrite.bits.addr.expect(1.U) // Corresponds to register 241
       dut.io.regWrite.bits.jobId.expect(15.U)
       for (lane <- 0 until cfg.shaderVectorLanes) {
         dut.io.regWrite.bits.data(lane).expect((200 + lane).U)

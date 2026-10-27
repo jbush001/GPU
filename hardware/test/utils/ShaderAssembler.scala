@@ -48,7 +48,7 @@ class ShaderAssembler {
   }
 
   def move(rd: Int, rs: Int): this.type = {
-    rInst(OpCode.Or, rd, rs, 65) // Const zero
+    rInst(OpCode.Or, rd, rs, SpecialReg.Const0)
     this
   }
 

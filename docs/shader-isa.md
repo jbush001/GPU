@@ -56,31 +56,31 @@ K: Constant  |            value (16)         | |    rd (8)     |  opcode (7) |
 |    5    | subi rd, rs0, rs1        | Integer subtract            |   R    |
 |    6    | muli rd, rs0, rs1        | Integer multiply            |   R    |
 |    7    | mulih rd, rs0, rs1       | Integer multiply (high word)|   R    |
-|    8    | shl rd, rs0, rs1         | Shift left                  |   R    |
-|    9    | shr rd, rs0, rs1         | Signed shift right          |   R    |
-|   10    | shru rd, rs0, rs1        | Unsigned shift right        |   R    |
-|   11    | addf rd, rs0, rs1        | Floating point addition     |   R    |
-|   12    | subf rd, rs0, rs1        | FP subtraction              |   R    |
-|   13    | mulf rd, rs0, rs1        | FP multiplication           |   R    |
-|   14    | recip rd, rs             | FP reciprocal estimate      |   R    |
-|   15    | ftoi rd, rs              | Float to integer            |   R    |
-|   16    | itof rd, rs              | Integer to float            |   R    |
-|   17    | setgtf rd, rs0, rs1      | FP Compare greater          |   R    |
-|   19    | setgei rd, rs0, rs1      | Greater or equal, signed int|   R    |
-|   20    | setlti rd, rs0, rs1      | Less than, signed int       |   R    |
-|   21    | setgeu rd, rs0, rs1      | Greater or equal, unsigned  |   R    |
-|   22    | setltu rd, rs0, rs1      | Less than, unsigned         |   R    |
-|   23    | seteq rd, rs0, rs1       | Equal                       |   R    |
-|   24    | setne rd, rs0, rs1       | Not equal                   |   R    |
-|   25    | bnz rs, target           | Branch if not zero          |   B    |
-|   26    | bz rs, target            | Branch if zero              |   B    |
-|   27    | j target                 | Unconditional jump          |   B    |
-|   28    | loadlo rd, index         | Load constant low           |   K    |
-|   29    | loadhi rd, index         | Load constant high          |   K    |
-|   30    | fmin                     | Floating point minimum val  |   R    |
-|   31    | fmax                     | Floating point max value    |   R    |
-|   32    | fabs                     | Floating point absolute val |   R    |
-|   33    | mulihu                   | Unsigned multiply upper     |   R    |
+|    8    | mulihu                   | Unsigned multiply upper     |   R    |
+|    9    | shl rd, rs0, rs1         | Shift left                  |   R    |
+|   10    | shr rd, rs0, rs1         | Signed shift right          |   R    |
+|   11    | shru rd, rs0, rs1        | Unsigned shift right        |   R    |
+|   12    | addf rd, rs0, rs1        | Floating point addition     |   R    |
+|   13    | subf rd, rs0, rs1        | FP subtraction              |   R    |
+|   14    | mulf rd, rs0, rs1        | FP multiplication           |   R    |
+|   15    | fmin                     | Floating point minimum val  |   R    |
+|   16    | fmax                     | Floating point max value    |   R    |
+|   17    | fabs                     | Floating point absolute val |   R    |
+|   18    | recip rd, rs             | FP reciprocal estimate      |   R    |
+|   19    | ftoi rd, rs              | Float to integer            |   R    |
+|   20    | itof rd, rs              | Integer to float            |   R    |
+|   32    | setgtf rd, rs0, rs1      | FP Compare greater          |   R    |
+|   33    | setgei rd, rs0, rs1      | Greater or equal, signed int|   R    |
+|   34    | setlti rd, rs0, rs1      | Less than, signed int       |   R    |
+|   35    | setgeu rd, rs0, rs1      | Greater or equal, unsigned  |   R    |
+|   36    | setltu rd, rs0, rs1      | Less than, unsigned         |   R    |
+|   37    | seteq rd, rs0, rs1       | Equal                       |   R    |
+|   38    | setne rd, rs0, rs1       | Not equal                   |   R    |
+|   48    | bnz rs, target           | Branch if not zero          |   B    |
+|   49    | bz rs, target            | Branch if zero              |   B    |
+|   50    | j target                 | Unconditional jump          |   B    |
+|   56    | loadlo rd, index         | Load constant low           |   K    |
+|   57    | loadhi rd, index         | Load constant high          |   K    |
 
 *These probably need a renumbering*
 
@@ -122,43 +122,45 @@ undefined. Attemping to write a read-only register will have no effect.
 
 |  Index  | Meaning                                           | Access |
 |---------|---------------------------------------------------|--------|
-|  0-63   | Scalar general purpose registers                  |  r/w   |
-|   64    | Exec mask                                         |  r/w   |
-|   65    | Constant 0                                        |   r    |
-|   66    | Constant 1                                        |   r    |
-|   67    | Constant -1                                       |   r    |
-|   68    | Constant 2                                        |   r    |
-|   69    | Constant 4                                        |   r    |
-|   70    | Constant 0.5f                                     |   r    |
-|   71    | Constant -0.5f                                    |   r    |
-|   72    | Constant 1.0f                                     |   r    |
-|   73    | Constant -1.0f                                    |   r    |
-|   74    | Constant 2.0f                                     |   r    |
-|   75    | Constant -2.0f                                    |   r    |
+|  0-63   | Scalar general purpose registers<sup>1</sup>      |  r/w   |
+|   116   | Constant 0                                        |   r    |
+|   117   | Constant 1                                        |   r    |
+|   118   | Constant -1                                       |   r    |
+|   119   | Constant 2                                        |   r    |
+|   120   | Constant 4                                        |   r    |
+|   121   | Constant 0.5f                                     |   r    |
+|   122   | Constant -0.5f                                    |   r    |
+|   123   | Constant 1.0f                                     |   r    |
+|   124   | Constant -1.0f                                    |   r    |
+|   125   | Constant 2.0f                                     |   r    |
+|   126   | Constant -2.0f                                    |   r    |
+|   127   | Exec mask                                         |  r/w   |
 | 128-191 | Vector general purpose registers                  |  r/w   |
-|   192   | Lambda0 (barycentric coordinate)                  |   r    |
-|   193   | Lambda1 (barycentric coordinate)                  |   r    |
-|   194   | Read varying coefficient<sup>1</sup>              |   r    |
-|   195   | Texture fetch red <sup>2</sup>                    |   r    |
-|   196   | Texture fetch green                               |   r    |
-|   197   | Texture fetch blue                                |   r    |
-|   198   | Texture fetch alpha                               |   r    |
-|   208   | Output red<sup>3</sup>                            |   w    |
-|   209   | Output green                                      |   w    |
-|   210   | Output blue                                       |   w    |
-|   211   | Output alpha                                      |   w    |
-|   212   | Texture fetch S coordinate                        |   w    |
-|   213   | Texture fetch T coordinate<sup>4</sup>            |   w    |
-|   224   | Lane ID                                           |   r    |
+|   223   | Lane ID                                           |   r    |
+|   224   | Lambda0 (barycentric coordinate)                  |   r    |
+|   225   | Lambda1 (barycentric coordinate)                  |   r    |
+|   226   | Read varying coefficient<sup>2</sup>              |   r    |
+|   227   | Texture fetch red <sup>3</sup>                    |   r    |
+|   228   | Texture fetch green                               |   r    |
+|   229   | Texture fetch blue                                |   r    |
+|   230   | Texture fetch alpha                               |   r    |
+|   240   | Output red<sup>4</sup>                            |   w    |
+|   241   | Output green                                      |   w    |
+|   242   | Output blue                                       |   w    |
+|   243   | Output alpha                                      |   w    |
+|   244   | Texture fetch S coordinate<sup>4</sup>            |   w    |
+|   245   | Texture fetch T coordinate<sup>5</sup>            |   w    |
 
-*Note that register 192-198 can only be used in the first register operand*
+*Note that register 192-207 can only be used in the first register operand*
 
-1. This will read varying coefficients in order and will increment to
+1. Note that although there are 64 register indices reserved, there may
+   not be that many physical registers configured.
+2. This will read varying coefficients in order and will increment to
    the next varying automatically as a side effect.
-2. This will block the current thread to wait for the texture fetch
+3. These will block the current thread to wait for the texture fetch
    to finish if it is not available yet.
-3. These are floating point values 0.0-1.0.
-4. Writing to the T coordinate will initiate the texture fetch as a side
+4. These are floating point values 0.0-1.0.
+5. Writing to the T coordinate will initiate the texture fetch as a side
    effect, so this register should be written last.
 
 **Predicated execution**

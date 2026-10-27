@@ -43,31 +43,31 @@ object OpCode extends ChiselEnum {
   val Subi = Value(5.U)
   val Muli = Value(6.U)
   val Mulih = Value(7.U)
-  val Shl = Value(8.U)
-  val Shr = Value(9.U)
-  val Shru = Value(10.U)
-  val Addf = Value(11.U)
-  val Subf = Value(12.U)
-  val Mulf = Value(13.U)
-  val Recip = Value(14.U)
-  val Ftoi = Value(15.U)
-  val Itof = Value(16.U)
-  val Setgtf = Value(17.U)
-  val Setgei = Value(19.U)
-  val Setlti = Value(20.U)
-  val Setgeu = Value(21.U)
-  val Setltu = Value(22.U)
-  val Seteq = Value(23.U)
-  val Setne = Value(24.U)
-  val Bnz = Value(25.U)
-  val Bz = Value(26.U)
-  val Jump = Value(27.U)
-  val LoadLo = Value(28.U)
-  val LoadHi = Value(29.U)
-  val Fmin = Value(30.U)
-  val Fmax = Value(31.U)
-  val Fabs = Value(32.U)
-  val Mulihu = Value(33.U)
+  val Mulihu = Value(8.U)
+  val Shl = Value(9.U)
+  val Shr = Value(10.U)
+  val Shru = Value(11.U)
+  val Addf = Value(12.U)
+  val Subf = Value(13.U)
+  val Mulf = Value(14.U)
+  val Fmin = Value(15.U)
+  val Fmax = Value(16.U)
+  val Fabs = Value(17.U)
+  val Recip = Value(18.U)
+  val Ftoi = Value(19.U)
+  val Itof = Value(20.U)
+  val Setgtf = Value(32.U)
+  val Setgei = Value(33.U)
+  val Setlti = Value(34.U)
+  val Setgeu = Value(35.U)
+  val Setltu = Value(36.U)
+  val Seteq = Value(37.U)
+  val Setne = Value(38.U)
+  val Bnz = Value(48.U)
+  val Bz = Value(49.U)
+  val Jump = Value(50.U)
+  val LoadLo = Value(56.U)
+  val LoadHi = Value(57.U)
 
   // Force width to 7 bits to match instruction encoding.
   @nowarn("msg=never used")
@@ -75,38 +75,38 @@ object OpCode extends ChiselEnum {
 }
 
 object SpecialReg {
-  val ExecMask        = 64
+  val Const0          = 116
+  val Const1          = 117
+  val ConstNeg1       = 118
+  val Const2          = 119
+  val Const4          = 120
+  val Const0_5f       = 121
+  val ConstNeg0_5f    = 122
+  val Const1_0f       = 123
+  val ConstNeg1_0f    = 124
+  val Const2_0f       = 125
+  val ConstNeg2_0f    = 126
 
-  val Const0          = 65
-  val Const1          = 66
-  val ConstNeg1       = 67
-  val Const2          = 68
-  val Const4          = 69
-  val Const0_5f       = 70
-  val ConstNeg0_5f    = 71
-  val Const1_0f       = 72
-  val ConstNeg1_0f    = 73
-  val Const2_0f       = 74
-  val ConstNeg2_0f    = 75
+  val ExecMask        = 127
+
+  val LaneId          = 223
 
   // There are 16 slots reserved for special register reads
-  val Lambda0         = 192
-  val Lambda1         = 193
-  val Varying         = 194
-  val TexelR          = 195
-  val TexelG          = 196
-  val TexelB          = 197
-  val TexelA          = 198
+  val Lambda0         = 224
+  val Lambda1         = 225
+  val Varying         = 226
+  val TexelR          = 227
+  val TexelG          = 228
+  val TexelB          = 229
+  val TexelA          = 230
 
   // 16 slots reserved for special register writes
-  val OutputR         = 208
-  val OutputG         = 209
-  val OutputB         = 210
-  val OutputA         = 211
-  val TexelS          = 212
-  val TexelT          = 213
-
-  val LaneId          = 224
+  val OutputR         = 240
+  val OutputG         = 241
+  val OutputB         = 242
+  val OutputA         = 243
+  val TexelS          = 244
+  val TexelT          = 245
 }
 
 /**
@@ -169,13 +169,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     })
   })
 
-  // Note: we only allocate 32 general purpose reigsters, although there are
-  // 64 slots reserved.
-  val numRegisters = 32
-
-  val scalarRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
+  val scalarRegisters = SyncReadMem(cfg.shaderThreads * cfg.numRegisters,
     UInt(32.W), SyncReadMem.Undefined)
-  val vectorRegisters = SyncReadMem(cfg.shaderThreads * numRegisters,
+  val vectorRegisters = SyncReadMem(cfg.shaderThreads * cfg.numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
   val execMask = RegInit(VecInit.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W)))
   when (io.resetThread.valid) {
@@ -263,10 +259,14 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   val operand2Reg = io.fetchedInstruction.bits.instruction(30, 23)
 
-  val scalarRead1 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand1Reg(4, 0)))
-  val scalarRead2 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand2Reg(4, 0)))
-  val vectorRead1 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand1Reg(4, 0)))
-  val vectorRead2 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread, operand2Reg(4, 0)))
+  val scalarRead1 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread,
+    operand1Reg(cfg.gprIndexBits - 1, 0)))
+  val scalarRead2 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread,
+    operand2Reg(cfg.gprIndexBits - 1, 0)))
+  val vectorRead1 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread,
+    operand1Reg(cfg.gprIndexBits - 1, 0)))
+  val vectorRead2 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread,
+    operand2Reg(cfg.gprIndexBits - 1, 0)))
 
   // Should not write and read the same register at the same time
   // (fetch select prevents this)
@@ -280,17 +280,18 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val operand2RegStage2 = RegNext(operand2Reg)
   val validCycle2 = RegNext(io.fetchedInstruction.valid, init = false.B)
 
-  io.regRead.valid := operand1Reg(7, 4) === "b1100".U && io.fetchedInstruction.valid && hasReg1Op
-  io.regRead.bits.addr := operand1Reg(3, 0)
-  io.regRead.bits.jobId := decodedMetadata.jobId
-
   def isSpecialReadReg(regId: UInt): Bool = {
-    regId(7, 4) === "b1100".U
+    regId(7, 4) === "b1110".U
   }
 
   def isSpecialWriteReg(regId: UInt): Bool = {
-    regId(7, 4) === "b1101".U
+    regId(7, 4) === "b1111".U
   }
+
+  io.regRead.valid := isSpecialReadReg(operand1Reg) && io.fetchedInstruction.valid && hasReg1Op
+  io.regRead.bits.addr := operand1Reg(cfg.gprIndexBits - 1, 0)
+  io.regRead.bits.jobId := decodedMetadata.jobId
+
 
   def resolveOperand(regId: UInt, scalarData: UInt, vectorData: Vec[UInt]): Vec[UInt] = {
     val result = Wire(Vec(cfg.shaderVectorLanes, UInt(32.W)))
@@ -302,7 +303,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       // 128-192: vector general purpose registers
       result := vectorData
     }.elsewhen (isSpecialReadReg(regId)) {
-      // 192-208: special purpose input registers
+      // 224-230: special purpose input registers
       result := io.regReadData.bits
     } .otherwise {
       result := DontCare  // Default
@@ -339,7 +340,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.regWrite.valid := false.B
   when (io.writeback.valid) {
     val destReg = io.writeback.bits.destReg
-    val gprIndex = Cat(io.writeback.bits.thread, destReg(4, 0))
+    val gprIndex = Cat(io.writeback.bits.thread, destReg(cfg.gprIndexBits - 1, 0))
 
     if (cfg.traceEnable) {
       when (destReg < 128.U) {
@@ -357,7 +358,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       vectorRegisters.write(gprIndex,
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
     }.elsewhen (isSpecialWriteReg(destReg)) {
-      // 208-224: special purpose output registers
+      // 240-255: special purpose output registers
       io.regWrite.valid := true.B
     }.elsewhen (destReg === SpecialReg.ExecMask.U) {
       execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)

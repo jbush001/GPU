@@ -128,8 +128,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     // Euclidean algorithm to compute GCD of two numbers. This has
     // nested conditionals, and a loop.
     val program = new ShaderAssembler()
-      .move(128, 192) // v0 = a
-      .move(129, 193) // v1 = b
+      .move(128, SpecialReg.Lambda0) // v0 = a
+      .move(129, SpecialReg.Lambda1) // v1 = b
       .emitLabel("loop")
       .rInst(OpCode.Setne, 0, 128, 129)   // if (a != b) {
       .bInst(OpCode.Bz, 0, "done")
