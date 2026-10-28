@@ -30,7 +30,7 @@ import chisel3.util._
  *
  * This has 5 cycles of latency.
  */
-class FpReciprocal extends Module {
+class FloatReciprocal extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
     val divisor = Input(Float32())
@@ -118,11 +118,11 @@ class FpReciprocal extends Module {
   }
 }
 
-object FpReciprocal {
+object FloatReciprocal {
   val latency = 5
 
   def apply(divisor: Float32, en: Bool = true.B): Float32 = {
-    val recip = Module(new FpReciprocal())
+    val recip = Module(new FloatReciprocal())
     recip.io.divisor := divisor
     recip.io.en := en
     recip.io.reciprocal

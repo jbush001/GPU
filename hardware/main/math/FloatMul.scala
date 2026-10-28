@@ -22,7 +22,7 @@ import chisel3.util._
 /**
  * This has 2 cycles of latency
  */
-class FpMul extends Module {
+class FloatMul extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
     val product = Output(Float32())
@@ -123,11 +123,11 @@ class FpMulNormalize extends Module {
   io.product := RegEnable(productNext, Float32.Zero, io.en)
 }
 
-object FpMul {
+object FloatMul {
   val latency = 2
 
   def apply(multiplier: Float32, operand2: Float32, en: Bool = true.B): Float32 = {
-    val mul = Module(new FpMul())
+    val mul = Module(new FloatMul())
     mul.io.multiplier := multiplier
     mul.io.multiplicand := operand2
     mul.io.en := en

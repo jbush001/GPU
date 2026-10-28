@@ -69,8 +69,8 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
     println(f"  actual   = $actual%.6f")
   }
 
-  test("FpAdd") {
-   simulate(new FpAdd()) { dut =>
+  test("FloatAdd") {
+   simulate(new FloatAdd()) { dut =>
       type TestVector = (Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
         (3.0f, 2.0f, 5.0f), // pos + pos
@@ -145,11 +145,11 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         dut,
         3,
         testVectors,
-        (dut:FpAdd, test: TestVector) => {
+        (dut:FloatAdd, test: TestVector) => {
           dut.io.addend1.poke(test._1)
           dut.io.addend2.poke(test._2)
         },
-        (dut: FpAdd, test: TestVector, index: Int) => {
+        (dut: FloatAdd, test: TestVector, index: Int) => {
           val actual = dut.io.sum.peek()
           if (!floatBitsMatch(test._3, actual)) {
             reportTestFailure(index, test._1, test._2, test._3, actual)
@@ -160,8 +160,8 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
     }
   }
 
-  test("FpMul") {
-    simulate(new FpMul()) { dut =>
+  test("FloatMul") {
+    simulate(new FloatMul()) { dut =>
       type TestVector = (Float, Float, Float)
       val testVectors: Seq[TestVector] = Seq(
         ( 100.0f, 25.0f, 2500.0f), // positive * positive
@@ -238,11 +238,11 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         dut,
         2,
         testVectors,
-        (dut: FpMul, test: TestVector) => {
+        (dut: FloatMul, test: TestVector) => {
           dut.io.multiplier.poke(test._1)
           dut.io.multiplicand.poke(test._2)
         },
-        (dut: FpMul, test: TestVector, index: Int) => {
+        (dut: FloatMul, test: TestVector, index: Int) => {
           val actual = dut.io.product.peek()
           if (!floatBitsMatch(test._3, actual)) {
             reportTestFailure(index, test._1, test._2, test._3, actual)
@@ -542,8 +542,8 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
     }
   }
 
-  test("FpReciprocal") {
-    simulate(new FpReciprocal) { dut =>
+  test("FloatReciprocal") {
+    simulate(new FloatReciprocal) { dut =>
       type TestVector = (Float, Float)
       val testVectors: Seq[TestVector] = Seq(
         (1.0f, 1.0f),
@@ -576,10 +576,10 @@ def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Bool
         dut,
         5,
         testVectors,
-        (dut: FpReciprocal, test: TestVector) => {
+        (dut: FloatReciprocal, test: TestVector) => {
           dut.io.divisor.poke(test._1)
         },
-        (dut: FpReciprocal, test: TestVector, _) => {
+        (dut: FloatReciprocal, test: TestVector, _) => {
           val actual = dut.io.reciprocal.peek()
           if (!floatBitsMatch(test._2, actual, 2)) {
             println(f"mismatch: ${test._1}%.3f reciprocal, expected ${test._2} actual $actual")

@@ -22,7 +22,7 @@ import chisel3.util._
 /**
   * This has 3 cycles of latency
   */
-class FpAdd extends Module {
+class FloatAdd extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
     val sum = Output(Float32())
@@ -184,11 +184,11 @@ class FpAddNormalize extends Module {
   io.result := RegEnable(Float32(resultNegative, resultExponent, resultFraction), io.en)
 }
 
-object FpAdd {
+object FloatAdd {
   val latency = 3
 
   def apply(addend1: Float32, addend2: Float32, en: Bool = true.B): Float32 = {
-    val add = Module(new FpAdd())
+    val add = Module(new FloatAdd())
     add.io.addend1 := addend1
     add.io.addend2 := addend2
     add.io.en := en

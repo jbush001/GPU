@@ -94,12 +94,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val x2 = Reg(SInt(16.W))
   val y2 = Reg(SInt(16.W))
 
-  val fpAdd = Module(new FpAdd) // 3 cycles of latency
+  val fpAdd = Module(new FloatAdd) // 3 cycles of latency
   fpAdd.io.en := true.B
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
-  val recip = Module(new FixedPointReciprocal) // 3 cycles of latency
+  val recip = Module(new FixedReciprocal) // 3 cycles of latency
 
   val a = setupParamsReg.boundingBox.top
   val b = WireInit(0.S(16.W))
@@ -356,15 +356,3 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.writeVaryingCoeff.bits.value := fpAdd.io.sum
 }
 
-// XXX this is a stub. Doing a division like this in one stage is going to
-// have poor latency and area. This will be implemented as a pipelined
-// implementation with estimate/ Newton-Raphsonrefinement.
-// 3 cycles of latency
-class FixedPointReciprocal(implicit cfg: GpuConfig) extends Module {
-  val io = IO(new Bundle {
-    val in = Input(SInt(cfg.edgeFunctionBits.W))
-    val result = Output(SInt(48.W))
-  })
-
-  io.result := ShiftRegister(0xffffff000000L.S / io.in, 3)
-}
