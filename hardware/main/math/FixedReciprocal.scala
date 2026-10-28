@@ -28,11 +28,10 @@ import chisel3.util._
  */
 class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val in = Input(SInt(cfg.edgeFunctionBits.W))
-    val result = Output(SInt(48.W))
+    val in = Input(UInt(cfg.edgeFunctionBits.W))
+    val result = Output(UInt(48.W))
   })
 
-  io.result := ShiftRegister(0xffffff000000L.S / io.in, 3)
+  io.result := ShiftRegister(0xffffff000000L.U / io.in, 3)
 }
-
 

@@ -117,7 +117,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val d1Reg = RegNext(yStep)
 
   val area2 = RegInit(0.S(cfg.edgeFunctionBits.W))
-  recip.io.in := area2 + determinant
+  recip.io.in := (area2 + determinant).asUInt
 
   /**
    * Initiate read for e value from the parameter memory.
@@ -263,7 +263,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
     is (8.U) {
       // Pull the result that was enqueued in the reciprocal pipeline in cycle 5
-      val multiplier = recip.io.result
+      val multiplier = recip.io.result.asSInt
       for (edge <- 0 until 3) {
         rasterizerParamsReg.edges(edge).xStep := normalizeAndRound(rasterizerParamsReg.edges(edge).xStep, multiplier)
         rasterizerParamsReg.edges(edge).yStep := normalizeAndRound(rasterizerParamsReg.edges(edge).yStep, multiplier)
