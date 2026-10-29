@@ -262,14 +262,6 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (8.U) {
-      // Pull the result that was enqueued in the reciprocal pipeline in cycle 5
-      val multiplier = recip.io.result.asSInt
-      for (edge <- 0 until 3) {
-        rasterizerParamsReg.edges(edge).xStep := normalizeAndRound(rasterizerParamsReg.edges(edge).xStep, multiplier)
-        rasterizerParamsReg.edges(edge).yStep := normalizeAndRound(rasterizerParamsReg.edges(edge).yStep, multiplier)
-        rasterizerParamsReg.edges(edge).initialValue := normalizeAndRound(rasterizerParamsReg.edges(edge).initialValue, multiplier)
-      }
-
       rasterizerParamsReg.depthCoeffs.invdW1 := fpAdd.io.sum
       state := 9.U
     }
@@ -280,6 +272,18 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (10.U) {
+      // Pull the result that was enqueued in the reciprocal pipeline in cycle 5
+      val multiplier = recip.io.result.asSInt
+      for (edge <- 0 until 3) {
+        rasterizerParamsReg.edges(edge).xStep := normalizeAndRound(rasterizerParamsReg.edges(edge).xStep, multiplier)
+        rasterizerParamsReg.edges(edge).yStep := normalizeAndRound(rasterizerParamsReg.edges(edge).yStep, multiplier)
+        rasterizerParamsReg.edges(edge).initialValue := normalizeAndRound(rasterizerParamsReg.edges(edge).initialValue, multiplier)
+      }
+
+      state := 11.U
+    }
+
+    is (11.U) {
       // Finish
       when (!varyingSetupActive && !varyingStage1Valid && !varyingStage2Valid && !varyingStage3Valid && !varyingStage4Valid) {
         io.rasterizerParams.valid := true.B

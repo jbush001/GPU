@@ -21,7 +21,7 @@ import chisel3.util._
 
 /**
  * Fixed-point reciprocal module.
- * Computes 1 / input with 3 cycles of latency.
+ * Computes 1 / input with 5 cycles of latency.
  * XXX this is a stub implementation using a single-stage division.
  * It will be replaced with a pipelined implementation with estimate/
  * Newton-Raphson refinement for better latency and area.
@@ -32,6 +32,6 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
     val result = Output(UInt(48.W))
   })
 
-  io.result := ShiftRegister(0xffffff000000L.U / io.in, 3)
+  io.result := ShiftRegister(0xffffff000000L.U / io.in, 5)
 }
 
