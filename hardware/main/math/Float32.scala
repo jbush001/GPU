@@ -26,12 +26,12 @@ import chisel3.util._
   *
   * This and associated hardware blocks are optimized for area and latency,
   * at the cost of strict compliance. Specifically:
-  * - Input denormals are treated as zero, however, operational stages do not
+  * - Input denormals are treated as zero, however, operations do not
   *   guarantee flush to zero on output.
-  * - All arithmetic operations utilize truncation (round towards zero).
-  * - NaN payloads are not propagated. The bit patterns of the significand
-  *   field for an result NaN are undefined except that the field is
-  *   guaranteed to be non-zero. All NaNs are quiet (non-signaling).
+  * - Most arithmetic operations round towards zero (truncation)
+  * - NaN payloads are not necessarily propagated. The bit patterns of the
+  *   significand field for an result NaN are undefined except that the field
+  *   is guaranteed to be non-zero.
   */
 class Float32 extends Bundle {
   val raw = UInt(32.W)

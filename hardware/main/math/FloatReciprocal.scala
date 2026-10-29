@@ -28,7 +28,7 @@ import chisel3.util._
  *
  * [[https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division]]
  *
- * This has 5 cycles of latency.
+ * Pipelined with 5 cycles of latency. Accepts a new operation every clock cycle.
  */
 class FloatReciprocal extends Module {
   val io = IO(new Bundle {

@@ -20,9 +20,11 @@ import chisel3._
 import chisel3.util._
 
 /**
-  * This has 3 cycles of latency
-  */
-class FloatAdd extends Module {
+ * Floating-point addition.
+ * Pipelined with 3 cycles of latency. Accepts a new operation every clock
+ * cycle.
+ */
+ class FloatAdd extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
     val sum = Output(Float32())

@@ -21,7 +21,8 @@ import chisel3.util._
 
 /**
  * Fixed-point reciprocal module.
- * Computes 1 / input with 5 cycles of latency.
+ * Computes 1 / input.
+ * Pipelined with 5 cycles of latency. Accepts a new operation every clock cycle.
  * XXX this is a stub implementation using a single-stage division.
  * It will be replaced with a pipelined implementation with estimate/
  * Newton-Raphson refinement for better latency and area.

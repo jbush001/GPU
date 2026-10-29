@@ -20,7 +20,9 @@ import chisel3._
 import chisel3.util._
 
 /**
- * This has 2 cycles of latency
+ * Floating-point multiplication.
+ * Pipelined with 2 cycles of latency. Accepts a new operation every clock
+ * cycle.
  */
 class FloatMul extends Module {
   val io = IO(new Bundle {
