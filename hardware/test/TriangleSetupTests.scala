@@ -84,8 +84,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.startTriangle.bits.boundingBox.top.poke(params.tileTop)
     dut.io.startTriangle.bits.boundingBox.right.poke(params.tileLeft + cfg.tileSizePixels - 2)
     dut.io.startTriangle.bits.boundingBox.bottom.poke(params.tileTop + cfg.tileSizePixels - 2)
-    dut.io.startTriangle.bits.offset.x.poke(params.tileLeft)
-    dut.io.startTriangle.bits.offset.y.poke(params.tileTop)
     dut.io.startTriangle.valid.poke(true.B)
 
     var triangleId = Option.empty[Int]

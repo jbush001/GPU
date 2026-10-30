@@ -20,7 +20,6 @@ import chisel3._
 import chisel3.util._
 
 class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
-  val offset = Point2D()
   val lastTriangle = Bool()
   val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vertexParamIndexBits.W))
   val numVaryings = UInt(5.W)
@@ -146,7 +145,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         assert(triangleIdFree(nextTriangleId))
         triangleIdFree(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
-        rasterizerParamsReg.offset := io.startTriangle.bits.offset
+        rasterizerParamsReg.offset := io.startTriangle.bits.boundingBox.topLeft
         rasterizerParamsReg.boundingBox := io.startTriangle.bits.boundingBox
         rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
         setupParamsReg := io.startTriangle.bits

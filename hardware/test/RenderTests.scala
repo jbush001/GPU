@@ -247,7 +247,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
     dut.io.writeVertexParam.valid.poke(false.B)
 
-    dut.io.startTriangle.bits.offset.poke(tileLeft, tileTop)
     dut.io.startTriangle.bits.lastTriangle.poke(lastTriangle.B)
     dut.io.startTriangle.bits.numVaryings.poke(varyings.head.length)
     dut.io.startTriangle.bits.boundingBox.left.poke(tileLeft)
