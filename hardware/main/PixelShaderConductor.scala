@@ -141,6 +141,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val fetchedTexels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
     val threadNeedsWake = Bool()
     val returnedTexelBitmap = Bits(quadsPerJob.W)
+    val shaderAddress = UInt(cfg.busAddressBits.W)
   }
 
   // The jobs array is indexed by jobId.
@@ -164,6 +165,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     assert(fillQuadCount === 0.U || fillJob.state === JobState.Filling)
     fillJob.sourceQuads(fillQuadCount) := io.sourceQuad.bits
     fillJob.validQuadCount := fillQuadCount +& 1.U
+    fillJob.shaderAddress := io.sourceQuad.bits.shaderAddress
     when (fillQuadCount === (quadsPerJob - 1).U || io.sourceQuad.bits.lastQuad) {
       // Finished filling, ready for processing
       fillQuadCount := 0.U
@@ -179,7 +181,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val dispatchIndex = RegInit(0.U(cfg.shaderJobIdBits.W))
 
   io.startJob.valid := jobs(dispatchIndex).state === JobState.ReadyToProcess
-  io.startJob.bits.startPc := 0.U // XXX need to allow setting shader address
+  io.startJob.bits.startPc := jobs(dispatchIndex).shaderAddress
   io.startJob.bits.jobId := dispatchIndex
 
   when (io.startJob.fire) {
