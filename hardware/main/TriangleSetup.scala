@@ -23,7 +23,7 @@ class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val lastTriangle = Bool()
   val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vertexParamIndexBits.W))
   val numVaryings = UInt(5.W)
-  val boundingBox = BoundingBox()
+  val tileOffset = Point2D()
 }
 
 /**
@@ -100,11 +100,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   val recip = Module(new FixedReciprocal) // 3 cycles of latency
 
-  val a = setupParamsReg.boundingBox.top
+  val a = setupParamsReg.tileOffset.y
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
   val d = WireInit(0.S(16.W))
-  val e = setupParamsReg.boundingBox.left
+  val e = setupParamsReg.tileOffset.x
   val f = WireInit(0.S(16.W))
   val h = WireInit(0.S(16.W))
   val g = WireInit(0.S(16.W))
@@ -145,8 +145,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         assert(triangleIdFree(nextTriangleId))
         triangleIdFree(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
-        rasterizerParamsReg.offset := io.startTriangle.bits.boundingBox.topLeft
-        rasterizerParamsReg.boundingBox := io.startTriangle.bits.boundingBox
+        rasterizerParamsReg.offset := io.startTriangle.bits.tileOffset
+        rasterizerParamsReg.boundingBox.left := io.startTriangle.bits.tileOffset.x
+        rasterizerParamsReg.boundingBox.top := io.startTriangle.bits.tileOffset.y
+        rasterizerParamsReg.boundingBox.right := io.startTriangle.bits.tileOffset.x + (cfg.tileSizePixels - 2).S
+        rasterizerParamsReg.boundingBox.bottom := io.startTriangle.bits.tileOffset.y + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
         setupParamsReg := io.startTriangle.bits
         readParameterMem(0.U, 0.U) // read X0/Y0
