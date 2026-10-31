@@ -280,15 +280,17 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val operand2RegStage2 = RegNext(operand2Reg)
   val validCycle2 = RegNext(io.fetchedInstruction.valid, init = false.B)
 
-  def isSpecialReadReg(regId: UInt): Bool = {
+  /** Is this a register in the [[PixelShaderConductor]] */
+  def isInputReg(regId: UInt): Bool = {
     regId(7, 4) === "b1110".U
   }
 
-  def isSpecialWriteReg(regId: UInt): Bool = {
+  /** Is this a register in the [[PixelShaderConductor]] */
+  def isOutputReg(regId: UInt): Bool = {
     regId(7, 4) === "b1111".U
   }
 
-  io.regRead.valid := isSpecialReadReg(operand1Reg) && io.fetchedInstruction.valid && hasReg1Op
+  io.regRead.valid := isInputReg(operand1Reg) && io.fetchedInstruction.valid && hasReg1Op
   io.regRead.bits.addr := operand1Reg(cfg.gprIndexBits - 1, 0)
   io.regRead.bits.jobId := decodedMetadata.jobId
 
@@ -302,7 +304,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     }.elsewhen (regId(7, 6) === 2.U) {
       // 128-192: vector general purpose registers
       result := vectorData
-    }.elsewhen (isSpecialReadReg(regId)) {
+    }.elsewhen (isInputReg(regId)) {
       // 224-230: special purpose input registers
       result := io.regReadData.bits
     } .otherwise {
@@ -331,7 +333,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand1 := resolveOperand(operand1RegStage2, scalarRead1, vectorRead1)
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegStage2, scalarRead2, vectorRead2)
 
-  io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && isSpecialReadReg(operand1RegStage2) && hasReg1OpStage2
+  io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && isInputReg(operand1RegStage2) && hasReg1OpStage2
   io.ioWaitThread.bits := io.decodedInstruction.bits.meta.thread
 
   io.regWrite.bits.jobId := io.writeback.bits.jobId
@@ -357,7 +359,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       // 128-191: vector general purpose registers
       vectorRegisters.write(gprIndex,
         io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
-    }.elsewhen (isSpecialWriteReg(destReg)) {
+    }.elsewhen (isOutputReg(destReg)) {
       // 240-255: special purpose output registers
       io.regWrite.valid := true.B
     }.elsewhen (destReg === SpecialReg.ExecMask.U) {
