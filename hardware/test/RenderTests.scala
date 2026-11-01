@@ -29,9 +29,9 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
     val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
-    val writeVertexParam = Flipped(Valid(new Bundle {
-      val addr = UInt(cfg.vertexParamIndexBits.W)
-      val value = UInt(32.W)
+    val writeVertexParam = Flipped(Valid(new Bundle{
+      val column = UInt(cfg.vpmColumnIndexBits.W)
+      val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
     val startFlush = Input(Bool())
@@ -175,6 +175,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
+  var nextVertexBaseAddress = 0
+
   def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Float, Float, Float)],
     varyings: Seq[Seq[Float]], indices: Seq[Int]): Array[Int] = {
     // Copy shader into memory
@@ -188,6 +190,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     for (tileRow <- 0 until fbSize / cfg.tileSizePixels) {
       for (tileColumn <- 0 until fbSize / cfg.tileSizePixels) {
+        nextVertexBaseAddress = 0
+
         val tileLeft = tileColumn * cfg.tileSizePixels
         val tileTop = tileRow * cfg.tileSizePixels
 
@@ -219,32 +223,42 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     fbData
   }
 
-  var nextVertexBaseAddress = 0
 
   def setUpTriangle(dut: SimTop, vertices: Seq[(Float, Float, Float)],
     tileLeft: Int, tileTop: Int, fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
     lastTriangle: Boolean): Unit = {
-    val vertexBaseAddresses = Seq(nextVertexBaseAddress, nextVertexBaseAddress + 15, nextVertexBaseAddress + 30)
-    nextVertexBaseAddress += 45
 
-    def writeParameter(addr: Int, value: Long): Unit = {
-      dut.io.writeVertexParam.valid.poke(true.B)
-      dut.io.writeVertexParam.bits.addr.poke(addr)
-      dut.io.writeVertexParam.bits.value.poke(value)
+    val paramValues = Array.fill(cfg.shaderVectorLanes, cfg.vpmColumns)(0)
+
+    def writeParameter(row: Int, col: Int, value: Long): Unit = {
+      paramValues(row)(col) = value.toInt
       dut.clock.step()
     }
 
     for (((x, y, w), vertex) <- vertices.zipWithIndex) {
       val screenX = (((x + 1.0f) * fbWidth * 0.5f).toInt) & 0xffff
       val screenY = (((1.0f - y) * fbHeight * 0.5f).toInt) & 0xffff
-      val baseAddr = vertexBaseAddresses(vertex)
-      writeParameter(baseAddr, (screenX << 16) | screenY)
-      writeParameter(baseAddr + 1, java.lang.Float.floatToRawIntBits(1.0f / w) & 0xffffffffL)
+      val baseRow = nextVertexBaseAddress + vertex
+      writeParameter(baseRow, 0, (screenX << 16) | screenY)
+      writeParameter(baseRow, 1, java.lang.Float.floatToRawIntBits(1.0f / w) & 0xffffffffL)
       for ((value, index) <- varyings(vertex).zipWithIndex) {
-        writeParameter(baseAddr + index + 2,
+        writeParameter(baseRow, index + 2,
           java.lang.Float.floatToRawIntBits(value) & 0xffffffffL)
       }
     }
+
+    // This basically transposes the values and writes as columns in vertex
+    // parameter memory.
+    dut.io.writeVertexParam.valid.poke(true.B)
+    for (col <- 0 until 2 + varyings.head.length) {
+      dut.io.writeVertexParam.bits.column.poke(col)
+      for (row <- 0 until cfg.shaderVectorLanes) {
+        dut.io.writeVertexParam.bits.value(row).poke(paramValues(row)(col))
+      }
+
+      dut.clock.step()
+    }
+
     dut.io.writeVertexParam.valid.poke(false.B)
 
     dut.io.startTriangle.bits.lastTriangle.poke(lastTriangle.B)
@@ -252,8 +266,11 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.startTriangle.bits.tileOffset.x.poke(tileLeft)
     dut.io.startTriangle.bits.tileOffset.y.poke(tileTop)
     for (vertex <- 0 until 3) {
-      dut.io.startTriangle.bits.vertexBaseAddr(vertex).poke(vertexBaseAddresses(vertex))
+      dut.io.startTriangle.bits.vertexBaseAddr(vertex).poke(nextVertexBaseAddress + vertex)
     }
+
+    nextVertexBaseAddress += 3
+
     dut.io.startTriangle.valid.poke(true.B)
     while (!dut.io.startTriangle.ready.peek().litToBoolean) {
       dut.clock.step()

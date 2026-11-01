@@ -26,9 +26,9 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     val axiBus = new AxiBus
 
     val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
-    val writeVertexParam = Flipped(Valid(new Bundle {
-      val addr = UInt(cfg.vertexParamIndexBits.W)
-      val value = UInt(32.W)
+    val writeVertexParam = Flipped(Valid(new Bundle{
+      val column = UInt(cfg.vpmColumnIndexBits.W)
+      val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))

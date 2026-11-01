@@ -39,7 +39,7 @@ case class GpuConfig(
   icacheLines: Int = 64,
   triangleIdBits: Int = 2,
   maxVaryings: Int = 16,
-  vertexParamIndexBits: Int = 16,
+  vpmColumns: Int = 64,
   numRegisters: Int = 32,
 
   traceEnable: Boolean = false
@@ -64,4 +64,6 @@ case class GpuConfig(
   val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
 
   val gprIndexBits = log2Up(numRegisters)
+  val vpmColumnIndexBits = log2Up(vpmColumns)
+  val vpmReadAddrBits = vpmColumnIndexBits + log2Up(shaderVectorLanes)
 }

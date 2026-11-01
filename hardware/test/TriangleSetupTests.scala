@@ -72,10 +72,10 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     for (vertexI <- 0 until 3) {
       val (x, y, invW) = params.vertices(vertexI)
       val baseAddr = baseAddresses(vertexI)
-      vertexParamMem(baseAddr + 0) = ((x << 16) | (y & 0xffff)).toInt
-      vertexParamMem(baseAddr + 1) = floatToRaw(invW)
+      vertexParamMem(baseAddr) = ((x << 16) | (y & 0xffff)).toInt
+      vertexParamMem(baseAddr + 16) = floatToRaw(invW)
       for ((v, i) <- params.varyings(vertexI).zipWithIndex) {
-        vertexParamMem(baseAddr + 2 + i) = floatToRaw(v)
+        vertexParamMem(baseAddr + (2 + i) * 16) = floatToRaw(v)
       }
     }
 

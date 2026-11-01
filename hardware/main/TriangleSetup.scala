@@ -21,7 +21,7 @@ import chisel3.util._
 
 class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val lastTriangle = Bool()
-  val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vertexParamIndexBits.W))
+  val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vpmReadAddrBits.W))
   val numVaryings = UInt(5.W)
   val tileOffset = Point2D()
 }
@@ -41,7 +41,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
 
     // To VertexParameterMem
-    val paramReadAddr = Valid(UInt(cfg.vertexParamIndexBits.W))
+    val paramReadAddr = Valid(UInt(cfg.vpmReadAddrBits.W))
     val readValue = Input(UInt(32.W))
 
     // To Rasterizer
@@ -123,10 +123,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
    * Initiate read for e value from the parameter memory.
    * Has one cycle of latency.
    */
-  def readParameterMem(vertex: UInt, value: UInt) = {
+  def readParameterMem(vertex: UInt, index: UInt) = {
     io.paramReadAddr.valid := true.B
     val params = Mux(state === 0.U, io.startTriangle.bits, setupParamsReg)
-    io.paramReadAddr.bits := params.vertexBaseAddr(vertex) + value
+    io.paramReadAddr.bits := (params.vertexBaseAddr(vertex)
+      + (index * cfg.shaderVectorLanes.U))
   }
 
   def normalizeAndRound(value: SInt, multiplier: SInt): SInt = {
