@@ -244,8 +244,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val regReadAddrStage2 = RegNext(io.shaderRegRead.bits.addr)
 
   val readJobStage1 = jobs(io.shaderRegRead.bits.jobId)
-  val varyingCoeffReadVal = varyingCoeffMem.read(Cat(readJobStage1.sourceQuads(0).triangleId,
-    readJobStage1.varyingCoeffIndex))
+  val varyingCoeffReadVal = varyingCoeffMem.read(readJobStage1.sourceQuads(0).triangleId ##
+    readJobStage1.varyingCoeffIndex)
   when (io.shaderRegRead.valid && io.shaderRegRead.bits.addr === 2.U) {
     // Reading a varying increments the index as a side effect
     readJobStage1.varyingCoeffIndex := readJobStage1.varyingCoeffIndex + 1.U
@@ -340,7 +340,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   io.textureFetchRequest.valid := nextTextureRequestJob.io.out.valid || textureRequestActive
 
   val textureFetchSelect = WireInit(0.U(log2Up(totalPendingJobs).W))
-  io.textureFetchRequest.bits.requestId := Cat(textureRequestQuad, textureFetchSelect)
+  io.textureFetchRequest.bits.requestId := textureRequestQuad ## textureFetchSelect
   val coordOffset = textureRequestQuad << 2
   for (coordI <- 0 until 2) {
     for (pixel <- 0 until Consts.pixelsPerQuad) {
@@ -392,8 +392,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
-    val writeAddr = Cat(io.writeVaryingCoeff.bits.triangleId,
-      io.writeVaryingCoeff.bits.index)
+    val writeAddr = io.writeVaryingCoeff.bits.triangleId ## io.writeVaryingCoeff.bits.index
     varyingCoeffMem.write(writeAddr, io.writeVaryingCoeff.bits.value.raw)
   }
 }

@@ -53,10 +53,8 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   when(io.divisor.valid) {
     shift := leadingZeros
     divisor := normalizedDivisor
-    estimate := Cat(
-      0.U(1.W),
-      1.U(1.W),
-      FixedReciprocalLut(normalizedDivisor(31, 24)),
+    estimate := ("b01".U ##
+      FixedReciprocalLut(normalizedDivisor(31, 24)) ##
       0.U((fractionalBits - 9).W)
     )
 

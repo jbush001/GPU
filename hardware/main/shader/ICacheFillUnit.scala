@@ -27,7 +27,7 @@ class ICacheAddress(implicit cfg: GpuConfig) extends Bundle {
   def cacheLineOffset = raw(cfg.cacheLineOffsetBits - 1, 0)
 
   def cacheLineAligned = WireInit(new ICacheAddress,
-    Cat(tag, index, 0.U(cfg.cacheLineOffsetBits.W)).asTypeOf(new ICacheAddress))
+    (tag ## index ## 0.U(cfg.cacheLineOffsetBits.W)).asTypeOf(new ICacheAddress))
 
   def +(bytes: UInt)= WireInit(new ICacheAddress,
     (raw + bytes).asTypeOf(new ICacheAddress))

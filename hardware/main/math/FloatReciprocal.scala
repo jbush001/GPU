@@ -38,7 +38,7 @@ class FloatReciprocal extends Module {
   })
 
   val stage1 = new {
-    val estimate = RegEnable(Cat(1.U, ReciprocalLut(io.divisor.fraction(22, 17))), 0.U, io.en) // 7 bits
+    val estimate = RegEnable(true.B ## ReciprocalLut(io.divisor.fraction(22, 17)), 0.U, io.en) // 7 bits
     val sign = RegEnable(io.divisor.isNegative, false.B, io.en)
     val exponent = RegEnable(253.U - io.divisor.exponent, 0.U, io.en)
     val divisor = RegEnable(io.divisor.fullFraction, 0.U, io.en) // 24 bits
@@ -104,8 +104,8 @@ class FloatReciprocal extends Module {
 
   val normShift = stage5.estimate(23)
   val finalExponent = Mux(normShift, stage5.exponent + 1.U, stage5.exponent)
-  val finalFraction = Mux(normShift, stage5.estimate(22, 0),
-    Cat(stage5.estimate(21, 0), 0.U))
+    val finalFraction = Mux(normShift, stage5.estimate(22, 0),
+      stage5.estimate(21, 0) ## 0.U)
 
   when (stage5.resultIsNaN) {
     io.reciprocal := Float32.NaN

@@ -58,7 +58,7 @@ class Float32 extends Bundle {
     * yield the same result as floating point comparisons.
     */
   private def toOrderable: UInt = {
-    Cat(!this.isNegative, this.raw(30, 0) ^ Fill(31, this.isNegative))
+    !this.isNegative ## (this.raw(30, 0) ^ Fill(31, this.isNegative))
   }
 
   def >(that: Float32): Bool = {

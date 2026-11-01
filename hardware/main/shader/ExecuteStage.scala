@@ -86,7 +86,7 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
 
   // This multiplier is shared between Muli, Mulih, Mulihu.
   val isUnsignedMul = io.decodedInstruction.bits.meta.opcode === OpCode.Mulihu
-  def extendMultiplier(x: UInt): SInt = Cat(Mux(isUnsignedMul, 0.U(1.W), x(31)), x).asSInt
+  def extendMultiplier(x: UInt): SInt = (Mux(isUnsignedMul, 0.U(1.W), x(31)) ## x).asSInt
   val product = vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)((_, a, b) => (extendMultiplier(a) * extendMultiplier(b)).asUInt)
 
   val binOps = Seq[(OpCode.Type, (Int, UInt, UInt) => UInt)](
@@ -101,8 +101,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Shl -> ((_, a, b) => (a << b(4, 0))(31, 0)),
     OpCode.Shr -> ((_, a, b) => (a.asSInt >> b(4, 0)).asUInt),
     OpCode.Shru -> ((_, a, b) => a >> b(4, 0)),
-    OpCode.LoadLo -> ((_, a, _) => Cat(a(31, 16), io.decodedInstruction.bits.meta.immediateValue(15, 0))),
-    OpCode.LoadHi -> ((_, a, _) => Cat(io.decodedInstruction.bits.meta.immediateValue(15, 0), a(15, 0))),
+    OpCode.LoadLo -> ((_, a, _) => a(31, 16) ## io.decodedInstruction.bits.meta.immediateValue(15, 0)),
+    OpCode.LoadHi -> ((_, a, _) => io.decodedInstruction.bits.meta.immediateValue(15, 0) ## a(15, 0)),
     OpCode.Ftoi -> ((_, a, _) => Float32(a).toFixedPoint().asUInt),
     OpCode.Itof -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
     OpCode.Fabs -> ((_, a, _) => Float32(a).abs.raw),

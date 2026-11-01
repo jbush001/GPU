@@ -236,13 +236,13 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.Fabs   -> Cat(true.B,         true.B)
   )
 
-  val tableLookup = MuxLookup(decodedOpcode, Cat(false.B, false.B))(decodeTable)
+  val tableLookup = MuxLookup(decodedOpcode, "b00".U)(decodeTable)
   decodedMetadata.hasWriteback := tableLookup(1)
   val hasReg1Op = tableLookup(0)
   val hasReg1OpStage2 = RegNext(hasReg1Op, init = false.B)
 
   when (isBranch(decodedOpcode)) {
-    decodedMetadata.immediateValue := Cat(io.fetchedInstruction.bits.instruction(31, 20),
+    decodedMetadata.immediateValue := (io.fetchedInstruction.bits.instruction(31, 20) ##
       io.fetchedInstruction.bits.instruction(13, 7))
   }.otherwise {
     decodedMetadata.immediateValue := io.fetchedInstruction.bits.instruction(31, 16).pad(19)
@@ -259,14 +259,14 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   val operand2Reg = io.fetchedInstruction.bits.instruction(30, 23)
 
-  val scalarRead1 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread,
-    operand1Reg(cfg.gprIndexBits - 1, 0)))
-  val scalarRead2 = scalarRegisters.read(Cat(io.fetchedInstruction.bits.thread,
-    operand2Reg(cfg.gprIndexBits - 1, 0)))
-  val vectorRead1 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread,
-    operand1Reg(cfg.gprIndexBits - 1, 0)))
-  val vectorRead2 = vectorRegisters.read(Cat(io.fetchedInstruction.bits.thread,
-    operand2Reg(cfg.gprIndexBits - 1, 0)))
+  val scalarRead1 = scalarRegisters.read(io.fetchedInstruction.bits.thread
+    ## operand1Reg(cfg.gprIndexBits - 1, 0))
+  val scalarRead2 = scalarRegisters.read(io.fetchedInstruction.bits.thread
+    ## operand2Reg(cfg.gprIndexBits - 1, 0))
+  val vectorRead1 = vectorRegisters.read(io.fetchedInstruction.bits.thread
+    ## operand1Reg(cfg.gprIndexBits - 1, 0))
+  val vectorRead2 = vectorRegisters.read(io.fetchedInstruction.bits.thread
+    ## operand2Reg(cfg.gprIndexBits - 1, 0))
 
   // Should not write and read the same register at the same time
   // (fetch select prevents this)
@@ -342,7 +342,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.regWrite.valid := false.B
   when (io.writeback.valid) {
     val destReg = io.writeback.bits.destReg
-    val gprIndex = Cat(io.writeback.bits.thread, destReg(cfg.gprIndexBits - 1, 0))
+    val gprIndex = io.writeback.bits.thread ## destReg(cfg.gprIndexBits - 1, 0)
 
     if (cfg.traceEnable) {
       when (destReg < 128.U) {

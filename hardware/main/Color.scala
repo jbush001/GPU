@@ -17,7 +17,6 @@
 package gpu
 
 import chisel3._
-import chisel3.util.  _
 
 /** Native color representation for all internal data paths.
   */
@@ -62,7 +61,7 @@ class Color extends Bundle {
   }
 
   def toArgb32: UInt = {
-    Cat(channel8Bit(3), channel8Bit(0), channel8Bit(1), channel8Bit(2))
+    channel8Bit(3) ## channel8Bit(0) ## channel8Bit(1) ## channel8Bit(2)
   }
 }
 
@@ -90,10 +89,10 @@ object Color {
     // We replicate the high bits into the low bits to
     // ensure 0 = 0 and 0xff = 0x3ff
     // https://computergraphics.stackexchange.com/questions/8173/why-replicating-the-higher-bits-of-rgb565-when-converting-to-rgba8888
-    result.alpha := Cat(bits(31, 24), bits(31, 30))
-    result.red := Cat(bits(23, 16), bits(23, 22))
-    result.green := Cat(bits(15, 8), bits(15, 14))
-    result.blue := Cat(bits(7, 0), bits(7, 6))
+    result.alpha := bits(31, 24) ## bits(31, 30)
+    result.red := bits(23, 16) ## bits(23, 22)
+    result.green := bits(15, 8) ## bits(15, 14)
+    result.blue := bits(7, 0) ## bits(7, 6)
 
     result
   }

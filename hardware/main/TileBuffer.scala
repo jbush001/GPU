@@ -93,15 +93,15 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val coordBits = log2Up(cfg.tileSizePixels)
   val flushX = flushCounterNext(coordBits - 1, 0)
   val flushY = flushCounterNext(coordBits * 2 - 1, coordBits)
-  val flushAddress = Cat(flushY >> 1, flushX >> 1).asUInt
+  val flushAddress = (((flushY >> 1) ## (flushX >> 1)).asUInt)
 
   // Note: we delay flush bank a cycle so it arrives with the data from memory
-  val flushBank = RegNext(Cat(flushY(0), flushX(0)).asUInt)
+  val flushBank = RegNext(flushY(0) ## flushX(0))
 
   // The memory read ports are shared between flush and pixel operations
   // (which are never happening at the same time). Note we divide each
   // coordinate by two here to get the quad address from the pixel address.
-  val inputQuadAddress = Cat(io.shadedQuad.bits.location.y(cfg.tileCoordBits - 1, 1),
+  val inputQuadAddress = (io.shadedQuad.bits.location.y(cfg.tileCoordBits - 1, 1) ##
     io.shadedQuad.bits.location.x(cfg.tileCoordBits - 1, 1)).asUInt
   val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
   val colorReadVal = colorMemory.read(readAddress, io.shadedQuad.valid || flushActive)

@@ -107,8 +107,8 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     io.fillRequest.bits.thread := stage1.fetchRequest.bits.thread
 
     io.fetchedInstruction.bits.pc := RegNext(stage1.fetchRequest.bits.pc.raw)
-    val readValue = instructionMemory.read(Cat(stage1.fetchRequest.bits.pc.index,
-      stage1.fetchRequest.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3)))
+    val readValue = instructionMemory.read(stage1.fetchRequest.bits.pc.index ##
+      stage1.fetchRequest.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3))
 
     io.fetchedInstruction.valid := RegNext(stage1.fetchRequest.valid && (cacheHit && !nearMiss) && !squashThisThread, init = false.B)
     io.icacheMiss := RegNext(cacheMiss && !nearMiss, init = false.B)
@@ -125,8 +125,8 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
 
   // Update cache on fill
   when (io.updateCache.valid) {
-    instructionMemory.write(Cat(io.updateCache.bits.address.index,
-      io.updateCache.bits.address.cacheLineOffset(cfg.cacheLineOffsetBits - 1, (log2Up(cfg.busDataBits / 8)))),
+    instructionMemory.write(io.updateCache.bits.address.index ##
+      io.updateCache.bits.address.cacheLineOffset(cfg.cacheLineOffsetBits - 1, (log2Up(cfg.busDataBits / 8))),
       io.updateCache.bits.data)
 
     // Invariant: a cache must be marked invalid while it is being filled to
