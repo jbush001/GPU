@@ -150,10 +150,10 @@ object SimMemAccess {
   def write(clock: Clock, dap: DirectAccessPort, address: Long, data: Seq[Long]): Unit = {
     dap.writeEn.poke(true.B)
     for (i <- data.indices) {
-      dap.writeAddress.poke((address + i * bytesPerWord).U)
+      dap.writeAddress.poke((address + i * bytesPerWord))
 
       // Fucking James Gosling...
-      dap.writeData.poke(BigInt(java.lang.Long.toUnsignedString(data(i))).U)
+      dap.writeData.poke(BigInt(java.lang.Long.toUnsignedString(data(i))))
       clock.step()
     }
 
@@ -164,7 +164,7 @@ object SimMemAccess {
     val result = scala.collection.mutable.ArrayBuffer[Long]()
     dap.readEn.poke(true.B)
     for (i <- 0 until length) {
-      dap.readAddress.poke((address + i * bytesPerWord).U)
+      dap.readAddress.poke((address + i * bytesPerWord))
       clock.step()
       result += dap.readData.peek().litValue.toLong
     }
@@ -178,8 +178,8 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def readBurst(dut: SimAxiMemory, rng: scala.util.Random, address: Int, length: Int): Seq[Long] = {
-    dut.io.readRequest.bits.address.poke(address.U)
-    dut.io.readRequest.bits.length.poke((length - 1).U)
+    dut.io.readRequest.bits.address.poke(address)
+    dut.io.readRequest.bits.length.poke((length - 1))
     dut.io.readRequest.valid.poke(true.B)
     var ready = rng.nextBoolean()
     dut.io.readData.ready.poke(ready.B)
@@ -202,15 +202,15 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
   }
 
   def writeBurst(dut: SimAxiMemory, rng: scala.util.Random, address: Int, data: Seq[Long]): Unit = {
-    dut.io.writeRequest.bits.address.poke(address.U)
-    dut.io.writeRequest.bits.length.poke((data.length - 1).U)
+    dut.io.writeRequest.bits.address.poke(address)
+    dut.io.writeRequest.bits.length.poke((data.length - 1))
     dut.io.writeRequest.valid.poke(true.B)
     dut.clock.step()
     dut.io.writeRequest.valid.poke(false.B)
 
     var written = 0
     while (written < data.length) {
-      dut.io.writeData.bits.data.poke(data(written).U)
+      dut.io.writeData.bits.data.poke(data(written))
       dut.io.writeData.bits.last.poke(written == data.length - 1)
       val valid = rng.nextBoolean()
       dut.io.writeData.valid.poke(valid)

@@ -96,8 +96,8 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Trigger a rollback for the issued thread to 0x0500
       dut.io.rollback.valid.poke(true.B)
-      dut.io.rollback.bits.thread.poke(allocatedThread.U)
-      dut.io.rollback.bits.pc.poke(0x0500.U)
+      dut.io.rollback.bits.thread.poke(allocatedThread)
+      dut.io.rollback.bits.pc.poke(0x0500)
 
       // Ensure we're executing from the new location
       for (i <- 0 until 3) {
@@ -135,7 +135,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Stall Thread on icache miss
       dut.io.icacheMiss.poke(true.B)
-      dut.io.icacheMissThread.poke(allocatedThread.U)
+      dut.io.icacheMissThread.poke(allocatedThread)
 
       // Thread should no longer issue
       for (_ <- 0 until 3) {
@@ -145,9 +145,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Resume Thread
-      dut.io.icacheWakeThreads.poke((1 << allocatedThread.toInt).U)
+      dut.io.icacheWakeThreads.poke((1 << allocatedThread.toInt))
       dut.clock.step()
-      dut.io.icacheWakeThreads.poke(0.U)
+      dut.io.icacheWakeThreads.poke(0)
 
       // Should resume issuing from the prior location.
       for (i <- 7 until 12) {
@@ -179,7 +179,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
         if (i == 7) {
           // The last instruction should be a near miss, which will not stall the thread.
           dut.io.icacheNearMiss.poke(true.B)
-          dut.io.icacheMissThread.poke(allocatedThread.U)
+          dut.io.icacheMissThread.poke(allocatedThread)
           dut.io.fetchRequest.valid.expect(false.B)
         } else {
           dut.io.fetchRequest.valid.expect(true.B)
@@ -232,7 +232,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       // Pause thread 2
       dut.clock.step()
       dut.io.ioWaitThread.valid.poke(true.B)
-      dut.io.ioWaitThread.bits.poke(thread2.U)
+      dut.io.ioWaitThread.bits.poke(thread2)
       dut.clock.step()
       dut.io.ioWaitThread.valid.poke(false.B)
       pc2 -= 4
@@ -255,7 +255,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Resume thread 2
       dut.io.ioWakeJob.valid.poke(true.B)
-      dut.io.ioWakeJob.bits.poke(2.U)
+      dut.io.ioWakeJob.bits.poke(2)
       dut.clock.step()
       dut.io.ioWakeJob.valid.poke(false.B)
 
@@ -303,7 +303,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
 
       // Halt Thread
       dut.io.halt.valid.poke(true.B)
-      dut.io.halt.bits.poke(allocatedThread.U)
+      dut.io.halt.bits.poke(allocatedThread)
       dut.clock.step()
       dut.io.halt.valid.poke(false.B)
 
@@ -357,7 +357,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       // Halt one of the threads
       val threadToHalt = allocatedThreads.head
       dut.io.halt.valid.poke(true.B)
-      dut.io.halt.bits.poke(threadToHalt.U)
+      dut.io.halt.bits.poke(threadToHalt)
       dut.clock.step()
       dut.io.halt.valid.poke(false.B)
 
@@ -384,7 +384,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       // Stall one of the threads
       val stalledThread = allocatedThreads.head
       dut.io.icacheMiss.poke(true.B)
-      dut.io.icacheMissThread.poke(stalledThread.U)
+      dut.io.icacheMissThread.poke(stalledThread)
       dut.clock.step()
       dut.io.icacheMiss.poke(false.B)
 
@@ -397,9 +397,9 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
       }
 
       // Resume the stalled thread
-      dut.io.icacheWakeThreads.poke((1 << stalledThread).U)
+      dut.io.icacheWakeThreads.poke((1 << stalledThread))
       dut.clock.step()
-      dut.io.icacheWakeThreads.poke(0.U)
+      dut.io.icacheWakeThreads.poke(0)
 
       // Ensure the previously stalled thread can now issue again
       var foundStalledThread = false

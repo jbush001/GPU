@@ -152,16 +152,16 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
       // Initialize DUT inputs to safe defaults
       for (i <- 0 until numReaders) {
         dut.io.readPorts(i).burst.valid.poke(false.B)
-        dut.io.readPorts(i).burst.bits.address.poke(0.U)
-        dut.io.readPorts(i).burst.bits.length.poke(0.U)
+        dut.io.readPorts(i).burst.bits.address.poke(0)
+        dut.io.readPorts(i).burst.bits.length.poke(0)
         dut.io.readPorts(i).data.ready.poke(false.B)
       }
       for (i <- 0 until numWriters) {
         dut.io.writePorts(i).burst.valid.poke(false.B)
-        dut.io.writePorts(i).burst.bits.address.poke(0.U)
-        dut.io.writePorts(i).burst.bits.length.poke(0.U)
+        dut.io.writePorts(i).burst.bits.address.poke(0)
+        dut.io.writePorts(i).burst.bits.length.poke(0)
         dut.io.writePorts(i).data.valid.poke(false.B)
-        dut.io.writePorts(i).data.bits.poke(0.U)
+        dut.io.writePorts(i).data.bits.poke(0)
       }
 
       def getRandomRange(): (Int, Int) = {
@@ -220,8 +220,8 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
             burstActive = true
 
             port.burst.valid.poke(true.B)
-            port.burst.bits.address.poke((currentAddr * 8).U)
-            port.burst.bits.length.poke((len - 1).U)
+            port.burst.bits.address.poke((currentAddr * 8))
+            port.burst.bits.length.poke((len - 1))
           }
         }
       }
@@ -241,7 +241,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
             port.data.valid.poke(valid.B)
 
             // We updated the data in the reference below when we started the burst.
-            port.data.bits.poke(BigInt(java.lang.Long.toUnsignedString(reference(currentAddr))).U)
+            port.data.bits.poke(BigInt(java.lang.Long.toUnsignedString(reference(currentAddr))))
 
             if (valid && port.data.ready.peek().litToBoolean) {
               currentAddr += 1
@@ -266,8 +266,8 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
             }
 
             port.burst.valid.poke(true.B)
-            port.burst.bits.address.poke((currentAddr * 8).U)
-            port.burst.bits.length.poke((len - 1).U)
+            port.burst.bits.address.poke((currentAddr * 8))
+            port.burst.bits.length.poke((len - 1))
           }
         }
       }

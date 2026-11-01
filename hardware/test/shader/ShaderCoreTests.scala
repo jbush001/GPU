@@ -84,7 +84,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       // Common Setup / Initialization
       SimMemAccess.write(dut.clock, dut.io.dap, startAddr, programBytes)
 
-      dut.io.startJob.bits.startPc.poke(startAddr.U)
+      dut.io.startJob.bits.startPc.poke(startAddr)
       dut.io.startJob.bits.jobId.poke(jobId)
 
       // Execute test-specific assertions or stimulus
@@ -102,7 +102,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
     runShaderTest(program.finish(), 0) { dut =>
       dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0.U)
+      dut.io.startJob.bits.startPc.poke(0)
       dut.clock.step(1)
       dut.io.startJob.valid.poke(false.B)
 
@@ -198,7 +198,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
     simulate(new ShaderTestHarness) { dut =>
       SimMemAccess.write(dut.clock, dut.io.dap, 0, program)
-      dut.io.startJob.bits.startPc.poke(0.U)
+      dut.io.startJob.bits.startPc.poke(0)
 
       val maxJobs = 8 // Useful for debugging
       var activeJobs = 0
@@ -209,7 +209,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
       for (cycle <- 0 until maxCycles) {
         dut.io.regReadData.valid.poke(hasRegReadResult.B)
         for (lane <- 0 until cfg.shaderVectorLanes) {
-          dut.io.regReadData.bits(lane).poke(regReadResult(lane).U)
+          dut.io.regReadData.bits(lane).poke(regReadResult(lane))
         }
 
         if (dut.io.regRead.valid.peek().litToBoolean) {
@@ -255,7 +255,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           job.startCycle = cycle
           activeJobs += 1
           dut.io.startJob.valid.poke(true.B)
-          dut.io.startJob.bits.jobId.poke(jobIndex.U)
+          dut.io.startJob.bits.jobId.poke(jobIndex)
         } else {
           dut.io.startJob.valid.poke(false.B)
         }
@@ -282,7 +282,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
 
     runShaderTest(program.finish(), 0) { dut =>
       dut.io.startJob.valid.poke(true.B)
-      dut.io.startJob.bits.startPc.poke(0.U)
+      dut.io.startJob.bits.startPc.poke(0)
       dut.clock.step(1)
       dut.io.startJob.valid.poke(false.B)
 
@@ -303,7 +303,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
             // Second read, return value
             regReadValid = true
             for (lane <- 0 until cfg.shaderVectorLanes) {
-              dut.io.regReadData.bits(lane).poke((0x12345678 + lane).U)
+              dut.io.regReadData.bits(lane).poke((0x12345678 + lane))
             }
           } else {
             // First read, block the thread until data is available
@@ -317,7 +317,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
           wakeupDelay -= 1
           if (wakeupDelay == 0) {
             dut.io.ioWakeJob.valid.poke(true.B)
-            dut.io.ioWakeJob.bits.poke(readJobId.U)
+            dut.io.ioWakeJob.bits.poke(readJobId)
             threadWoken = true
           }
         }

@@ -26,8 +26,8 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
 
   def simulateCacheMiss(dut: InstructionFetchStage, address: Long): Unit = {
     dut.io.fetchRequest.valid.poke(true.B)
-    dut.io.fetchRequest.bits.pc.raw.poke(address.U)
-    dut.io.fetchRequest.bits.thread.poke(1.U)
+    dut.io.fetchRequest.bits.pc.raw.poke(address)
+    dut.io.fetchRequest.bits.thread.poke(1)
     dut.clock.step(2)
     dut.io.icacheMiss.expect(true.B)
     dut.io.icacheNearMiss.expect(false.B)
@@ -42,8 +42,8 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     // Fill cache line
     for (i <- 0 until 8) {
       dut.io.updateCache.valid.poke(true.B)
-      dut.io.updateCache.bits.address.raw.poke((address + (i * 8)).U)
-      dut.io.updateCache.bits.data.poke((data(i * 2) + (data(i * 2 + 1) << 32)).U)
+      dut.io.updateCache.bits.address.raw.poke((address + (i * 8)))
+      dut.io.updateCache.bits.data.poke((data(i * 2) + (data(i * 2 + 1) << 32)))
       dut.io.updateCache.bits.last.poke((i == 7).B)
       dut.clock.step()
     }
@@ -64,8 +64,8 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       for (cycle <- 0 until 16) {
         if (cycle < 16) {
           dut.io.fetchRequest.valid.poke(true.B)
-          dut.io.fetchRequest.bits.pc.raw.poke((address + (cycle * 4)).U)
-          dut.io.fetchRequest.bits.thread.poke(1.U)
+          dut.io.fetchRequest.bits.pc.raw.poke((address + (cycle * 4)))
+          dut.io.fetchRequest.bits.thread.poke(1)
         } else {
           dut.io.fetchRequest.valid.poke(false.B)
         }
@@ -98,21 +98,21 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       // Begin filling cache line.
       dut.io.updateCache.valid.poke(true.B)
       for (i <- 0 until 6) {
-        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)).U)
+        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)))
         dut.clock.step()
       }
 
       // Cycle 7: fetch request enters pipeline, fill penultimate beat.
       dut.io.fetchRequest.valid.poke(true.B)
-      dut.io.fetchRequest.bits.pc.raw.poke(address.U)
-      dut.io.fetchRequest.bits.thread.poke(1.U)
-      dut.io.updateCache.bits.address.raw.poke((address + (6 * 8)).U)
+      dut.io.fetchRequest.bits.pc.raw.poke(address)
+      dut.io.fetchRequest.bits.thread.poke(1)
+      dut.io.updateCache.bits.address.raw.poke((address + (6 * 8)))
       dut.clock.step()
 
       // Cycle 8: fill completes, fetch request enters second stage of pipeline.
       // This looks like a cache miss from the tag check perspective.
       dut.io.fetchRequest.valid.poke(false.B)
-      dut.io.updateCache.bits.address.raw.poke((address + (7 * 8)).U)
+      dut.io.updateCache.bits.address.raw.poke((address + (7 * 8)))
       dut.io.updateCache.bits.last.poke(true.B)
       dut.clock.step()
 
@@ -131,18 +131,18 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       // Begin filling cache line.
       dut.io.updateCache.valid.poke(true.B)
       for (i <- 0 until 7) {
-        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)).U)
-        dut.io.updateCache.bits.data.poke(((i + 1) * 0x100000002L).U)
+        dut.io.updateCache.bits.address.raw.poke((address + (i * 8)))
+        dut.io.updateCache.bits.data.poke(((i + 1) * 0x100000002L))
         dut.clock.step()
       }
 
       // First stage of fetch, fill completes. The tag won't match,
       // so we need a bypass to check this condition explicitly.
       dut.io.fetchRequest.valid.poke(true.B)
-      dut.io.fetchRequest.bits.pc.raw.poke(address.U)
-      dut.io.fetchRequest.bits.thread.poke(1.U)
-      dut.io.updateCache.bits.address.raw.poke((address + (7 * 8)).U)
-      dut.io.updateCache.bits.data.poke(((7 + 1) * 0x100000002L).U)
+      dut.io.fetchRequest.bits.pc.raw.poke(address)
+      dut.io.fetchRequest.bits.thread.poke(1)
+      dut.io.updateCache.bits.address.raw.poke((address + (7 * 8)))
+      dut.io.updateCache.bits.data.poke(((7 + 1) * 0x100000002L))
       dut.io.updateCache.bits.last.poke(true.B)
       dut.clock.step()
       dut.io.fetchRequest.valid.poke(false.B)
@@ -166,8 +166,8 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
 
       // This maps to the same cache line, but the tag is different, so it should be a miss.
       dut.io.fetchRequest.valid.poke(true.B)
-      dut.io.fetchRequest.bits.pc.raw.poke((address + cfg.cacheLineSizeBytes * cfg.icacheLines).U)
-      dut.io.fetchRequest.bits.thread.poke(1.U)
+      dut.io.fetchRequest.bits.pc.raw.poke((address + cfg.cacheLineSizeBytes * cfg.icacheLines))
+      dut.io.fetchRequest.bits.thread.poke(1)
       dut.clock.step(2)
       dut.io.icacheNearMiss.expect(false.B)
       dut.io.fetchedInstruction.valid.expect(false.B)

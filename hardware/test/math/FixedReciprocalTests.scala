@@ -33,7 +33,7 @@ class FixedReciprocalTests extends AnyFunSuite with ChiselSim {
 
       dut.io.divisor.valid.poke(false.B)
       for (d <- divisors) {
-        dut.io.divisor.bits.poke(d.U)
+        dut.io.divisor.bits.poke(d)
         dut.io.divisor.valid.poke(true.B)
         dut.clock.step()
         dut.io.divisor.valid.poke(false.B)

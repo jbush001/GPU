@@ -46,7 +46,7 @@ trait TestHelpers { this: ChiselSim =>
 
   implicit class Float32Ops(private val f: Float32) {
     def poke(value: Float): Unit = {
-      f.raw.poke((java.lang.Float.floatToRawIntBits(value).toLong & 0xffffffffL).U)
+      f.raw.poke((java.lang.Float.floatToRawIntBits(value).toLong & 0xffffffffL))
     }
 
     def peek(): Float = java.lang.Float.intBitsToFloat(f.raw.peek().litValue.toInt)

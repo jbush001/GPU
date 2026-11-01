@@ -34,19 +34,19 @@ class ColorTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }) { dut =>
       // 0 should completely clear
       dut.io.inColor.poke(r = 1023, g = 512, b = 256, a = 1023)
-      dut.io.scaleFactor.poke(0.U)
+      dut.io.scaleFactor.poke(0)
       dut.clock.step()
       dut.io.scaled.expect(r = 0, g = 0, b = 0, a = 0)
 
       // 255 should not change the value
       dut.io.inColor.poke(r = 1023, g = 512, b = 256, a = 1023)
-      dut.io.scaleFactor.poke(1023.U)
+      dut.io.scaleFactor.poke(1023)
       dut.clock.step()
       dut.io.scaled.expect(r = 1023, g = 512, b = 256, a = 1023)
 
       // Half way
       dut.io.inColor.poke(r = 1023, g = 512, b = 256, a = 1023)
-      dut.io.scaleFactor.poke(512.U)
+      dut.io.scaleFactor.poke(512)
       dut.clock.step()
       dut.io.scaled.expect(r = 512, g = 256, b = 128, a = 512)
     }

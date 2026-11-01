@@ -30,8 +30,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     simulate(new ICacheFillUnit()) { dut =>
       val baseAddress = 0x1000
       dut.io.fillRequest.valid.poke(true.B)
-      dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
-      dut.io.fillRequest.bits.thread.poke(2.U)
+      dut.io.fillRequest.bits.address.raw.poke(baseAddress)
+      dut.io.fillRequest.bits.thread.poke(2)
       dut.clock.step()
       dut.io.fillRequest.valid.poke(false.B)
       dut.io.readPort.burst.valid.expect(true.B, "Should request burst from memory")
@@ -44,7 +44,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       dut.io.readPort.data.valid.poke(true.B)
       while (offset < cfg.cacheLineSizeBytes / (cfg.busDataBits / 8)) {
         dut.io.readPort.burst.valid.expect(false.B, "Should not initiate new burst")
-        dut.io.readPort.data.bits.poke((offset + 1).U)
+        dut.io.readPort.data.bits.poke((offset + 1))
 
         dut.io.updateCache.valid.peek().litToBoolean match {
           case true =>
@@ -85,8 +85,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     simulate(new ICacheFillUnit()) { dut =>
       val baseAddress = 0x1000
       dut.io.fillRequest.valid.poke(true.B)
-      dut.io.fillRequest.bits.address.raw.poke(baseAddress.U)
-      dut.io.fillRequest.bits.thread.poke(2.U)
+      dut.io.fillRequest.bits.address.raw.poke(baseAddress)
+      dut.io.fillRequest.bits.thread.poke(2)
       dut.clock.step()
       dut.io.readPort.burst.valid.expect(true.B, "Should request burst from memory")
       dut.io.readPort.burst.bits.address.expect(baseAddress.U,
@@ -94,7 +94,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       dut.clock.step()
 
       // Second miss collides with the first
-      dut.io.fillRequest.bits.thread.poke(1.U)
+      dut.io.fillRequest.bits.thread.poke(1)
       dut.clock.step()
       dut.io.fillRequest.valid.poke(false.B)
 
@@ -103,7 +103,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       dut.io.readPort.data.valid.poke(true.B)
       while (offset < cfg.cacheLineSizeBytes / (cfg.busDataBits / 8)) {
         dut.io.readPort.burst.valid.expect(false.B, "Should not initiate new burst")
-        dut.io.readPort.data.bits.poke((offset + 1).U)
+        dut.io.readPort.data.bits.poke((offset + 1))
 
         dut.io.updateCache.valid.peek().litToBoolean match {
           case true =>
@@ -169,8 +169,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
       SimMemAccess.write(dut.clock, dut.io.dap, 0, reference.toSeq)
 
       dut.io.fillRequest.valid.poke(false.B)
-      dut.io.fillRequest.bits.address.raw.poke(0.U)
-      dut.io.fillRequest.bits.thread.poke(0.U)
+      dut.io.fillRequest.bits.address.raw.poke(0)
+      dut.io.fillRequest.bits.thread.poke(0)
 
       val rng = new Random(42)
 
@@ -201,8 +201,8 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
               state.address = address
               state.issueCycle = cycle
               dut.io.fillRequest.valid.poke(true.B)
-              dut.io.fillRequest.bits.address.raw.poke(address.U)
-              dut.io.fillRequest.bits.thread.poke(threadIdx.U)
+              dut.io.fillRequest.bits.address.raw.poke(address)
+              dut.io.fillRequest.bits.thread.poke(threadIdx)
             }
           } else {
             dut.io.fillRequest.valid.poke(false.B)
