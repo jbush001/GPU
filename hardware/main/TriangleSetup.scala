@@ -130,6 +130,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       + (index * cfg.shaderVectorLanes.U))
   }
 
+  // XXX This is not technically correct. I'm not exactly sure why the
+  // addition works, but there are gaps between triangles without it.
   def normalizeAndRound(value: SInt, multiplier: SInt): SInt = {
     val product = value * multiplier
     val result = (product >> 24) + Mux(product(47), 1.S(48.W), 0.S)
