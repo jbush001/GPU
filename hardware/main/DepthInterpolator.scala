@@ -33,10 +33,10 @@ class InterpolatedQuad(implicit cfg: GpuConfig) extends RasterizedQuad {
 
 /** Sits between [[Rasterizer]] and [[PixelShaderConductor]] and computes
   * per-pixel depth and perspective corrected barycentric coordinates.
-  * This is fully pipelined and can accept a new quad each cycle. It has 17
-  * cycles of latency. It will stall when the interpolated quad output
-  * deasserts its ready flag.
-  * The formulae are fully documented in docs/maths.md
+  *
+  * @note Fully pipelined (1 quad/cycle, 17 cycles latency).
+  * @note Stalls when the interpolated quad output deasserts its ready flag.
+  * @see [[docs/maths.md]] for details of the interpolation math.
   */
 class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

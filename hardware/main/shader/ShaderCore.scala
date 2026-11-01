@@ -24,6 +24,7 @@ import gpu._
   * Top level shader core, which can run multiple shader program threads.
   * The regRead/regWrite ports form the primary interface to fixed function
   * hardware.
+  * @see [[docs/shader-microarchitecture.md]] for details of the pipeline.
   */
 class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

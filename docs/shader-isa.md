@@ -32,15 +32,15 @@ Instructions use fixed width, 32-bit instructions, encoded as follows.
 
 ```
               31             23 22           15 14            7 6           0
-             +-+---------------+---------------+---------------+-------------+
-R: Arith     | |     rs2 (8)   |     rs1 (8)   |    rd (8)     |  opcode (7) |
-             +-+---------------+-+-------------+---------------+-------------+
-B: Branch    |    offset[17:8]   |    rs1 (7)  |   offset[7:0] |  opcode (7) |
-             +-------------------+-------------+---------------+-------------+
-X: Inherent  |                    unused (25)                  |  opcode (7) |
-             +-------------------------------+-+---------------+-------------+
-K: Constant  |            value (16)         | |    rd (8)     |  opcode (7) |
-             +-------------------------------+-+---------------+-------------+
+             ├─┼─┴─┴─┴─┴─┴─┴─┴─┼─┴─┴─┴─┴─┴─┴─┴─┼─┴─┴─┴─┴─┴─┴─┴─┼─┴─┴─┴─┴─┴─┴─┤
+R: Arith     │ │     rs2 (8)   │     rs1 (8)   │    rd (8)     │  opcode (7) │
+             ├─┴───────────────┴─┬─────────────┼───────────────┼─────────────┤
+B: Branch    │    offset[17:8]   │    rs1 (7)  │   offset[7:0] │  opcode (7) │
+             ├───────────────────┴─────────────┴───────────────┼─────────────┤
+X: Inherent  │                    unused (25)                  │  opcode (7) │
+             ├───────────────────────────────┬─┬───────────────┼─────────────┤
+K: Constant  │            value (16)         │ │    rd (8)     │  opcode (7) │
+             └───────────────────────────────┴─┴───────────────┴─────────────┘
 ```
 
 `opcode`
@@ -116,6 +116,11 @@ these instructions can also do scalar compares.
 
 **Registers**
 Registers 0-63 are scalar registers, registers 64-127 are vector registers.
+Most instructions can freely use and any combination of scalar or vector
+registers in any field, with a few constraints listed below (one categorical
+exception are branch instructions, which only take scalar registers in the rs1
+field). When a scalar source register is used, its value is duplicated across
+all lanes.
 
 Attempting to read a write-only register will not fault, but the result is
 undefined. Attemping to write a read-only register will have no effect.

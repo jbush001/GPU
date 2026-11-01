@@ -21,19 +21,10 @@ import chisel3.util._
 import gpu._
 import scala.annotation.nowarn
 
-//  Instruction formats:
-//
-//               31             23 22           15 14            7 6           0
-//              +-+---------------+---------------+---------------+-------------+
-// R: Arith     | |     rs2 (8)   |     rs1 (8)   |    rd (8)     |  opcode (7) |
-//              +-+---------------+-+-------------+---------------+-------------+
-// B: Branch    |    offset[17:8]   |    rs1 (7)  |   offset[7:0] |  opcode (7) |
-//              +-------------------+-------------+---------------+-------------+
-// X: Inherent  |                    unused (25)                  |  opcode (7) |
-//              +-------------------------------+-+---------------+-------------+
-// K: Constant  |            value (16)         | |    rd (8)     |  opcode (7) |
-//              +-------------------------------+-+---------------+-------------+
-
+/**
+  * opcode instruction field values
+  * @see [[docs/shader-isa.md]] for details of the instruction encodings.
+  */
 object OpCode extends ChiselEnum {
   val Halt = Value(0.U)
   val And = Value(1.U)
@@ -74,6 +65,10 @@ object OpCode extends ChiselEnum {
   private val _reserveWidth = Value(127.U)
 }
 
+/**
+  * special register indices
+  * @see [[docs/shader-isa.md]] for details of the encodings.
+  */
 object SpecialReg {
   val Const0          = 116
   val Const1          = 117
@@ -134,6 +129,9 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   * - This stage decodes the instruction and reads the source registers.
   * - Handles writing back to registers.
   * - Handles special register access
+  *
+  * @see [[docs/shader-isa.md]] for details of the instruction encodings and
+  *      registers.
   */
 class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

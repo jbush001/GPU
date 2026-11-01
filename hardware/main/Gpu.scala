@@ -20,7 +20,10 @@ import chisel3._
 import chisel3.util._
 import gpu.shader._
 
-/** Top level GPU module */
+/** Top level GPU module
+  * @see [[docs/block-diagram.md]] for details of how these modules
+  * interact.
+  */
 class Gpu(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val axiBus = new AxiBus
