@@ -21,18 +21,108 @@ import chisel3.util._
 
 /**
  * Fixed-point reciprocal module.
- * Computes 1 / input.
- * Pipelined with 5 cycles of latency. Accepts a new operation every clock cycle.
- * XXX this is a stub implementation using a single-stage division.
- * It will be replaced with a pipelined implementation with estimate/
- * Newton-Raphson refinement for better latency and area.
+ * Computes a 0.24 reciprocal of an unsigned integer input.
+ * This has 5 cycles of latency and accepts a new operation every 5 cycles.
+ * The result is undefined for an input of zero.
  */
 class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val in = Input(UInt(cfg.edgeFunctionBits.W))
+    val divisor = Flipped(Valid(UInt(cfg.edgeFunctionBits.W)))
     val result = Output(UInt(48.W))
+    val done   = Output(Bool())
   })
 
-  io.result := ShiftRegister(0xffffff000000L.U / io.in, 5)
+  require(cfg.edgeFunctionBits >= 33)
+  val fractionalBits = 40
+
+  val cycle = RegInit(0.U(3.W))
+
+  // Shared Registers
+  val shift = Reg(UInt(log2Ceil(cfg.edgeFunctionBits).W))
+  val divisor = Reg(UInt(33.W))
+  val estimate = Reg(UInt((fractionalBits + 1).W))
+  val error = Reg(UInt((fractionalBits + 1).W))
+
+  // Normalization/Initial estimate
+  val leadingZeros = PriorityEncoder(Reverse(io.divisor.bits))
+  val normalizedDivisor = (io.divisor.bits << leadingZeros)(cfg.edgeFunctionBits - 1, cfg.edgeFunctionBits - 33)
+
+  // Client must ensure it only enqueues a new request every 5 cycles.
+  assert(!io.divisor.valid || cycle === 0.U)
+
+  when(io.divisor.valid) {
+    shift := leadingZeros
+    divisor := normalizedDivisor
+    estimate := Cat(
+      0.U(1.W),
+      1.U(1.W),
+      FixedReciprocalLut(normalizedDivisor(31, 24)),
+      0.U((fractionalBits - 9).W)
+    )
+
+    cycle := 1.U
+  }
+
+  // Refinement (Newton-Raphson iterations)
+  val multOp1 = Mux(cycle === 1.U || cycle === 3.U, divisor, estimate)
+  val multOp2 = Mux(cycle === 1.U || cycle === 3.U, estimate, error)
+
+  val product = multOp1 * multOp2
+  val productRounded = Mux(
+    cycle === 1.U || cycle === 3.U,
+    product(72, 32) + product(31),
+    product((fractionalBits * 2), fractionalBits) + product(fractionalBits - 1)
+  )
+  val calcError =
+    ((BigInt(1) << (fractionalBits + 1)).U - productRounded)(fractionalBits, 0)
+  val calcEstimate = productRounded
+
+  switch(cycle) {
+    is(1.U) { // Compute Error 1 (Divisor * Estimate)
+      error := calcError
+      cycle := 2.U
+    }
+    is(2.U) { // Compute Estimate 2 (Estimate * Error 1)
+      estimate := calcEstimate
+      cycle := 3.U
+    }
+    is(3.U) { // Compute Error 2 (Divisor * Estimate 2)
+      error := calcError
+      cycle := 4.U
+    }
+    is(4.U) { // Compute Final Estimate (Estimate 2 * Error 2)
+      estimate := calcEstimate
+      cycle := 0.U
+    }
+  }
+
+  // Output Alignment
+  val adjustedEstimate = estimate - (estimate >> 24)
+  val shiftOffset = fractionalBits + cfg.edgeFunctionBits - 49
+
+  io.result := Mux(
+    shift >= shiftOffset.U,
+    adjustedEstimate.pad(48) << (shift - shiftOffset.U),
+    adjustedEstimate >> (shiftOffset.U - shift)
+  )
+
+  io.done := (cycle === 4.U)
 }
 
+object FixedReciprocal {
+  val latency = 5
+}
+
+object FixedReciprocalLut {
+  private val entryWidth = 8
+  private val numEntries = 1 << entryWidth
+  private val numerator = numEntries * numEntries * 2
+  private val romValues: Seq[Int] =
+    ((1 << entryWidth) - 1) +:
+      (1 until numEntries).map(index => (numerator / (numEntries + index)) & (numEntries - 1))
+
+  def apply(index: UInt): UInt = {
+    require(index.getWidth == entryWidth)
+    VecInit(romValues.map(_.U(entryWidth.W)))(index)
+  }
+}

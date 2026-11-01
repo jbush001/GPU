@@ -98,7 +98,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
-  val recip = Module(new FixedReciprocal) // 3 cycles of latency
+  val recip = Module(new FixedReciprocal) // 5 cycles of latency
 
   val a = setupParamsReg.tileOffset.y
   val b = WireInit(0.S(16.W))
@@ -116,7 +116,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val d1Reg = RegNext(yStep)
 
   val area2 = RegInit(0.S(cfg.edgeFunctionBits.W))
-  recip.io.in := (area2 + determinant).asUInt
+  recip.io.divisor.valid := state === 5.U && area2 + determinant > 0.S
+  recip.io.divisor.bits := (area2 + determinant).asUInt
 
   /**
    * Initiate read for e value from the parameter memory.
@@ -361,4 +362,3 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.writeVaryingCoeff.bits.index := ShiftRegister(writeVaryingIndex, 4)
   io.writeVaryingCoeff.bits.value := fpAdd.io.sum
 }
-
