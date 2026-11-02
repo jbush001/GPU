@@ -19,6 +19,7 @@ package gpu
 import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
+import scala.util.Random
 
 class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
@@ -266,7 +267,8 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
           activeTriangleIds -= triangleId
         }
 
-        val params = generateRandomTriangle(scala.util.Random)
+        val rng = new Random(42)
+        val params = generateRandomTriangle(rng)
 
         val frontFace = isFrontFace(params)
         val triangleId = submitParams(dut, params, varyingCoeffs)

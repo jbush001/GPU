@@ -18,6 +18,7 @@ package gpu
 
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
+import scala.util.Random
 
 class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
@@ -264,7 +265,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   // and reads are propagaged.
   test("PixelShaderConductor stress") {
     simulate(new PixelShaderConductor) { dut =>
-      val rng = new scala.util.Random
+      val rng = new Random(42)
 
       var tilex = 1
       var tiley = 1
