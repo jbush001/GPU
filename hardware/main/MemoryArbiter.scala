@@ -95,18 +95,18 @@ class MemoryArbiter(
     val readArb = Module(new RRArbiter(chiselTypeOf(readRequests(0).bits), numReadPorts))
     readArb.io.in <> readRequests
 
-    val readBurstActive = RegInit(false.B)
-    val readActiveClient = RegInit(0.U(log2Ceil(numReadPorts).W))
-    val readBurstCount = RegInit(0.U(io.axiBus.readRequest.bits.length.getWidth.W))
+    val readBurstActiveReg = RegInit(false.B)
+    val readActiveClientReg = RegInit(0.U(log2Ceil(numReadPorts).W))
+    val readBurstCountReg = RegInit(0.U(io.axiBus.readRequest.bits.length.getWidth.W))
 
-    io.axiBus.readRequest.valid := readArb.io.out.valid && !readBurstActive
+    io.axiBus.readRequest.valid := readArb.io.out.valid && !readBurstActiveReg
     io.axiBus.readRequest.bits.address := readArb.io.out.bits.address
     io.axiBus.readRequest.bits.length := readArb.io.out.bits.length
 
     // This ensures we only have one request active at a time. We could optimize
     // this by issuing requests whenever the AXI bus is ready, but that would
     // require more complex tracking logic
-    readArb.io.out.ready := io.axiBus.readRequest.ready && !readBurstActive
+    readArb.io.out.ready := io.axiBus.readRequest.ready && !readBurstActiveReg
 
     assert(
       !(io.axiBus.readRequest.fire && io.axiBus.readData.fire),
@@ -114,23 +114,23 @@ class MemoryArbiter(
     )
 
     when (io.axiBus.readRequest.fire) {
-      readBurstActive := true.B
-      readActiveClient := readArb.io.chosen
-      readBurstCount := readArb.io.out.bits.length
+      readBurstActiveReg := true.B
+      readActiveClientReg := readArb.io.chosen
+      readBurstCountReg := readArb.io.out.bits.length
     }.elsewhen (io.axiBus.readData.fire) {
-      when (readBurstCount === 0.U) {
-        readBurstActive := false.B
+      when (readBurstCountReg === 0.U) {
+        readBurstActiveReg := false.B
       } .otherwise {
-        readBurstCount := readBurstCount - 1.U
+        readBurstCountReg := readBurstCountReg - 1.U
       }
     }
 
     for ((port, i) <- io.readPorts.zipWithIndex) {
-      port.data.valid := io.axiBus.readData.valid && readBurstActive && (readActiveClient === i.U)
+      port.data.valid := io.axiBus.readData.valid && readBurstActiveReg && (readActiveClientReg === i.U)
       port.data.bits  := io.axiBus.readData.bits.data
     }
 
-    io.axiBus.readData.ready := readBurstActive && io.readPorts(readActiveClient).data.ready
+    io.axiBus.readData.ready := readBurstActiveReg && io.readPorts(readActiveClientReg).data.ready
   }
 
   //
@@ -153,15 +153,15 @@ class MemoryArbiter(
     val writeArb = Module(new RRArbiter(chiselTypeOf(writeRequests(0).bits), numWritePorts))
     writeArb.io.in <> writeRequests
 
-    val writeBurstActive = RegInit(false.B)
-    val writeActiveClient = RegInit(0.U(log2Ceil(numWritePorts).W))
-    val writeBurstCount = RegInit(0.U(io.axiBus.writeRequest.bits.length.getWidth.W))
+    val writeBurstActiveReg = RegInit(false.B)
+    val writeActiveClientReg = RegInit(0.U(log2Ceil(numWritePorts).W))
+    val writeBurstCountReg = RegInit(0.U(io.axiBus.writeRequest.bits.length.getWidth.W))
 
-    io.axiBus.writeRequest.valid := writeArb.io.out.valid && !writeBurstActive
+    io.axiBus.writeRequest.valid := writeArb.io.out.valid && !writeBurstActiveReg
     io.axiBus.writeRequest.bits.address := writeArb.io.out.bits.address
     io.axiBus.writeRequest.bits.length := writeArb.io.out.bits.length
 
-    writeArb.io.out.ready := io.axiBus.writeRequest.ready && !writeBurstActive
+    writeArb.io.out.ready := io.axiBus.writeRequest.ready && !writeBurstActiveReg
 
     assert(
       !(io.axiBus.writeRequest.fire && io.axiBus.writeData.fire),
@@ -169,26 +169,26 @@ class MemoryArbiter(
     )
 
     when (io.axiBus.writeRequest.fire) {
-      writeBurstActive := true.B
-      writeActiveClient := writeArb.io.chosen
-      writeBurstCount := writeArb.io.out.bits.length
+      writeBurstActiveReg := true.B
+      writeActiveClientReg := writeArb.io.chosen
+      writeBurstCountReg := writeArb.io.out.bits.length
     }.elsewhen (io.axiBus.writeData.fire) {
-      when (writeBurstCount =/= 0.U) {
-        writeBurstCount := writeBurstCount - 1.U
+      when (writeBurstCountReg =/= 0.U) {
+        writeBurstCountReg := writeBurstCountReg - 1.U
       }
     }.elsewhen (io.axiBus.writeResponse.fire) {
-      writeBurstActive := false.B
+      writeBurstActiveReg := false.B
     }
 
     for ((port, i) <- io.writePorts.zipWithIndex) {
-      port.data.ready := (io.axiBus.writeData.ready && writeBurstActive &&
-        (writeActiveClient === i.U))
+      port.data.ready := (io.axiBus.writeData.ready && writeBurstActiveReg &&
+        (writeActiveClientReg === i.U))
     }
 
-    io.axiBus.writeData.valid := writeBurstActive && io.writePorts(writeActiveClient).data.valid
-    io.axiBus.writeData.bits.data := io.writePorts(writeActiveClient).data.bits
-    io.axiBus.writeData.bits.last := writeBurstCount === 0.U
+    io.axiBus.writeData.valid := writeBurstActiveReg && io.writePorts(writeActiveClientReg).data.valid
+    io.axiBus.writeData.bits.data := io.writePorts(writeActiveClientReg).data.bits
+    io.axiBus.writeData.bits.last := writeBurstCountReg === 0.U
 
-    io.axiBus.writeResponse.ready := writeBurstActive
+    io.axiBus.writeResponse.ready := writeBurstActiveReg
   }
 }

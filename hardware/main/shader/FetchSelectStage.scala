@@ -78,11 +78,11 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
     val jobId = UInt(cfg.shaderJobIdBits.W)
   }
 
-  val threads = RegInit(VecInit.fill(cfg.shaderThreads)(0.U.asTypeOf(new ThreadInfo)))
+  val threadRegs = RegInit(VecInit.fill(cfg.shaderThreads)(0.U.asTypeOf(new ThreadInfo)))
 
   // This CAM looks up the thread by JobID.
   when (io.ioWakeJob.valid) {
-    for (thread <- threads) {
+    for (thread <- threadRegs) {
         when (thread.running && thread.jobId === io.ioWakeJob.bits) {
         assert(thread.ioWait, "Waking a job that is not waiting on IO")
         thread.ioWait := false.B
@@ -91,35 +91,35 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   }
 
   when (io.ioWaitThread.valid) {
-    assert(!threads(io.ioWaitThread.bits).ioWait,
+    assert(!threadRegs(io.ioWaitThread.bits).ioWait,
       "Attempt to stall thread that is already waiting on IO")
-    threads(io.ioWaitThread.bits).ioWait := true.B
+    threadRegs(io.ioWaitThread.bits).ioWait := true.B
   }
 
   // Threads start upon request and run to completion, stopping when they
-  // reach a HALT instruction. This logic tracks which threads are active
-  // and assigns new threads on request. This unit can only start one new
+  // reach a HALT instruction. This logic tracks which threadRegs are active
+  // and assigns new threadRegs on request. This unit can only start one new
   // thread per cycle.
-  val haltedThreads = VecInit(threads.map(!_.running))
+  val haltedThreads = VecInit(threadRegs.map(!_.running))
   val nextFreeThread = PriorityEncoder(haltedThreads)
   io.startJob.ready := haltedThreads.reduce(_ || _)
   io.resetThread.valid := io.startJob.fire
   io.resetThread.bits := nextFreeThread
 
   when (io.startJob.fire) {
-    val thread = threads(nextFreeThread)
+    val thread = threadRegs(nextFreeThread)
     thread.running := true.B
     thread.programCounter := io.startJob.bits.startPc
     thread.jobId := io.startJob.bits.jobId
   }
 
   when (io.halt.valid) {
-    assert(threads(io.halt.bits).running, "Cannot halt a thread that is already halted")
-    threads(io.halt.bits).running := false.B
+    assert(threadRegs(io.halt.bits).running, "Cannot halt a thread that is already halted")
+    threadRegs(io.halt.bits).running := false.B
   }
 
-  // This handles threads that are waiting on instruction cache misses.
-  for ((thread, thid) <- threads.zipWithIndex) {
+  // This handles threadRegs that are waiting on instruction cache misses.
+  for ((thread, thid) <- threadRegs.zipWithIndex) {
     assert(!(io.icacheWakeThreads(thid) && io.icacheMiss && io.icacheMissThread === thid.U),
       "Cannot wake and stall a thread at the same time")
     assert(!(thread.iCacheWait && io.icacheMiss && io.icacheMissThread === thid.U),
@@ -157,27 +157,27 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // wider than the number of physical execution units and issue the same
   // instruction multiple times with a "chime" index.
   val rawLatency = 4 // Will issue every nth cycle, where n = rawLatency + 1
-  val issueRawDelay = RegInit(VecInit.fill(cfg.shaderThreads)(0.U(3.W)))
+  val issueRawDelayReg = RegInit(VecInit.fill(cfg.shaderThreads)(0.U(3.W)))
   val inRawWait = Wire(Vec(cfg.shaderThreads, Bool()))
   for (i <- 0 until cfg.shaderThreads) {
     when (io.rollback.valid && io.rollback.bits.thread === i.U) {
       // If a thread is rolled back, it is safe to issue the instruction again
       // immediately, since the previous instruction was not executed.
-      issueRawDelay(i) := 0.U
+      issueRawDelayReg(i) := 0.U
     } .elsewhen (io.fetchRequest.valid && io.fetchRequest.bits.thread === i.U) {
       // Issue an instruction on this thread
-      assert(issueRawDelay(i) === 0.U, "Cannot issue an instruction on a thread that is still in RAW wait")
-      issueRawDelay(i) := rawLatency.U
-    } .elsewhen (issueRawDelay(i) =/= 0.U) {
-      issueRawDelay(i) := issueRawDelay(i) - 1.U
+      assert(issueRawDelayReg(i) === 0.U, "Cannot issue an instruction on a thread that is still in RAW wait")
+      issueRawDelayReg(i) := rawLatency.U
+    } .elsewhen (issueRawDelayReg(i) =/= 0.U) {
+      issueRawDelayReg(i) := issueRawDelayReg(i) - 1.U
     }
 
-    inRawWait(i) := issueRawDelay(i) =/= 0.U
+    inRawWait(i) := issueRawDelayReg(i) =/= 0.U
   }
 
   // Select the thread to issue.
   val threadIssueArbiter = Module(new RRArbiter(UInt(cfg.busAddressBits.W), cfg.shaderThreads))
-  for ((thread, thid) <- threads.zipWithIndex) {
+  for ((thread, thid) <- threadRegs.zipWithIndex) {
     threadIssueArbiter.io.in(thid).valid := (
       thread.running
       && !thread.iCacheWait
@@ -192,23 +192,23 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
 
   io.fetchRequest.valid := threadIssueArbiter.io.out.valid && !(io.halt.valid && io.halt.bits === threadIssueArbiter.io.chosen)
   io.fetchRequest.bits.thread := threadIssueArbiter.io.chosen
-  io.fetchRequest.bits.jobId := threads(threadIssueArbiter.io.chosen).jobId
-  io.fetchRequest.bits.pc.raw := threads(threadIssueArbiter.io.chosen).programCounter
+  io.fetchRequest.bits.jobId := threadRegs(threadIssueArbiter.io.chosen).jobId
+  io.fetchRequest.bits.pc.raw := threadRegs(threadIssueArbiter.io.chosen).programCounter
 
   // Program counter update logic.
   for (thid <- 0 until cfg.shaderThreads) {
     when (io.rollback.valid && io.rollback.bits.thread === thid.U) {
       // Rollback a thread, due to a branch or other blocking condition.
-      threads(thid).programCounter := io.rollback.bits.pc
+      threadRegs(thid).programCounter := io.rollback.bits.pc
     }.elsewhen ((io.icacheMiss && io.icacheMissThread === thid.U)
       || (io.ioWaitThread.valid && io.ioWaitThread.bits === thid.U)) {
       // Back up to previous instruction so we can restart there when the
       // wait condition is resolved.
-      threads(thid).programCounter := threads(thid).programCounter - 4.U
+      threadRegs(thid).programCounter := threadRegs(thid).programCounter - 4.U
     }.elsewhen (io.fetchRequest.valid && io.fetchRequest.bits.thread === thid.U) {
       // Advance the selected program counter. Note, because of the thread ready logic,
       // this will never occur when one of the above conditions is true.
-      threads(thid).programCounter := threads(thid).programCounter + 4.U
+      threadRegs(thid).programCounter := threadRegs(thid).programCounter + 4.U
     }
   }
 }

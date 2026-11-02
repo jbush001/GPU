@@ -56,6 +56,6 @@ class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
   }
 
   val readColumn = io.readAddr.bits(cfg.vpmReadAddrBits - 1, log2Up(cfg.shaderVectorLanes))
-  val readRow = RegNext(io.readAddr.bits(log2Up(cfg.shaderVectorLanes) - 1, 0))
-  io.readValue := mem.read(readColumn, io.readAddr.valid)(readRow)
+  val readRowReg = RegNext(io.readAddr.bits(log2Up(cfg.shaderVectorLanes) - 1, 0))
+  io.readValue := mem.read(readColumn, io.readAddr.valid)(readRowReg)
 }

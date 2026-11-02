@@ -77,9 +77,9 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     val address = new ICacheAddress
   }
 
-  val pendingMisses = RegInit(VecInit.fill(cfg.shaderThreads)(
+  val pendingMissesReg = RegInit(VecInit.fill(cfg.shaderThreads)(
     0.U.asTypeOf(new PendingMiss)))
-  val pendingMissMatchOh = VecInit(pendingMisses.map(r => r.valid
+  val pendingMissMatchOh = VecInit(pendingMissesReg.map(r => r.valid
     && r.address.cacheLineAligned === io.fillRequest.bits.address.cacheLineAligned))
   val pendingMissMatchIndex = PriorityEncoder(pendingMissMatchOh)
 
@@ -87,60 +87,60 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   when (io.fillRequest.valid) {
     when (pendingMissMatchOh.reduce(_ || _)) {
       // Combine with existing request
-      pendingMisses(pendingMissMatchIndex).waitingThreadBitmap :=
-        pendingMisses(pendingMissMatchIndex).waitingThreadBitmap | UIntToOH(io.fillRequest.bits.thread)
+      pendingMissesReg(pendingMissMatchIndex).waitingThreadBitmap :=
+        pendingMissesReg(pendingMissMatchIndex).waitingThreadBitmap | UIntToOH(io.fillRequest.bits.thread)
     } .otherwise {
       // Set up new request
-      pendingMisses(io.fillRequest.bits.thread).valid := true.B
-      pendingMisses(io.fillRequest.bits.thread).address := io.fillRequest.bits.address.cacheLineAligned
-      pendingMisses(io.fillRequest.bits.thread).waitingThreadBitmap := UIntToOH(io.fillRequest.bits.thread)
+      pendingMissesReg(io.fillRequest.bits.thread).valid := true.B
+      pendingMissesReg(io.fillRequest.bits.thread).address := io.fillRequest.bits.address.cacheLineAligned
+      pendingMissesReg(io.fillRequest.bits.thread).waitingThreadBitmap := UIntToOH(io.fillRequest.bits.thread)
     }
   }
 
   // The arbiter selects the next pending miss.
   val nextFillArbiter = Module(new RRArbiter(new ICacheAddress, cfg.shaderThreads))
-  for ((in, miss) <- nextFillArbiter.io.in.zip(pendingMisses)) {
+  for ((in, miss) <- nextFillArbiter.io.in.zip(pendingMissesReg)) {
     in.valid := miss.valid
     in.bits := miss.address
   }
 
   val cacheLineBeats = cfg.cacheLineSizeBytes * 8 / cfg.busDataBits
 
-  val burstActive = RegInit(false.B)
-  val burstThread = RegInit(0.U(log2Up(cfg.shaderThreads).W))
+  val burstActiveReg = RegInit(false.B)
+  val burstThreadReg = RegInit(0.U(log2Up(cfg.shaderThreads).W))
   val burstAddress = Reg(new ICacheAddress)
-  val burstCounter = RegInit(0.U(log2Up(cacheLineBeats).W))
+  val burstCounterReg = RegInit(0.U(log2Up(cacheLineBeats).W))
 
   io.updateCache.bits.address := burstAddress
   io.updateCache.bits.data := io.readPort.data.bits
-  io.updateCache.bits.last := burstCounter === (cacheLineBeats - 1).U
+  io.updateCache.bits.last := burstCounterReg === (cacheLineBeats - 1).U
   io.readPort.burst.bits.address := nextFillArbiter.io.out.bits.raw
   io.readPort.burst.bits.length := cacheLineBeats.U
   io.readPort.data.ready := true.B
 
   io.icacheWakeThreads := 0.U
   io.updateCache.valid := false.B
-  when (burstActive && io.readPort.data.valid) {
+  when (burstActiveReg && io.readPort.data.valid) {
     io.updateCache.valid := true.B
-    when (burstCounter === (cacheLineBeats - 1).U) {
+    when (burstCounterReg === (cacheLineBeats - 1).U) {
       // Burst complete
-      burstActive := false.B
-      io.icacheWakeThreads := pendingMisses(burstThread).waitingThreadBitmap
-      pendingMisses(burstThread).valid := false.B
+      burstActiveReg := false.B
+      io.icacheWakeThreads := pendingMissesReg(burstThreadReg).waitingThreadBitmap
+      pendingMissesReg(burstThreadReg).valid := false.B
     }.otherwise {
-      burstCounter := burstCounter + 1.U
+      burstCounterReg := burstCounterReg + 1.U
       burstAddress := burstAddress + (cfg.busDataBits / 8).U
     }
   }
 
   nextFillArbiter.io.out.ready := false.B
   io.readPort.burst.valid := false.B
-  nextFillArbiter.io.out.ready := !burstActive
+  nextFillArbiter.io.out.ready := !burstActiveReg
   when (nextFillArbiter.io.out.fire) {
     // Start a new burst, issue address to memory arbiter
-    burstActive := true.B
-    burstCounter := 0.U
-    burstThread := nextFillArbiter.io.chosen
+    burstActiveReg := true.B
+    burstCounterReg := 0.U
+    burstThreadReg := nextFillArbiter.io.chosen
     burstAddress := nextFillArbiter.io.out.bits
     io.readPort.burst.valid := true.B
   }
@@ -150,24 +150,24 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     "Must wake threads when cache line update is complete")
 
   // Invariant 2: The cache can only be updated during an active burst.
-  assert(!io.updateCache.valid || burstActive,
+  assert(!io.updateCache.valid || burstActiveReg,
     "Cannot update cache outside of a burst")
 
   for (thidA <- 0 until cfg.shaderThreads) {
     // Invariant 3: A valid pending miss must have at least one waiting thread.
-    assert(!pendingMisses(thidA).valid || pendingMisses(thidA).waitingThreadBitmap.orR,
+    assert(!pendingMissesReg(thidA).valid || pendingMissesReg(thidA).waitingThreadBitmap.orR,
       "Pending miss is valid but has no waiting threads")
 
     for (thidB <- thidA + 1 until cfg.shaderThreads) {
       // Invariant 4: No two active pending misses can have the same address.
-      assert(!(pendingMisses(thidA).valid && pendingMisses(thidB).valid
-        && pendingMisses(thidA).address === pendingMisses(thidB).address),
+      assert(!(pendingMissesReg(thidA).valid && pendingMissesReg(thidB).valid
+        && pendingMissesReg(thidA).address === pendingMissesReg(thidB).address),
         "Two pending misses for the same address")
 
       // Invariant 5: A thread cannot be waiting on more than one pending miss.
-      assert(!(pendingMisses(thidA).waitingThreadBitmap(thidB)
-        && pendingMisses(thidB).waitingThreadBitmap(thidA)
-        && pendingMisses(thidA).valid && pendingMisses(thidB).valid),
+      assert(!(pendingMissesReg(thidA).waitingThreadBitmap(thidB)
+        && pendingMissesReg(thidB).waitingThreadBitmap(thidA)
+        && pendingMissesReg(thidA).valid && pendingMissesReg(thidB).valid),
         "Two pending misses are waiting on the same thread")
     }
   }

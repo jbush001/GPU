@@ -107,7 +107,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val stepCommand = Wire(StepCommand())
 
   val activeParams = RegEnable(io.params.bits, io.params.fire)
-  val startRasterize = RegNext(io.params.fire)
+  val startRasterizeReg = RegNext(io.params.fire)
 
   val quadLoc = Reg(Point2D())
 
@@ -176,33 +176,33 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     val Idle, StepRight, StepLeft, SendLast = Value
   }
 
-  val scanState = RegInit(State.Idle)
+  val scanStateReg = RegInit(State.Idle)
 
   // We buffer one quad because we don't know if this will be the last quad.
   // When the state machine goes into the Sendlast state, the flag is attached
   // to the outgoing quad.
-  val outputQuad = RegInit(0.U.asTypeOf(new RasterizedQuad))
-  val outputQuadLatched = RegInit(false.B)
+  val outputQuadReg = RegInit(0.U.asTypeOf(new RasterizedQuad))
+  val outputQuadValidReg = RegInit(false.B)
 
   when (io.quad.ready && nextQuadValid) {
-    outputQuad := nextQuad
-    outputQuadLatched := true.B
+    outputQuadReg := nextQuad
+    outputQuadValidReg := true.B
   }
 
-  when (io.quad.ready && scanState === State.SendLast) {
-    outputQuadLatched := false.B
+  when (io.quad.ready && scanStateReg === State.SendLast) {
+    outputQuadValidReg := false.B
 
     // Reinitialize to zero, as this may be sent as a dummy quad.
-    outputQuad := 0.U.asTypeOf(new RasterizedQuad)
+    outputQuadReg := 0.U.asTypeOf(new RasterizedQuad)
   }
 
-  io.quad.bits := outputQuad
+  io.quad.bits := outputQuadReg
 
   // A side effect of this logic is that, if the triangle has no coverage, it will send
   // a dummy quad with the flags set to zero.
-  io.quad.valid := (outputQuadLatched && nextQuadValid) || scanState === State.SendLast
-  io.quad.bits.lastQuad := scanState === State.SendLast
-  io.quad.bits.lastTriangle := scanState === State.SendLast && activeParams.lastTriangle
+  io.quad.valid := (outputQuadValidReg && nextQuadValid) || scanStateReg === State.SendLast
+  io.quad.bits.lastQuad := scanStateReg === State.SendLast
+  io.quad.bits.lastTriangle := scanStateReg === State.SendLast && activeParams.lastTriangle
 
   // Explictly assign so it is correct for the dummy quad.
   io.quad.bits.triangleId := activeParams.triangleId
@@ -213,14 +213,14 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // bounding box in a zig-zag pattern.
   io.params.ready := false.B
   stepCommand := StepCommand.Wait
-  switch (scanState) {
+  switch (scanStateReg) {
     // Waiting to start a new triangle
     is (State.Idle) {
       io.params.ready := true.B
-      when (startRasterize) {
+      when (startRasterizeReg) {
         stepCommand := StepCommand.Reset
         quadLoc := activeParams.boundingBox.topLeft
-        scanState := State.StepRight
+        scanStateReg := State.StepRight
       } otherwise {
         stepCommand := StepCommand.Wait
       }
@@ -231,10 +231,10 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       when (io.quad.ready) {
         when (quadLoc.x === activeParams.boundingBox.right) {
           when (quadLoc.y === activeParams.boundingBox.bottom) {
-            scanState := State.SendLast
+            scanStateReg := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
-            scanState := State.StepLeft
+            scanStateReg := State.StepLeft
           }
         }.otherwise {
           stepCommand := StepCommand.Right
@@ -247,10 +247,10 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       when (io.quad.ready) {
         when(quadLoc.x === activeParams.boundingBox.left) {
           when (quadLoc.y === activeParams.boundingBox.bottom) {
-            scanState := State.SendLast
+            scanStateReg := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
-            scanState := State.StepRight
+            scanStateReg := State.StepRight
           }
         }.otherwise {
           stepCommand := StepCommand.Left
@@ -260,7 +260,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
     is (State.SendLast) {
       when (io.quad.ready) {
-        scanState := State.Idle
+        scanStateReg := State.Idle
       }
     }
   }

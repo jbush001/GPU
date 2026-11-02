@@ -60,9 +60,9 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val inst0 = Wire(Valid(new InstructionMetadata))
   inst0.valid := io.decodedInstruction.valid
   inst0.bits := io.decodedInstruction.bits.meta
-  val inst1 = RegNext(inst0, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
-  val inst2 = RegNext(inst1, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
-  val inst3 = RegNext(inst2, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
+  val inst1Reg = RegNext(inst0, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
+  val inst2Reg = RegNext(inst1Reg, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
+  val inst3Reg = RegNext(inst2Reg, init = 0.U.asTypeOf(Valid(new InstructionMetadata)))
 
   // Long latency pipelines (3 cycles)
   val fpAddSubResult = Wire(VectorResult())
@@ -161,26 +161,26 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     binOps.map { case (op, _) => op -> singleCycleResult3 } ++
     cmpOps.map { case (op, _) => op -> compareAsVec }
 
-  val result = MuxLookup(inst3.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
+  val result = MuxLookup(inst3Reg.bits.opcode, WireInit(VectorResult(), DontCare))(resultTable)
 
-  io.writeback.valid := inst3.valid && inst3.bits.hasWriteback
-  io.writeback.bits.thread := inst3.bits.thread
-  io.writeback.bits.jobId := inst3.bits.jobId
+  io.writeback.valid := inst3Reg.valid && inst3Reg.bits.hasWriteback
+  io.writeback.bits.thread := inst3Reg.bits.thread
+  io.writeback.bits.jobId := inst3Reg.bits.jobId
   io.writeback.bits.value := result
-  io.writeback.bits.destReg := inst3.bits.destReg
+  io.writeback.bits.destReg := inst3Reg.bits.destReg
 
   io.squash.valid := false.B
-  io.squash.bits := inst3.bits.thread
+  io.squash.bits := inst3Reg.bits.thread
   io.halt.valid := false.B
-  io.halt.bits := inst3.bits.thread
+  io.halt.bits := inst3Reg.bits.thread
   io.rollback.valid := false.B
   io.rollback.bits.thread := DontCare
   io.rollback.bits.pc := DontCare
 
   // Halt handling
   io.jobFinished.valid := false.B
-  io.jobFinished.bits := inst3.bits.jobId
-  when (inst3.valid && inst3.bits.opcode === OpCode.Halt) {
+  io.jobFinished.bits := inst3Reg.bits.jobId
+  when (inst3Reg.valid && inst3Reg.bits.opcode === OpCode.Halt) {
     io.halt.valid := true.B
     io.squash.valid := true.B
     io.jobFinished.valid := true.B
@@ -189,10 +189,10 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   // Branch handling
   when (branchTaken3) {
     io.rollback.valid := true.B
-    io.rollback.bits.thread := inst3.bits.thread
-    io.rollback.bits.pc := (inst3.bits.pc.asSInt + 4.S + (inst3.bits.immediateValue.asSInt << 2)).asUInt(cfg.busAddressBits - 1, 0)
+    io.rollback.bits.thread := inst3Reg.bits.thread
+    io.rollback.bits.pc := (inst3Reg.bits.pc.asSInt + 4.S + (inst3Reg.bits.immediateValue.asSInt << 2)).asUInt(cfg.busAddressBits - 1, 0)
     if (cfg.traceEnable) {
-      printf(cf"branch taken: thread ${inst3.bits.thread}%0d, pc = ${inst3.bits.pc}%0x, target = ${io.rollback.bits.pc}%0x\n")
+      printf(cf"branch taken: thread ${inst3Reg.bits.thread}%0d, pc = ${inst3Reg.bits.pc}%0x, target = ${io.rollback.bits.pc}%0x\n")
     }
 
     io.squash.valid := true.B

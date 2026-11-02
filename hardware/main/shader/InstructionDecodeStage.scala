@@ -171,9 +171,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     UInt(32.W), SyncReadMem.Undefined)
   val vectorRegisters = SyncReadMem(cfg.shaderThreads * cfg.numRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
-  val execMask = RegInit(VecInit.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W)))
+  val execMaskReg = RegInit(VecInit.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W)))
   when (io.resetThread.valid) {
-    execMask(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
+    execMaskReg(io.resetThread.bits) := ~0.U(cfg.shaderVectorLanes.W)
   }
 
   def isLoadConst(opcode: OpCode.Type): Bool = {
@@ -237,7 +237,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val tableLookup = MuxLookup(decodedOpcode, "b00".U)(decodeTable)
   decodedMetadata.hasWriteback := tableLookup(1)
   val hasReg1Op = tableLookup(0)
-  val hasReg1OpStage2 = RegNext(hasReg1Op, init = false.B)
+  val hasReg1OpStage2Reg = RegNext(hasReg1Op, init = false.B)
 
   when (isBranch(decodedOpcode)) {
     decodedMetadata.immediateValue := (io.fetchedInstruction.bits.instruction(31, 20) ##
@@ -246,7 +246,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     decodedMetadata.immediateValue := io.fetchedInstruction.bits.instruction(31, 16).pad(19)
   }
 
-  val decodedMetadataStage2 = RegNext(decodedMetadata)
+  val decodedMetadataStage2Reg = RegNext(decodedMetadata)
 
   def broadcast(v: UInt): Vec[UInt] = VecInit.fill(cfg.shaderVectorLanes)(v)
 
@@ -276,7 +276,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
 
   val operand1RegStage2 = RegNext(operand1Reg)
   val operand2RegStage2 = RegNext(operand2Reg)
-  val validCycle2 = RegNext(io.fetchedInstruction.valid, init = false.B)
+  val validCycle2Reg = RegNext(io.fetchedInstruction.valid, init = false.B)
 
   /** Is this a register in the [[PixelShaderConductor]] */
   def isInputReg(regId: UInt): Bool = {
@@ -309,7 +309,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       result := DontCare  // Default
       switch (regId) {
         // Special registers
-        is(SpecialReg.ExecMask.U)     { result := broadcast(execMask(decodedMetadataStage2.thread)) }
+        is(SpecialReg.ExecMask.U)     { result := broadcast(execMaskReg(decodedMetadataStage2Reg.thread)) }
         is(SpecialReg.LaneId.U)       { result := VecInit((0 until cfg.shaderVectorLanes).map(_.U(32.W))) }
         is(SpecialReg.Const0.U)       { result := broadcast(0.U(32.W)) }
         is(SpecialReg.Const1.U)       { result := broadcast(1.U(32.W)) }
@@ -331,7 +331,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.decodedInstruction.bits.operand1 := resolveOperand(operand1RegStage2, scalarRead1, vectorRead1)
   io.decodedInstruction.bits.operand2 := resolveOperand(operand2RegStage2, scalarRead2, vectorRead2)
 
-  io.ioWaitThread.valid := validCycle2 && !io.regReadData.valid && isInputReg(operand1RegStage2) && hasReg1OpStage2
+  io.ioWaitThread.valid := validCycle2Reg && !io.regReadData.valid && isInputReg(operand1RegStage2) && hasReg1OpStage2Reg
   io.ioWaitThread.bits := io.decodedInstruction.bits.meta.thread
 
   io.regWrite.bits.jobId := io.writeback.bits.jobId
@@ -346,7 +346,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
       when (destReg < 128.U) {
         printf(cf"r$destReg%0d[th${io.writeback.bits.thread}%0d] = ${io.writeback.bits.value(0)}%0x\n")
       }.otherwise {
-        printf(cf"v${destReg - 128.U}%0d[th${io.writeback.bits.thread}%0d](${execMask(io.writeback.bits.thread)}%b) = ${io.writeback.bits.value}\n")
+        printf(cf"v${destReg - 128.U}%0d[th${io.writeback.bits.thread}%0d](${execMaskReg(io.writeback.bits.thread)}%b) = ${io.writeback.bits.value}\n")
       }
     }
 
@@ -356,15 +356,15 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     }.elsewhen (destReg(7, 6) === 2.U) {
       // 128-191: vector general purpose registers
       vectorRegisters.write(gprIndex,
-        io.writeback.bits.value, execMask(io.writeback.bits.thread).asBools)
+        io.writeback.bits.value, execMaskReg(io.writeback.bits.thread).asBools)
     }.elsewhen (isOutputReg(destReg)) {
       // 240-255: special purpose output registers
       io.regWrite.valid := true.B
     }.elsewhen (destReg === SpecialReg.ExecMask.U) {
-      execMask(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
+      execMaskReg(io.writeback.bits.thread) := io.writeback.bits.value(0)(cfg.shaderVectorLanes - 1, 0)
     }
   }
 
-  io.decodedInstruction.valid := validCycle2 && !io.ioWaitThread.valid
-  io.decodedInstruction.bits.meta := decodedMetadataStage2
+  io.decodedInstruction.valid := validCycle2Reg && !io.ioWaitThread.valid
+  io.decodedInstruction.bits.meta := decodedMetadataStage2Reg
 }

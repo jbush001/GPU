@@ -91,11 +91,11 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     io.interpolatedQuad.bits.depths(pixel) := ShiftRegister(w, 4, !stall)
   }
 
-  val validStages = RegInit(0.U(totalLatency.W))
+  val validStagesReg = RegInit(0.U(totalLatency.W))
   when (!stall) {
-    validStages := validStages(totalLatency - 2, 0) ## io.rasterizedQuad.valid
+    validStagesReg := validStagesReg(totalLatency - 2, 0) ## io.rasterizedQuad.valid
   }
 
-  io.interpolatedQuad.valid := validStages(totalLatency - 1)
+  io.interpolatedQuad.valid := validStagesReg(totalLatency - 1)
   io.rasterizedQuad.ready := !stall
 }

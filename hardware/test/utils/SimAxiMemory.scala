@@ -45,48 +45,48 @@ class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
     val Idle, Write, WriteAck, ReadSetup, ReadData = Value
   }
 
-  val state = RegInit(State.Idle)
-  val writeLatched = RegInit(false.B)
-  val writeAddress = RegInit(0.U(cfg.busAddressBits.W))
-  val writeLength = RegInit(0.U(cfg.busBurstLengthBits.W))
-  val readLatched = RegInit(false.B)
-  val readAddress = RegInit(0.U(cfg.busAddressBits.W))
-  val readLength = RegInit(0.U(cfg.busBurstLengthBits.W))
-  val burstAddress = RegInit(0.U(cfg.busAddressBits.W))
-  val burstLength = RegInit(0.U(cfg.busBurstLengthBits.W))
-  val readAddressNext = Mux(io.readData.fire, burstAddress + 1.U, burstAddress)
+  val stateReg = RegInit(State.Idle)
+  val writeValidReg = RegInit(false.B)
+  val writeAddressReg = RegInit(0.U(cfg.busAddressBits.W))
+  val writeLengthReg = RegInit(0.U(cfg.busBurstLengthBits.W))
+  val readValidReg = RegInit(false.B)
+  val readAddressReg = RegInit(0.U(cfg.busAddressBits.W))
+  val readLengthReg = RegInit(0.U(cfg.busBurstLengthBits.W))
+  val burstAddressReg = RegInit(0.U(cfg.busAddressBits.W))
+  val burstLengthReg = RegInit(0.U(cfg.busBurstLengthBits.W))
+  val readAddressNext = Mux(io.readData.fire, burstAddressReg + 1.U, burstAddressReg)
 
-  when (!writeLatched && io.writeRequest.valid) {
-    writeLatched := true.B
-    writeAddress := io.writeRequest.bits.address >> 3.U
-    writeLength := io.writeRequest.bits.length
+  when (!writeValidReg && io.writeRequest.valid) {
+    writeValidReg := true.B
+    writeAddressReg := io.writeRequest.bits.address >> 3.U
+    writeLengthReg := io.writeRequest.bits.length
   }
 
-  when (!readLatched && io.readRequest.valid) {
-    readLatched := true.B
-    readAddress := io.readRequest.bits.address >> 3.U
-    readLength := io.readRequest.bits.length
+  when (!readValidReg && io.readRequest.valid) {
+    readValidReg := true.B
+    readAddressReg := io.readRequest.bits.address >> 3.U
+    readLengthReg := io.readRequest.bits.length
   }
 
   io.readData.bits.data := memory.read(readAddressNext)
-  io.writeRequest.ready := !writeLatched
-  io.writeData.ready := (state === State.Write)
-  io.writeResponse.valid := (state === State.WriteAck)
-  io.readRequest.ready := !readLatched
-  io.readData.valid := (state === State.ReadData)
+  io.writeRequest.ready := !writeValidReg
+  io.writeData.ready := (stateReg === State.Write)
+  io.writeResponse.valid := (stateReg === State.WriteAck)
+  io.readRequest.ready := !readValidReg
+  io.readData.valid := (stateReg === State.ReadData)
 
-  switch (state) {
+  switch (stateReg) {
     is (State.Idle) {
-      when (writeLatched) {
-        burstAddress := writeAddress
-        burstLength := writeLength
-        writeLatched := false.B
-        state := State.Write
-      } .elsewhen (readLatched) {
-        burstAddress := readAddress
-        burstLength := readLength
-        readLatched := false.B
-        state := State.ReadSetup
+      when (writeValidReg) {
+        burstAddressReg := writeAddressReg
+        burstLengthReg := writeLengthReg
+        writeValidReg := false.B
+        stateReg := State.Write
+      } .elsewhen (readValidReg) {
+        burstAddressReg := readAddressReg
+        burstLengthReg := readLengthReg
+        readValidReg := false.B
+        stateReg := State.ReadSetup
       }
 
       // A2.3.2.2
@@ -97,34 +97,34 @@ class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
 
     is (State.Write) {
       when (io.writeData.valid) {
-        memory.write(burstAddress, io.writeData.bits.data)
-        when (burstLength === 0.U) {
+        memory.write(burstAddressReg, io.writeData.bits.data)
+        when (burstLengthReg === 0.U) {
           assert(io.writeData.bits.last)
-          state := State.WriteAck
+          stateReg := State.WriteAck
         } .otherwise {
-          burstAddress := burstAddress + 1.U
-          burstLength := burstLength - 1.U
+          burstAddressReg := burstAddressReg + 1.U
+          burstLengthReg := burstLengthReg - 1.U
         }
       }
     }
 
     is (State.WriteAck) {
       when (io.writeResponse.ready) {
-        state := State.Idle
+        stateReg := State.Idle
       }
     }
 
     is (State.ReadSetup) {
-      state := State.ReadData
+      stateReg := State.ReadData
     }
 
     is (State.ReadData) {
       when (io.readData.ready) {
-        when (burstLength === 0.U) {
-          state := State.Idle
+        when (burstLengthReg === 0.U) {
+          stateReg := State.Idle
         } .otherwise {
-          burstAddress := burstAddress + 1.U
-          burstLength := burstLength - 1.U
+          burstAddressReg := burstAddressReg + 1.U
+          burstLengthReg := burstLengthReg - 1.U
         }
       }
     }
@@ -251,10 +251,10 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
       SimMemAccess.write(dut.clock, dut.dap, 0, testData)
 
       for (_ <- 0 until 1000) {
-        val burstLength = rng.nextInt(maxBurst - 1) + 1
+        val burstLengthReg = rng.nextInt(maxBurst - 1) + 1
         val address = rng.nextInt(memorySize - maxBurst) * 8
-        val readData = this.readBurst(dut, rng, address, burstLength)
-        assert(readData == testData.slice(address / 8, address / 8 + burstLength))
+        val readData = this.readBurst(dut, rng, address, burstLengthReg)
+        assert(readData == testData.slice(address / 8, address / 8 + burstLengthReg))
       }
     }
   }
@@ -273,9 +273,9 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
       val testData: Seq[Long] = (1 to memorySize).map(i => i + 1024)
       var offset = 0
       while (offset < memorySize) {
-        val burstLength = math.min(memorySize - offset, rng.nextInt(maxBurst - 1) + 1)
-        this.writeBurst(dut, rng, offset * 8, testData.slice(offset, offset + burstLength))
-        offset += burstLength
+        val burstLengthReg = math.min(memorySize - offset, rng.nextInt(maxBurst - 1) + 1)
+        this.writeBurst(dut, rng, offset * 8, testData.slice(offset, offset + burstLengthReg))
+        offset += burstLengthReg
       }
 
       val readData = SimMemAccess.read(dut.clock, dut.dap, 0, memorySize)

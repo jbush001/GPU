@@ -36,7 +36,7 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   require(cfg.edgeFunctionBits >= 33)
   val fractionalBits = 40
 
-  val cycle = RegInit(0.U(3.W))
+  val cycleReg = RegInit(0.U(3.W))
 
   // Shared Registers
   val shift = Reg(UInt(log2Ceil(cfg.edgeFunctionBits).W))
@@ -49,7 +49,7 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val normalizedDivisor = (io.divisor.bits << leadingZeros)(cfg.edgeFunctionBits - 1, cfg.edgeFunctionBits - 33)
 
   // Client must ensure it only enqueues a new request every 5 cycles.
-  assert(!io.divisor.valid || cycle === 0.U)
+  assert(!io.divisor.valid || cycleReg === 0.U)
 
   when(io.divisor.valid) {
     shift := leadingZeros
@@ -59,16 +59,16 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
       0.U((fractionalBits - 9).W)
     )
 
-    cycle := 1.U
+    cycleReg := 1.U
   }
 
   // Refinement (Newton-Raphson iterations)
-  val multOp1 = Mux(cycle === 1.U || cycle === 3.U, divisor, estimate)
-  val multOp2 = Mux(cycle === 1.U || cycle === 3.U, estimate, error)
+  val multOp1 = Mux(cycleReg === 1.U || cycleReg === 3.U, divisor, estimate)
+  val multOp2 = Mux(cycleReg === 1.U || cycleReg === 3.U, estimate, error)
 
   val product = multOp1 * multOp2
   val productRounded = Mux(
-    cycle === 1.U || cycle === 3.U,
+    cycleReg === 1.U || cycleReg === 3.U,
     product(72, 32) + product(31),
     product((fractionalBits * 2), fractionalBits) + product(fractionalBits - 1)
   )
@@ -76,22 +76,22 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
     ((BigInt(1) << (fractionalBits + 1)).U - productRounded)(fractionalBits, 0)
   val calcEstimate = productRounded
 
-  switch(cycle) {
+  switch(cycleReg) {
     is(1.U) { // Compute Error 1 (Divisor * Estimate)
       error := calcError
-      cycle := 2.U
+      cycleReg := 2.U
     }
     is(2.U) { // Compute Estimate 2 (Estimate * Error 1)
       estimate := calcEstimate
-      cycle := 3.U
+      cycleReg := 3.U
     }
     is(3.U) { // Compute Error 2 (Divisor * Estimate 2)
       error := calcError
-      cycle := 4.U
+      cycleReg := 4.U
     }
     is(4.U) { // Compute Final Estimate (Estimate 2 * Error 2)
       estimate := calcEstimate
-      cycle := 0.U
+      cycleReg := 0.U
     }
   }
 
@@ -105,7 +105,7 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
     adjustedEstimate >> (shiftOffset.U - shift)
   )
 
-  io.done := (cycle === 4.U)
+  io.done := (cycleReg === 4.U)
 }
 
 object FixedReciprocal {

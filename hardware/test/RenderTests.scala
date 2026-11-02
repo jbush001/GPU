@@ -49,12 +49,12 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   io.lastTriangle := gpu.io.lastTriangle
   io.triangleFinished <> gpu.io.triangleFinished
 
-  val complete = RegInit(false.B)
-  io.complete := complete
+  val completeReg = RegInit(false.B)
+  io.complete := completeReg
   when (gpu.io.lastTriangle) {
-    complete := true.B
+    completeReg := true.B
   }.elsewhen (io.startFlush) {
-    complete := false.B // Hack
+    completeReg := false.B // Hack
   }
 
   gpu.io.startTriangle <> io.startTriangle

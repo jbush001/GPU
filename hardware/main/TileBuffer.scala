@@ -75,7 +75,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
   val memorySize = (cfg.totalTilePixels) / Consts.pixelsPerQuad
   val memoryAddrBits = log2Up(memorySize)
-  val flushActive = RegInit(false.B)
+  val flushActiveReg = RegInit(false.B)
 
   // The memory address references quads, but we need pixels.
   // During a flush after cycle 0, there is an invariant that flushCounter
@@ -96,44 +96,44 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val flushAddress = (((flushY >> 1) ## (flushX >> 1)).asUInt)
 
   // Note: we delay flush bank a cycle so it arrives with the data from memory
-  val flushBank = RegNext(flushY(0) ## flushX(0))
+  val flushBankReg = RegNext(flushY(0) ## flushX(0))
 
   // The memory read ports are shared between flush and pixel operations
   // (which are never happening at the same time). Note we divide each
   // coordinate by two here to get the quad address from the pixel address.
   val inputQuadAddress = (io.shadedQuad.bits.location.y(cfg.tileCoordBits - 1, 1) ##
     io.shadedQuad.bits.location.x(cfg.tileCoordBits - 1, 1)).asUInt
-  val readAddress = Mux(flushActive, flushAddress, inputQuadAddress)
-  val colorReadVal = colorMemory.read(readAddress, io.shadedQuad.valid || flushActive)
-  val depthReadVal = depthMemory.read(readAddress, io.shadedQuad.valid || flushActive)
+  val readAddress = Mux(flushActiveReg, flushAddress, inputQuadAddress)
+  val colorReadVal = colorMemory.read(readAddress, io.shadedQuad.valid || flushActiveReg)
+  val depthReadVal = depthMemory.read(readAddress, io.shadedQuad.valid || flushActiveReg)
 
   // Pipelined quad address registers
-  val quadAddressStage1 = RegNext(readAddress)
-  val quadAddressStage2 = RegNext(quadAddressStage1)
+  val quadAddressStage1Reg = RegNext(readAddress)
+  val quadAddressStage2Reg = RegNext(quadAddressStage1Reg)
 
   // Clear writes are delayed one cycle after reads, as memory is modeled
   // as write first.
-  val clearAddress = RegNext(flushAddress)
-  val writeAddress = Mux(flushActive, clearAddress, quadAddressStage2)
+  val clearAddressReg = RegNext(flushAddress)
+  val writeAddress = Mux(flushActiveReg, clearAddressReg, quadAddressStage2Reg)
 
   // Only one of these will be valid depending on flushBufferSel.
-  io.flushData.bits.depth := depthReadVal(flushBank)
-  io.flushData.bits.color := colorReadVal(flushBank)
+  io.flushData.bits.depth := depthReadVal(flushBankReg)
+  io.flushData.bits.color := colorReadVal(flushBankReg)
 
-  val flushDataValid = RegInit(false.B)
-  io.flushData.valid := flushDataValid
+  val flushDataValidReg = RegInit(false.B)
+  io.flushData.valid := flushDataValidReg
 
   // Flush state handling.
   when(io.startFlush) {
-    flushActive := true.B
+    flushActiveReg := true.B
     flushCounter := 0.U
-  }.elsewhen(flushActive && flushCounter.andR && io.flushData.ready) {
+  }.elsewhen(flushActiveReg && flushCounter.andR && io.flushData.ready) {
     // Last cycle of flush transfer
-    flushActive := false.B
-    flushDataValid := false.B
-  }.elsewhen(flushActive) {
+    flushActiveReg := false.B
+    flushDataValidReg := false.B
+  }.elsewhen(flushActiveReg) {
     flushCounter := flushCounterNext
-    flushDataValid := true.B
+    flushDataValidReg := true.B
   }
 
   val colorWriteVal = Wire(Vec(Consts.pixelsPerQuad, new Color))
@@ -146,41 +146,41 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
     // Stage 1: This waits for the read of the old color and depth values above,
     // and passes through the other values.
     val stage1 = new {
-      val newColor = RegNext(io.shadedQuad.bits.colors(pixel))
-      val newDepth = RegNext(io.shadedQuad.bits.depths(pixel))
-      val mask = RegNext(io.shadedQuad.bits.mask(pixel) && io.shadedQuad.valid, false.B)
+      val newColorReg = RegNext(io.shadedQuad.bits.colors(pixel))
+      val newDepthReg = RegNext(io.shadedQuad.bits.depths(pixel))
+      val maskReg = RegNext(io.shadedQuad.bits.mask(pixel) && io.shadedQuad.valid, false.B)
     }
 
     // Stage 2: visibility checks, destination blending
     val stage2 = new {
-      val oneMinusAlpha = Color.maxChannelValue.U - stage1.newColor.alpha
-      val oldWeightedColor = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
-      val newColor = RegNext(stage1.newColor)
-      val newDepth = RegNext(stage1.newDepth)
-      val mask = RegNext(stage1.mask &&
-        (!io.enableDepthCheck || depthReadVal(pixel) > stage1.newDepth), false.B)
+      val oneMinusAlpha = Color.maxChannelValue.U - stage1.newColorReg.alpha
+      val oldWeightedColorReg = RegNext(colorReadVal(pixel).scale(oneMinusAlpha))
+      val newColorReg = RegNext(stage1.newColorReg)
+      val newDepthReg = RegNext(stage1.newDepthReg)
+      val maskReg = RegNext(stage1.maskReg &&
+        (!io.enableDepthCheck || depthReadVal(pixel) > stage1.newDepthReg), false.B)
     }
 
     // Stage 3: Blend, writeback
     val blended = Mux(io.enableBlend,
-      stage2.oldWeightedColor +| stage2.newColor,
-      stage2.newColor)
+      stage2.oldWeightedColorReg +| stage2.newColorReg,
+      stage2.newColorReg)
 
-    val isClearLane = (flushBank === pixel.U)
+    val isClearLane = (flushBankReg === pixel.U)
 
     val colorClearEnable = isClearLane &&
       (io.flushBufferSel === RenderBufferId.Color) &&
       io.flushData.fire
-    colorWriteMask(pixel) := Mux(flushActive, colorClearEnable, stage2.mask)
-    colorWriteVal(pixel) := Mux(flushActive, io.clearColor, blended)
+    colorWriteMask(pixel) := Mux(flushActiveReg, colorClearEnable, stage2.maskReg)
+    colorWriteVal(pixel) := Mux(flushActiveReg, io.clearColor, blended)
 
     val depthClearEnable = isClearLane &&
       (io.flushBufferSel === RenderBufferId.Depth) &&
       io.flushData.fire
-    depthWriteMask(pixel) := Mux(flushActive,
+    depthWriteMask(pixel) := Mux(flushActiveReg,
       depthClearEnable,
-      stage2.mask && io.enableDepthWrite)
-    depthWriteVal(pixel) := Mux(flushActive, io.clearDepth, stage2.newDepth)
+      stage2.maskReg && io.enableDepthWrite)
+    depthWriteVal(pixel) := Mux(flushActiveReg, io.clearDepth, stage2.newDepthReg)
   }
 
   colorMemory.write(writeAddress, colorWriteVal, colorWriteMask)

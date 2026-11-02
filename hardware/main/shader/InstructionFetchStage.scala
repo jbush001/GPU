@@ -73,13 +73,13 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   // Stage 1: read tag memory
   ///////////////////////////////////////////////////////////
   val tagMemory = SyncReadMem(cfg.icacheLines, UInt(cfg.icacheTagBits.W), SyncReadMem.WriteFirst)
-  val tagValid = RegInit(VecInit.fill(cfg.icacheLines)(false.B))
+  val tagValidRegs = RegInit(VecInit.fill(cfg.icacheLines)(false.B))
 
   val stage1 = new {
     val validUpdated = io.updateCache.valid && io.updateCache.bits.last && (io.updateCache.bits.address.index === io.fetchRequest.bits.pc.index)
     val tag = tagMemory.read(io.fetchRequest.bits.pc.index)
-    val valid = RegNext(tagValid(io.fetchRequest.bits.pc.index) || validUpdated, init = false.B)
-    val fetchRequest = RegNext(io.fetchRequest, init = 0.U.asTypeOf(Valid(new FetchRequest)))
+    val validReg = RegNext(tagValidRegs(io.fetchRequest.bits.pc.index) || validUpdated, init = false.B)
+    val fetchRequestReg = RegNext(io.fetchRequest, init = 0.U.asTypeOf(Valid(new FetchRequest)))
   }
 
   ///////////////////////////////////////////////////////////
@@ -87,7 +87,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////
   val instructionMemory = SyncReadMem(cfg.icacheLines * (cfg.cacheLineSizeBytes / 8),
     UInt(cfg.busDataBits.W))
-  val squashThisThread = io.squash.valid && io.squash.bits === stage1.fetchRequest.bits.thread
+  val squashThisThread = io.squash.valid && io.squash.bits === stage1.fetchRequestReg.bits.thread
 
   val stage2 = new {
     // A near miss occurs when a cache line is filled the same cycle that a thread tries
@@ -95,27 +95,27 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     // need to restart the thread to pick up the instruction.
     val nearMiss = (io.updateCache.valid
             && io.updateCache.bits.last
-            && stage1.fetchRequest.valid
-            && io.updateCache.bits.address.index === stage1.fetchRequest.bits.pc.index
-            && io.updateCache.bits.address.tag === stage1.fetchRequest.bits.pc.tag
+            && stage1.fetchRequestReg.valid
+            && io.updateCache.bits.address.index === stage1.fetchRequestReg.bits.pc.index
+            && io.updateCache.bits.address.tag === stage1.fetchRequestReg.bits.pc.tag
             && !squashThisThread)
 
-    val cacheHit = stage1.tag === stage1.fetchRequest.bits.pc.tag && stage1.valid
-    val cacheMiss = stage1.fetchRequest.valid && !cacheHit && !squashThisThread && !nearMiss
+    val cacheHit = stage1.tag === stage1.fetchRequestReg.bits.pc.tag && stage1.validReg
+    val cacheMiss = stage1.fetchRequestReg.valid && !cacheHit && !squashThisThread && !nearMiss
     io.fillRequest.valid := cacheMiss && !nearMiss
-    io.fillRequest.bits.address := stage1.fetchRequest.bits.pc.cacheLineAligned
-    io.fillRequest.bits.thread := stage1.fetchRequest.bits.thread
+    io.fillRequest.bits.address := stage1.fetchRequestReg.bits.pc.cacheLineAligned
+    io.fillRequest.bits.thread := stage1.fetchRequestReg.bits.thread
 
-    io.fetchedInstruction.bits.pc := RegNext(stage1.fetchRequest.bits.pc.raw)
-    val readValue = instructionMemory.read(stage1.fetchRequest.bits.pc.index ##
-      stage1.fetchRequest.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3))
+    io.fetchedInstruction.bits.pc := RegNext(stage1.fetchRequestReg.bits.pc.raw)
+    val readValue = instructionMemory.read(stage1.fetchRequestReg.bits.pc.index ##
+      stage1.fetchRequestReg.bits.pc.cacheLineOffset(cfg.cacheLineOffsetBits - 1, 3))
 
-    io.fetchedInstruction.valid := RegNext(stage1.fetchRequest.valid && (cacheHit && !nearMiss) && !squashThisThread, init = false.B)
+    io.fetchedInstruction.valid := RegNext(stage1.fetchRequestReg.valid && (cacheHit && !nearMiss) && !squashThisThread, init = false.B)
     io.icacheMiss := RegNext(cacheMiss && !nearMiss, init = false.B)
     io.icacheNearMiss := RegNext(nearMiss, init = false.B)
-    io.icacheMissThread := RegNext(stage1.fetchRequest.bits.thread)
-    io.fetchedInstruction.bits.thread := RegNext(stage1.fetchRequest.bits.thread)
-    io.fetchedInstruction.bits.jobId := RegNext(stage1.fetchRequest.bits.jobId)
+    io.icacheMissThread := RegNext(stage1.fetchRequestReg.bits.thread)
+    io.fetchedInstruction.bits.thread := RegNext(stage1.fetchRequestReg.bits.thread)
+    io.fetchedInstruction.bits.jobId := RegNext(stage1.fetchRequestReg.bits.jobId)
   }
 
   // Cache memory is 64 bits, but instructions are 32, so need to select correct
@@ -131,20 +131,20 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
 
     // Invariant: a cache must be marked invalid while it is being filled to
     // prevent returning from a partially filled line to a thread.
-    assert(!tagValid(io.updateCache.bits.address.index),
-      "Cache line cannot be valid while being filled")
+    assert(!tagValidRegs(io.updateCache.bits.address.index),
+      "Cache line cannot be validReg while being filled")
 
     when (io.updateCache.bits.last) {
       // Fill has completed, update metadata and mark line as valid.
       tagMemory.write(io.updateCache.bits.address.index, io.updateCache.bits.address.tag)
-      tagValid(io.updateCache.bits.address.index) := true.B
+      tagValidRegs(io.updateCache.bits.address.index) := true.B
     }
   }
 
   when (io.fillRequest.valid) {
     // Mark cache line invalid while it is being filled, as it will be in an
     // incomplete state.
-    tagValid(io.fillRequest.bits.address.index) := false.B
+    tagValidRegs(io.fillRequest.bits.address.index) := false.B
   }
 }
 
