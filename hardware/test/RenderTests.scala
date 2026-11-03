@@ -34,10 +34,9 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
       val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
-    val startFlush = Input(Bool())
-    val flushColor = Decoupled(Bits(32.W))
-    val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
+    val controlBus = Flipped(new ControlBus)
 
+    val flushColor = Decoupled(Bits(32.W))
     val complete = Output(Bool())
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
     val lastTriangle = Output(Bool())
@@ -53,22 +52,28 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   io.complete := completeReg
   when (gpu.io.lastTriangle) {
     completeReg := true.B
-  }.elsewhen (io.startFlush) {
+  }.elsewhen (io.controlBus.writeValue.valid
+    && io.controlBus.writeValue.bits.address === ControlRegister.StartFlush) {
     completeReg := false.B // Hack
   }
 
   gpu.io.startTriangle <> io.startTriangle
   gpu.io.writeVertexParam <> io.writeVertexParam
-  gpu.io.startFlush := io.startFlush
   gpu.io.flushData.ready := io.flushColor.ready
   io.flushColor.valid := gpu.io.flushData.valid
-  when (io.flushBufferSel === RenderBufferId.Color) {
+  gpu.io.controlBus <> io.controlBus
+
+  val flushBufferSel = WireDefault(0.U.asTypeOf(RenderBufferId()))
+  when (io.controlBus.writeValue.valid && io.controlBus.writeValue.bits.address === ControlRegister.StartFlush) {
+    flushBufferSel := io.controlBus.writeValue.bits.data(0).asTypeOf(RenderBufferId())
+  }
+
+  when (flushBufferSel === RenderBufferId.Color) {
     io.flushColor.bits := gpu.io.flushData.bits.color.toArgb32
   }.otherwise {
     io.flushColor.bits := Fill(4, gpu.io.flushData.bits.depth.toUnorm(8))
   }
 
-  gpu.io.flushBufferSel := io.flushBufferSel
   gpu.io.axiBus <> memory.io
   memory.dap <> io.dap
 }
@@ -158,6 +163,14 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
+  def writeControlReg(dut: SimTop, address: ControlRegister.Type, data: Int): Unit = {
+    dut.io.controlBus.writeValue.valid.poke(true.B)
+    dut.io.controlBus.writeValue.bits.address.poke(address)
+    dut.io.controlBus.writeValue.bits.data.poke(data)
+    dut.clock.step()
+    dut.io.controlBus.writeValue.valid.poke(false.B)
+  }
+
   def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Float, Float, Float)],
                     varyings: Seq[Seq[Float]], indices: Seq[Int]): Unit = {
     val imageData = renderBuffer(dut, programBytes, vertices, varyings, indices)
@@ -182,6 +195,9 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
+    writeControlReg(dut, ControlRegister.NumVaryings, varyings.head.length)
+    writeControlReg(dut, ControlRegister.ShaderAddress, 0) // XXX hardcoded for this test.
+
     // Run a flush to clear out the buffer initially
     flushBuffer(dut, None, 0, 0)
 
@@ -192,8 +208,10 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
       for (tileColumn <- 0 until fbSize / cfg.tileSizePixels) {
         nextVertexBaseAddress = 0
 
-        val tileLeft = tileColumn * cfg.tileSizePixels
-        val tileTop = tileRow * cfg.tileSizePixels
+        writeControlReg(dut, ControlRegister.TileOffsetX,
+          tileColumn * cfg.tileSizePixels)
+        writeControlReg(dut, ControlRegister.TileOffsetY,
+          tileRow * cfg.tileSizePixels)
 
         var triangleIndex = 0
         while (!dut.io.complete.peek().litToBoolean || triangleIndex * 3 < indices.length) {
@@ -201,7 +219,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
             val triangleIndices = (0 until 3).map(i => indices(triangleIndex * 3 + i))
             val triangleVerts = triangleIndices.map(i => vertices(i))
 
-            setUpTriangle(dut, triangleVerts, tileLeft, tileTop, fbSize, fbSize,
+            setUpTriangle(dut, triangleVerts, fbSize, fbSize,
               triangleIndices.map(i => varyings(i)),
               triangleIndex >= (indices.length / 3) - 1)
             triangleIndex += 1
@@ -225,7 +243,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
 
   def setUpTriangle(dut: SimTop, vertices: Seq[(Float, Float, Float)],
-    tileLeft: Int, tileTop: Int, fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
+    fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
     lastTriangle: Boolean): Unit = {
 
     val paramValues = Array.fill(cfg.shaderVectorLanes, cfg.vpmColumns)(0)
@@ -262,9 +280,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.writeVertexParam.valid.poke(false.B)
 
     dut.io.startTriangle.bits.lastTriangle.poke(lastTriangle.B)
-    dut.io.startTriangle.bits.numVaryings.poke(varyings.head.length)
-    dut.io.startTriangle.bits.tileOffset.x.poke(tileLeft)
-    dut.io.startTriangle.bits.tileOffset.y.poke(tileTop)
     for (vertex <- 0 until 3) {
       dut.io.startTriangle.bits.vertexBaseAddr(vertex).poke(nextVertexBaseAddress + vertex)
     }
@@ -282,8 +297,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   // XXX placeholder until we implement proper memory interface for TileBuffer
   // flushes.
   def flushBuffer(dut: SimTop, out: Option[Array[Int]], start: Int, stride: Int) = {
-    dut.io.startFlush.poke(true)
-    dut.io.flushBufferSel.poke(RenderBufferId.Color)
+    writeControlReg(dut, ControlRegister.StartFlush, RenderBufferId.Color.litValue.toInt)
     dut.io.flushColor.ready.poke(true)
 
     var fbIndex = start
@@ -291,7 +305,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     for (_ <- 0 until cfg.tileSizePixels) {
       for (_ <- 0 until cfg.tileSizePixels) {
         dut.clock.step()
-        dut.io.startFlush.poke(false)
         while (dut.io.flushColor.valid.peek().litValue.toLong == 0 ||
           dut.io.flushColor.ready.peek().litValue.toLong == 0) {
           dut.clock.step()
@@ -313,12 +326,10 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.clock.step() // Clear last pixel
 
     // Need to read the depth buffer in order to clear it.
-    dut.io.startFlush.poke(true)
-    dut.io.flushBufferSel.poke(RenderBufferId.Depth)
+    writeControlReg(dut, ControlRegister.StartFlush, RenderBufferId.Depth.litValue.toInt)
 
     for (_ <- 0 until cfg.totalTilePixels) {
       dut.clock.step()
-      dut.io.startFlush.poke(false)
 
       // Bit of a hack here, the flush color handshaking signals
       // are valid for depth info, even though we're not flushing that.

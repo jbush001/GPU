@@ -19,6 +19,26 @@ package gpu
 import chisel3._
 import chisel3.util._
 
+object ControlRegister extends ChiselEnum {
+  val ClearColor,
+    ClearDepth,
+    TileWriteFlags,
+    StartFlush,
+    ShaderAddress,
+    NumVaryings,
+    TileOffsetX,
+    TileOffsetY = Value
+}
+
+/** Configuration and control for all units from the command processor.
+  */
+class ControlBus extends Bundle {
+  val writeValue = Valid(new Bundle {
+    val address = ControlRegister()
+    val data = UInt(32.W)
+  })
+}
+
 /** The Command Processor (CP) interfaces between the host CPU and the GPU
   * execution units. It parses sequential command streams from shared memory,
   * configures hardware state, and orchestrates downstream work pipelines.
@@ -32,10 +52,12 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val start = Flipped(Valid(UInt(cfg.busAddressBits.W)))
     val readPort = new MemReadPort
+    val controlBus = new ControlBus
   })
 
   io.readPort.burst.valid := false.B
   io.readPort.burst.bits := DontCare
   io.readPort.data.ready := true.B
+  io.controlBus.writeValue.valid := false.B
+  io.controlBus.writeValue.bits := DontCare
 }
-

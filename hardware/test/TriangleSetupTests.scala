@@ -48,7 +48,19 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     checkOutput(dut, params, varyingCoeffs)
   }
 
+  def writeControlReg(dut: TriangleSetup, address: ControlRegister.Type, data: Int): Unit = {
+    dut.io.controlBus.writeValue.valid.poke(true.B)
+    dut.io.controlBus.writeValue.bits.address.poke(address)
+    dut.io.controlBus.writeValue.bits.data.poke(data)
+    dut.clock.step()
+    dut.io.controlBus.writeValue.valid.poke(false.B)
+  }
+
   def submitParams(dut: TriangleSetup, params: InputParams, outVaryingCoeffs: Array[Float]): Option[Int] = {
+    writeControlReg(dut, ControlRegister.NumVaryings, params.varyings(0).length)
+    writeControlReg(dut, ControlRegister.TileOffsetX, params.tileLeft)
+    writeControlReg(dut, ControlRegister.TileOffsetY, params.tileTop)
+
     val vertexParamMem = Array.fill(1024)(0)
     val baseAddresses = Array(100, 210, 308)
 
@@ -80,9 +92,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       }
     }
 
-    dut.io.startTriangle.bits.numVaryings.poke(params.varyings(0).length)
-    dut.io.startTriangle.bits.tileOffset.x.poke(params.tileLeft)
-    dut.io.startTriangle.bits.tileOffset.y.poke(params.tileTop)
     dut.io.startTriangle.valid.poke(true.B)
 
     var triangleId = Option.empty[Int]

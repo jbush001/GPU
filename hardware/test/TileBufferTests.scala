@@ -114,6 +114,22 @@ class TileBufferReference(implicit cfg: GpuConfig) {
 class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
+  def writeControl(dut: TileBuffer, address: ControlRegister.Type, data: UInt): Unit = {
+    dut.io.controlBus.writeValue.bits.address.poke(address)
+    dut.io.controlBus.writeValue.bits.data.poke(data)
+    dut.io.controlBus.writeValue.valid.poke(true)
+    dut.clock.step()
+    dut.io.controlBus.writeValue.valid.poke(false)
+  }
+
+  def setWriteFlags(dut: TileBuffer, depthWrite: Boolean, depthCheck: Boolean,
+    blend: Boolean): Unit = {
+    val flags = (if (depthWrite) 1 else 0) |
+      (if (depthCheck) 2 else 0) |
+      (if (blend) 4 else 0)
+    writeControl(dut, ControlRegister.TileWriteFlags, flags.U)
+  }
+
   // Push a quad through the DUT pipeline.
   def writeQuad(dut: TileBuffer, x: Int, y: Int, mask: Int, colors: Seq[ColorRef],
     depths: Seq[Float]) = {
@@ -138,10 +154,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   /** Read all data out of the tile buffer into a native Scala sequence. */
   def flush(dut: TileBuffer, select: RenderBufferId.Type): Either[Seq[Int], Seq[Float]] = {
-    dut.io.startFlush.poke(true)
-    dut.io.flushBufferSel.poke(select)
-    dut.clock.step()
-    dut.io.startFlush.poke(false)
+    writeControl(dut, ControlRegister.StartFlush, select.asUInt)
     dut.io.flushData.ready.poke(false)
     dut.io.flushData.valid.expect(0)
 
@@ -185,26 +198,17 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   // For test setup, manually force framebuffer to a known state
   def clearBuffers(dut: TileBuffer) = {
-    dut.io.clearColor.channels(0).poke(0)
-    dut.io.clearColor.channels(1).poke(0)
-    dut.io.clearColor.channels(2).poke(0)
-    dut.io.clearColor.channels(3).poke(0)
     this.flush(dut, RenderBufferId.Color)
-
-    dut.io.clearDepth.poke(1.0f)
     this.flush(dut, RenderBufferId.Depth)
   }
 
   test("TileBuffer alpha blend") {
    simulate(new TileBuffer()) { dut =>
       dut.io.shadedQuad.valid.poke(false)
-      dut.io.startFlush.poke(false)
-      dut.io.enableBlend.poke(true)
-      dut.io.enableDepthCheck.poke(true)
-      dut.io.enableDepthWrite.poke(true)
       dut.io.shadedQuad.bits.mask.poke(0)
 
       this.clearBuffers(dut)
+      setWriteFlags(dut, depthWrite = true, depthCheck = true, blend = true)
 
       writeQuad(dut, 0, 0, 0xf,
         Seq(ColorRef(0x3ff, 0, 0x1ff, 0x3ff), ColorRef(0x3ff, 0, 0x1ff, 0x3ff),
@@ -238,10 +242,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
       dut.io.shadedQuad.valid.poke(false)
-      dut.io.startFlush.poke(false)
-      dut.io.enableBlend.poke(true)
-      dut.io.enableDepthCheck.poke(false)
-      dut.io.enableDepthWrite.poke(true)
+      setWriteFlags(dut, depthWrite = true, depthCheck = false, blend = true)
       dut.clock.step() // Ensure we are out of reset.
 
       writeQuad(dut, 0, 0, 0xf,
@@ -287,10 +288,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       this.clearBuffers(dut)
 
       dut.io.shadedQuad.valid.poke(false)
-      dut.io.startFlush.poke(false)
-      dut.io.enableBlend.poke(true)
-      dut.io.enableDepthCheck.poke(true)
-      dut.io.enableDepthWrite.poke(false)
+      setWriteFlags(dut, depthWrite = false, depthCheck = true, blend = true)
       dut.clock.step() // Ensure we are out of reset.
 
       writeQuad(dut, 0, 0, 0xf,
@@ -326,10 +324,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
       dut.io.shadedQuad.valid.poke(false)
-      dut.io.startFlush.poke(false)
-      dut.io.enableBlend.poke(false)
-      dut.io.enableDepthCheck.poke(true)
-      dut.io.enableDepthWrite.poke(true)
+      setWriteFlags(dut, depthWrite = true, depthCheck = true, blend = false)
       dut.clock.step() // Ensure we are out of reset.
 
       writeQuad(dut, 0, 0, 0xf,
@@ -358,10 +353,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       this.clearBuffers(dut)
 
       dut.io.shadedQuad.valid.poke(false)
-      dut.io.enableBlend.poke(true)
-      dut.io.enableDepthCheck.poke(true)
-      dut.io.enableDepthWrite.poke(true)
-      dut.io.startFlush.poke(false)
+      setWriteFlags(dut, depthWrite = true, depthCheck = true, blend = true)
       dut.clock.step() // Ensure we are out of reset.
 
       // Perform some random writes (the sequence is fixed because we use a known seed)

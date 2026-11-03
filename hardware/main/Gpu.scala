@@ -37,30 +37,29 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
     val lastTriangle = Output(Bool())
 
-    val startFlush = Input(Bool())
+    val controlBus = Flipped(new ControlBus)
     val flushData = Decoupled(new Bundle {
       val depth = Float32()
       val color = Color()
     })
-
-    val flushBufferSel = Input(RenderBufferId()) // depth or color buffer
   })
 
-  val rasterizer = Module(new Rasterizer)
-  val triangleSetup = Module(new TriangleSetup)
-  val vertexParameterMem = Module(new VertexParameterMem)
-  val depthInterpolator = Module(new DepthInterpolator)
-  val tileBuffer = Module(new TileBuffer)
-  val pixelShaderConductor = Module(new PixelShaderConductor)
-  val shaderCore = Module(new ShaderCore)
-  val memoryArbiter = Module(new MemoryArbiter(1, 1))
-  val floatArrayToColor = Module(new ShadedQuadConverter)
+  val rasterizer              = Module(new Rasterizer)
+  val triangleSetup           = Module(new TriangleSetup)
+  val vertexParameterMem      = Module(new VertexParameterMem)
+  val depthInterpolator       = Module(new DepthInterpolator)
+  val tileBuffer              = Module(new TileBuffer)
+  val pixelShaderConductor    = Module(new PixelShaderConductor)
+  val shaderCore              = Module(new ShaderCore)
+  val memoryArbiter           = Module(new MemoryArbiter(1, 1))
+  val floatArrayToColor       = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
 
   io.triangleFinished <> pixelShaderConductor.io.triangleFinished
   io.lastTriangle := pixelShaderConductor.io.lastTriangle
 
   triangleSetup.io.startTriangle <> io.startTriangle
+  triangleSetup.io.controlBus <> io.controlBus
   vertexParameterMem.io.writeParam <> io.writeVertexParam
   triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr
   triangleSetup.io.readValue := vertexParameterMem.io.readValue
@@ -86,18 +85,9 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   memoryArbiter.io.writePorts(0).burst.bits.length := 0.U
   memoryArbiter.io.writePorts(0).data.bits := 0.U
 
-  tileBuffer.io.clearColor.channels(0) := 0.U
-  tileBuffer.io.clearColor.channels(1) := 0.U
-  tileBuffer.io.clearColor.channels(2) := 0.U
-  tileBuffer.io.clearColor.channels(3) := 0.U
-  tileBuffer.io.clearDepth := Float32(1.0f)
-  tileBuffer.io.startFlush := io.startFlush
-  tileBuffer.io.flushBufferSel := io.flushBufferSel
-  tileBuffer.io.enableDepthCheck := true.B
-  tileBuffer.io.enableDepthWrite := true.B
-  tileBuffer.io.enableBlend := false.B
   tileBuffer.io.flushData <> io.flushData
   rasterizer.io.params <> triangleSetup.io.rasterizerParams
+  tileBuffer.io.controlBus <> io.controlBus
   pixelShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff
 
   pixelShaderConductor.io.textureFetchRequest <> texturePatternGenerator.io.textureFetchRequest

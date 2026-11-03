@@ -22,8 +22,6 @@ import chisel3.util._
 class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val lastTriangle = Bool()
   val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vpmReadAddrBits.W))
-  val numVaryings = UInt(5.W)
-  val tileOffset = Point2D()
 }
 
 /** Compute edge functions and other coefficients for rasterization
@@ -55,7 +53,30 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       val index = UInt(cfg.varyingCoeffIndexBits.W)
       val value = Float32()
     })
+
+    val controlBus = Flipped(new ControlBus)
   })
+
+  val numVaryings = RegInit(0.U(5.W))
+  val tileOffset = RegInit(0.U.asTypeOf(Point2D()))
+  val shaderAddress = RegInit(0.U(cfg.busAddressBits.W))
+
+  when (io.controlBus.writeValue.valid) {
+    switch (io.controlBus.writeValue.bits.address) {
+      is (ControlRegister.ShaderAddress) {
+        shaderAddress := io.controlBus.writeValue.bits.data
+      }
+      is (ControlRegister.NumVaryings) {
+        numVaryings := io.controlBus.writeValue.bits.data
+      }
+      is (ControlRegister.TileOffsetX) {
+        tileOffset.x := io.controlBus.writeValue.bits.data(15, 0).asSInt
+      }
+      is (ControlRegister.TileOffsetY) {
+        tileOffset.y := io.controlBus.writeValue.bits.data(15, 0).asSInt
+      }
+    }
+  }
 
   val triangleIdFreeReg = RegInit(VecInit.fill(cfg.maxConcurrentTriangles)(true.B))
   when (io.triangleFinished.valid) {
@@ -99,11 +120,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   val recip = Module(new FixedReciprocal) // 5 cycles of latency
 
-  val a = setupParamsReg.tileOffset.y
+  val a = tileOffset.y
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
   val d = WireInit(0.S(16.W))
-  val e = setupParamsReg.tileOffset.x
+  val e = tileOffset.x
   val f = WireInit(0.S(16.W))
   val h = WireInit(0.S(16.W))
   val g = WireInit(0.S(16.W))
@@ -147,12 +168,13 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         assert(triangleIdFreeReg(nextTriangleId))
         triangleIdFreeReg(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
-        rasterizerParamsReg.offset := io.startTriangle.bits.tileOffset
-        rasterizerParamsReg.boundingBox.left := io.startTriangle.bits.tileOffset.x
-        rasterizerParamsReg.boundingBox.top := io.startTriangle.bits.tileOffset.y
-        rasterizerParamsReg.boundingBox.right := io.startTriangle.bits.tileOffset.x + (cfg.tileSizePixels - 2).S
-        rasterizerParamsReg.boundingBox.bottom := io.startTriangle.bits.tileOffset.y + (cfg.tileSizePixels - 2).S
+        rasterizerParamsReg.offset := tileOffset
+        rasterizerParamsReg.boundingBox.left := tileOffset.x
+        rasterizerParamsReg.boundingBox.top := tileOffset.y
+        rasterizerParamsReg.boundingBox.right := tileOffset.x + (cfg.tileSizePixels - 2).S
+        rasterizerParamsReg.boundingBox.bottom := tileOffset.y + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
+        rasterizerParamsReg.shaderAddress := shaderAddress
         setupParamsReg := io.startTriangle.bits
         readParameterMem(0.U, 0.U) // read X0/Y0
         stateReg := 1.U
@@ -252,7 +274,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.depthCoeffs.invW2 := Float32(io.readValue)
       fpAdd.io.addend1 := Float32(io.readValue)
       fpAdd.io.addend2 := rasterizerParamsReg.depthCoeffs.invW0.neg
-      when (setupParamsReg.numVaryings =/= 0.U) {
+      when (numVaryings =/= 0.U) {
         varyingSetupActiveReg := true.B
         varyingVertexReg := 0.U
         varyingIndexReg := 0.U
@@ -313,7 +335,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
     when (varyingVertexReg === 2.U) {
       varyingVertexReg := 0.U
-      when (varyingIndexReg === setupParamsReg.numVaryings - 1.U) {
+      when (varyingIndexReg === numVaryings - 1.U) {
         varyingSetupActiveReg := false.B // Disable fetch engine, let pipeline drain
       } .otherwise {
         varyingIndexReg := varyingIndexReg + 1.U
