@@ -109,44 +109,44 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val activeParams = RegEnable(io.params.bits, io.params.fire)
   val startRasterizeReg = RegNext(io.params.fire)
 
-  val quadLoc = Reg(Point2D())
+  val quadLocReg = Reg(Point2D())
 
   def doubled(value: SInt) = (value << 1.U).tail(1).asSInt
 
   // For the upper left pixel
-  val edgeValue = Reg(Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W)))
+  val edgeValueReg = Reg(Vec(Consts.triangleEdges, SInt(cfg.edgeFunctionBits.W)))
   for (edge <- 0 until Consts.triangleEdges) {
     switch(stepCommand) {
       is(StepCommand.Reset) {
-        edgeValue(edge) := activeParams.edges(edge).initialValue
+        edgeValueReg(edge) := activeParams.edges(edge).initialValue
       }
       is(StepCommand.Right) {
-        edgeValue(edge) := edgeValue(edge) + doubled(activeParams.edges(edge).xStep)
+        edgeValueReg(edge) := edgeValueReg(edge) + doubled(activeParams.edges(edge).xStep)
       }
       is(StepCommand.Down) {
-        edgeValue(edge) := edgeValue(edge) + doubled(activeParams.edges(edge).yStep)
+        edgeValueReg(edge) := edgeValueReg(edge) + doubled(activeParams.edges(edge).yStep)
       }
       is(StepCommand.Left) {
-        edgeValue(edge) := edgeValue(edge) - doubled(activeParams.edges(edge).xStep)
+        edgeValueReg(edge) := edgeValueReg(edge) - doubled(activeParams.edges(edge).xStep)
       }
     }
   }
 
   switch (stepCommand) {
     is (StepCommand.Right) {
-      quadLoc.x := quadLoc.x + 2.S
+      quadLocReg.x := quadLocReg.x + 2.S
     }
     is (StepCommand.Down) {
-      quadLoc.y := quadLoc.y + 2.S
+      quadLocReg.y := quadLocReg.y + 2.S
     }
     is (StepCommand.Left) {
-      quadLoc.x := quadLoc.x - 2.S
+      quadLocReg.x := quadLocReg.x - 2.S
     }
   }
 
   // Derive the other pixels values from the current one.
   val pixelEdges = Seq.tabulate(Consts.triangleEdges) { e =>
-    val ev = edgeValue(e)
+    val ev = edgeValueReg(e)
     val dx = activeParams.edges(e).xStep
     val dy = activeParams.edges(e).yStep
     Seq(ev, ev + dx, ev + dy, ev + dx + dy)
@@ -155,7 +155,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val pixelInside = VecInit(pixelEdges.map(_.map(_ >= 0.S).reduce(_ && _))).asUInt
 
   val nextQuad = Wire(new RasterizedQuad)
-  nextQuad.location := quadLoc - activeParams.offset
+  nextQuad.location := quadLocReg - activeParams.offset
   nextQuad.triangleId := activeParams.triangleId
   nextQuad.depthCoeffs := activeParams.depthCoeffs
   nextQuad.shaderAddress := activeParams.shaderAddress
@@ -219,7 +219,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       io.params.ready := true.B
       when (startRasterizeReg) {
         stepCommand := StepCommand.Reset
-        quadLoc := activeParams.boundingBox.topLeft
+        quadLocReg := activeParams.boundingBox.topLeft
         scanStateReg := State.StepRight
       } otherwise {
         stepCommand := StepCommand.Wait
@@ -229,8 +229,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepRight) {
       nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
-        when (quadLoc.x === activeParams.boundingBox.right) {
-          when (quadLoc.y === activeParams.boundingBox.bottom) {
+        when (quadLocReg.x === activeParams.boundingBox.right) {
+          when (quadLocReg.y === activeParams.boundingBox.bottom) {
             scanStateReg := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
@@ -245,8 +245,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepLeft) {
       nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
-        when(quadLoc.x === activeParams.boundingBox.left) {
-          when (quadLoc.y === activeParams.boundingBox.bottom) {
+        when(quadLocReg.x === activeParams.boundingBox.left) {
+          when (quadLocReg.y === activeParams.boundingBox.bottom) {
             scanStateReg := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down

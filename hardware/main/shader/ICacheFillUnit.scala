@@ -108,10 +108,10 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
 
   val burstActiveReg = RegInit(false.B)
   val burstThreadReg = RegInit(0.U(log2Up(cfg.shaderThreads).W))
-  val burstAddress = Reg(new ICacheAddress)
+  val burstAddressReg = Reg(new ICacheAddress)
   val burstCounterReg = RegInit(0.U(log2Up(cacheLineBeats).W))
 
-  io.updateCache.bits.address := burstAddress
+  io.updateCache.bits.address := burstAddressReg
   io.updateCache.bits.data := io.readPort.data.bits
   io.updateCache.bits.last := burstCounterReg === (cacheLineBeats - 1).U
   io.readPort.burst.bits.address := nextFillArbiter.io.out.bits.raw
@@ -129,7 +129,7 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
       pendingMissesReg(burstThreadReg).valid := false.B
     }.otherwise {
       burstCounterReg := burstCounterReg + 1.U
-      burstAddress := burstAddress + (cfg.busDataBits / 8).U
+      burstAddressReg := burstAddressReg + (cfg.busDataBits / 8).U
     }
   }
 
@@ -141,7 +141,7 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
     burstActiveReg := true.B
     burstCounterReg := 0.U
     burstThreadReg := nextFillArbiter.io.chosen
-    burstAddress := nextFillArbiter.io.out.bits
+    burstAddressReg := nextFillArbiter.io.out.bits
     io.readPort.burst.valid := true.B
   }
 
@@ -176,6 +176,6 @@ class ICacheFillUnit(implicit cfg: GpuConfig) extends Module {
   // a previous one is finishing (and waking the thread). It can detect if an update
   //is occuring to the cache line.
   assert(!(io.fillRequest.valid && io.updateCache.valid && io.updateCache.bits.last
-    && io.fillRequest.bits.address.cacheLineAligned === burstAddress.cacheLineAligned),
+    && io.fillRequest.bits.address.cacheLineAligned === burstAddressReg.cacheLineAligned),
     "Cache miss was queued for a line that is being updated")
 }

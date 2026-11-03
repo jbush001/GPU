@@ -86,12 +86,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.paramReadAddr.valid := false.B
   io.paramReadAddr.bits := 0.U
 
-  val x0 = Reg(SInt(16.W))
-  val y0 = Reg(SInt(16.W))
-  val x1 = Reg(SInt(16.W))
-  val y1 = Reg(SInt(16.W))
-  val x2 = Reg(SInt(16.W))
-  val y2 = Reg(SInt(16.W))
+  val x0Reg = Reg(SInt(16.W))
+  val y0Reg = Reg(SInt(16.W))
+  val x1Reg = Reg(SInt(16.W))
+  val y1Reg = Reg(SInt(16.W))
+  val x2Reg = Reg(SInt(16.W))
+  val y2Reg = Reg(SInt(16.W))
 
   val fpAdd = Module(new FloatAdd) // 3 cycles of latency
   fpAdd.io.en := true.B
@@ -162,8 +162,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (1.U) {
-      x0 := io.readValue(31, 16).asSInt
-      y0 := io.readValue(15, 0).asSInt
+      x0Reg := io.readValue(31, 16).asSInt
+      y0Reg := io.readValue(15, 0).asSInt
       readParameterMem(1.U, 0.U) // Read X1/Y1
       stateReg := 2.U
     }
@@ -171,15 +171,15 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     is (2.U) {
       val readX = io.readValue(31, 16).asSInt
       val readY = io.readValue(15, 0).asSInt
-      x1 := readX
-      y1 := readY
+      x1Reg := readX
+      y1Reg := readY
 
-      b := y0
-      c := x0
+      b := y0Reg
+      c := x0Reg
       d := readX
-      f := x0
+      f := x0Reg
       g := readY
-      h := y0
+      h := y0Reg
 
       readParameterMem(2.U, 0.U) // Read X2/Y2
       stateReg := 3.U
@@ -189,20 +189,20 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       val readX = io.readValue(31, 16).asSInt
       val readY = io.readValue(15, 0).asSInt
 
-      x2 := readX
-      y2 := readY
+      x2Reg := readX
+      y2Reg := readY
 
       rasterizerParamsReg.edges(0).xStep := d0Reg
       rasterizerParamsReg.edges(0).yStep := d1Reg
       rasterizerParamsReg.edges(0).initialValue := determinantReg
       area2Reg := determinantReg
 
-      b := y1
-      c := x1
+      b := y1Reg
+      c := x1Reg
       d := readX
-      f := x1
+      f := x1Reg
       g := readY
-      h := y1
+      h := y1Reg
 
       readParameterMem(0.U, 1.U) // read invW0
       stateReg := 4.U
@@ -216,12 +216,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.edges(1).initialValue := determinantReg
       area2Reg := area2Reg + determinantReg
 
-      b := y2
-      c := x2
-      d := x0
-      f := x2
-      g := y0
-      h := y2
+      b := y2Reg
+      c := x2Reg
+      d := x0Reg
+      f := x2Reg
+      g := y0Reg
+      h := y2Reg
 
       readParameterMem(1.U, 1.U) // read invW1
       stateReg := 5.U
@@ -301,7 +301,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   }
 
   // Varying setup pipeline
-  val c0 = Reg(Float32())
+  val c0Reg = Reg(Float32())
 
   // Pipelined Metadata Registers
   val stage1VertexReg = RegInit(0.U(2.W))
@@ -346,13 +346,13 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   when (varyingStage1ValidReg) {
     when (stage1VertexReg === 0.U) {
       // Latch base parameter C0 and write out directly
-      c0 := readVal
+      c0Reg := readVal
       fpAdd.io.addend1 := readVal
       fpAdd.io.addend2 := Float32.Zero
     } .otherwise {
       // Launch dC1 (vertex 1) or dC2 (vertex 2) into FPAdd
       fpAdd.io.addend1 := readVal
-      fpAdd.io.addend2 := c0.neg
+      fpAdd.io.addend2 := c0Reg.neg
     }
   }
 

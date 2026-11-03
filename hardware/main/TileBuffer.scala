@@ -78,11 +78,11 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val flushActiveReg = RegInit(false.B)
 
   // The memory address references quads, but we need pixels.
-  // During a flush after cycle 0, there is an invariant that flushCounter
+  // During a flush after cycle 0, there is an invariant that flushCounterReg
   // always corresponds to the data on the read port of the SRAMs.
-  val flushCounter = Reg(UInt((memoryAddrBits + 2).W))
+  val flushCounterReg = Reg(UInt((memoryAddrBits + 2).W))
   val flushCounterNext = Mux(io.flushData.fire,
-    flushCounter + 1.U, flushCounter)
+    flushCounterReg + 1.U, flushCounterReg)
 
   // Each memory entry stores a complete quad.
   val colorMemory = SyncReadMem(memorySize, Vec(Consts.pixelsPerQuad, Color()))
@@ -126,13 +126,13 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   // Flush state handling.
   when(io.startFlush) {
     flushActiveReg := true.B
-    flushCounter := 0.U
-  }.elsewhen(flushActiveReg && flushCounter.andR && io.flushData.ready) {
+    flushCounterReg := 0.U
+  }.elsewhen(flushActiveReg && flushCounterReg.andR && io.flushData.ready) {
     // Last cycle of flush transfer
     flushActiveReg := false.B
     flushDataValidReg := false.B
   }.elsewhen(flushActiveReg) {
-    flushCounter := flushCounterNext
+    flushCounterReg := flushCounterNext
     flushDataValidReg := true.B
   }
 

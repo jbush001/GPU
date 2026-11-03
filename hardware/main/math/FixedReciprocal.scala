@@ -39,12 +39,12 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val cycleReg = RegInit(0.U(3.W))
 
   // Shared Registers
-  val shift = Reg(UInt(log2Ceil(cfg.edgeFunctionBits).W))
-  val divisor = Reg(UInt(33.W))
-  val estimate = Reg(UInt((fractionalBits + 1).W))
-  val error = Reg(UInt((fractionalBits + 1).W))
+  val shiftCountReg = Reg(UInt(log2Ceil(cfg.edgeFunctionBits).W))
+  val divisorReg = Reg(UInt(33.W))
+  val estimateReg = Reg(UInt((fractionalBits + 1).W))
+  val errorReg = Reg(UInt((fractionalBits + 1).W))
 
-  // Normalization/Initial estimate
+  // Normalization/Initial estimateReg
   val leadingZeros = PriorityEncoder(Reverse(io.divisor.bits))
   val normalizedDivisor = (io.divisor.bits << leadingZeros)(cfg.edgeFunctionBits - 1, cfg.edgeFunctionBits - 33)
 
@@ -52,9 +52,9 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   assert(!io.divisor.valid || cycleReg === 0.U)
 
   when(io.divisor.valid) {
-    shift := leadingZeros
-    divisor := normalizedDivisor
-    estimate := ("b01".U ##
+    shiftCountReg := leadingZeros
+    divisorReg := normalizedDivisor
+    estimateReg := ("b01".U ##
       FixedReciprocalLut(normalizedDivisor(31, 24)) ##
       0.U((fractionalBits - 9).W)
     )
@@ -63,8 +63,8 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   }
 
   // Refinement (Newton-Raphson iterations)
-  val multOp1 = Mux(cycleReg === 1.U || cycleReg === 3.U, divisor, estimate)
-  val multOp2 = Mux(cycleReg === 1.U || cycleReg === 3.U, estimate, error)
+  val multOp1 = Mux(cycleReg === 1.U || cycleReg === 3.U, divisorReg, estimateReg)
+  val multOp2 = Mux(cycleReg === 1.U || cycleReg === 3.U, estimateReg, errorReg)
 
   val product = multOp1 * multOp2
   val productRounded = Mux(
@@ -78,31 +78,31 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
 
   switch(cycleReg) {
     is(1.U) { // Compute Error 1 (Divisor * Estimate)
-      error := calcError
+      errorReg := calcError
       cycleReg := 2.U
     }
     is(2.U) { // Compute Estimate 2 (Estimate * Error 1)
-      estimate := calcEstimate
+      estimateReg := calcEstimate
       cycleReg := 3.U
     }
     is(3.U) { // Compute Error 2 (Divisor * Estimate 2)
-      error := calcError
+      errorReg := calcError
       cycleReg := 4.U
     }
     is(4.U) { // Compute Final Estimate (Estimate 2 * Error 2)
-      estimate := calcEstimate
+      estimateReg := calcEstimate
       cycleReg := 0.U
     }
   }
 
   // Output Alignment
-  val adjustedEstimate = estimate - (estimate >> 24)
+  val adjustedEstimate = estimateReg - (estimateReg >> 24)
   val shiftOffset = fractionalBits + cfg.edgeFunctionBits - 49
 
   io.result := Mux(
-    shift >= shiftOffset.U,
-    adjustedEstimate.pad(48) << (shift - shiftOffset.U),
-    adjustedEstimate >> (shiftOffset.U - shift)
+    shiftCountReg >= shiftOffset.U,
+    adjustedEstimate.pad(48) << (shiftCountReg - shiftOffset.U),
+    adjustedEstimate >> (shiftOffset.U - shiftCountReg)
   )
 
   io.done := (cycleReg === 4.U)
