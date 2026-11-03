@@ -26,23 +26,23 @@ object Consts {
 
 case class GpuConfig(
   // Configurable design parameters
-  tileSizePixels: Int = 64,
-  edgeFunctionBits: Int = 40,
-  coordinateBits: Int = 16,
-  busAddressBits: Int = 36,
-  busDataBits: Int = 64,
-  busBurstLengthBits: Int = 8,
-  shaderThreads: Int = 8, // Number of hardware threads per shader core
-  shaderVectorLanes: Int = 16,
-  shaderJobIdBits: Int = 4,
-  cacheLineSizeBytes: Int = 64,
-  icacheLines: Int = 64,
-  triangleIdBits: Int = 2,
-  maxVaryings: Int = 16,
-  vpmColumns: Int = 64,
-  numRegisters: Int = 32,
+  traceEnable:         Boolean = false,
 
-  traceEnable: Boolean = false
+  tileSizePixels:      Int = 64,
+  edgeFunctionBits:    Int = 40,
+  coordinateBits:      Int = 16,
+  busAddressBits:      Int = 36, // Virtual address
+  busDataBits:         Int = 64,
+  busBurstLengthBits:  Int = 8,
+  shaderThreads:       Int = 8, // Number of hardware threads per shader core
+  shaderVectorLanes:   Int = 16,
+  shaderJobIdBits:     Int = 4,
+  cacheLineSizeBytes:  Int = 64,
+  icacheLines:         Int = 64,
+  triangleIdBits:      Int = 2,
+  maxVaryings:         Int = 16,
+  vpmColumns:          Int = 64,
+  numRegisters:        Int = 32
 ) {
   require(isPow2(tileSizePixels), "tileSizePixels must be a power of two")
   require(isPow2(shaderThreads), "shaderThreads must be a power of two")
@@ -52,17 +52,13 @@ case class GpuConfig(
   // Derived values
   val tileCoordBits = log2Up(tileSizePixels)
   val totalTilePixels = tileSizePixels * tileSizePixels
-
   val icacheIndexBits = log2Up(icacheLines)
   val cacheLineOffsetBits = log2Up(cacheLineSizeBytes)
   val icacheTagBits = busAddressBits - icacheIndexBits - cacheLineOffsetBits
-
   val textureRequestIdBits = shaderJobIdBits + log2Up(shaderVectorLanes / Consts.pixelsPerQuad)
   val maxConcurrentTriangles = 1 << triangleIdBits
-
   val maxVaryingCoeffs = maxVaryings * 3 // 3 coefficients per varying
   val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
-
   val gprIndexBits = log2Up(numRegisters)
   val vpmColumnIndexBits = log2Up(vpmColumns)
   val vpmReadAddrBits = vpmColumnIndexBits + log2Up(shaderVectorLanes)
