@@ -19,13 +19,12 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
- * Fixed-point reciprocal module.
- * Computes a 0.24 reciprocal of an unsigned integer input.
- * @note This is not pipelined: 5 cycles of latency, accepts a new operation
- *  every 5 cycles.
- * @note The result is undefined for an input of zero.
- */
+/** Fixed-point reciprocal module.
+  * Computes a 0.24 reciprocal of an unsigned integer input.
+  * @note This is not pipelined: 5 cycles of latency, accepts a new operation
+  *  every 5 cycles.
+  * @note The result is undefined for an input of zero.
+  */
 class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val divisor = Flipped(Valid(UInt(cfg.edgeFunctionBits.W)))

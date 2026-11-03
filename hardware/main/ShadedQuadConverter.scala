@@ -19,8 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
-  * Converts color from floating point representation to fixed point ARGB32.
+/** Converts color from floating point representation to fixed point ARGB32.
   * Adapts from the shader output to the native tile buffer color format.
   */
 class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {

@@ -19,8 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
-  * Represents a single precision floating point value, in IEEE754 binary32
+/** Represents a single precision floating point value, in IEEE754 binary32
   * format.
   * [[https://en.wikipedia.org/wiki/Single-precision_floating-point_format]]
   *
@@ -102,8 +101,7 @@ class Float32 extends Bundle {
     result
   }
 
-  /**
-    * Convert to unsigned normalized fixed-point representation
+  /** Convert to unsigned normalized fixed-point representation
     * This differs from the fixed point conversion in that 1.0 is represented
     * by (2^N - 1). We can perform this optimially in hardware with the
     * formula ((M << N) - M) >> N the value will be clamped into the target

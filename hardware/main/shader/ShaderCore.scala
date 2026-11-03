@@ -20,8 +20,7 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-/**
-  * Top level shader core, which can run multiple shader program threads.
+/** Top level shader core, which can run multiple shader program threads.
   * The regRead/regWrite ports form the primary interface to fixed function
   * hardware.
   * @see [[docs/shader-microarchitecture.md]] for details of the pipeline.

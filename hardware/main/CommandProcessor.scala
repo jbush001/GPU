@@ -19,8 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
-  * The Command Processor (CP) interfaces between the host CPU and the GPU
+/** The Command Processor (CP) interfaces between the host CPU and the GPU
   * execution units. It parses sequential command streams from shared memory,
   * configures hardware state, and orchestrates downstream work pipelines.
   *

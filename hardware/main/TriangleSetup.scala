@@ -26,8 +26,7 @@ class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val tileOffset = Point2D()
 }
 
-/**
-  * Compute edge functions and other coefficients for rasterization
+/** Compute edge functions and other coefficients for rasterization
   * and interpolation.
   * Parameter memory format (for each vertex)
   *  0 - x, y (16 bit point each)
@@ -119,10 +118,9 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   recip.io.divisor.valid := stateReg === 5.U && area2Reg + determinantReg > 0.S
   recip.io.divisor.bits := (area2Reg + determinantReg).asUInt
 
-  /**
-   * Initiate read for e value from the parameter memory.
-   * Has one cycle of latency.
-   */
+  /** Initiate read for e value from the parameter memory.
+    * Has one cycle of latency.
+    */
   def readParameterMem(vertex: UInt, index: UInt) = {
     io.paramReadAddr.valid := true.B
     val params = Mux(stateReg === 0.U, io.startTriangle.bits, setupParamsReg)

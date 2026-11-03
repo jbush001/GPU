@@ -18,8 +18,7 @@ package gpu
 
 import chisel3._
 
-/**
-  * The Vertex Fetch DMA handles memory reads for vertex data, providing a
+/** The Vertex Fetch DMA handles memory reads for vertex data, providing a
   * streaming interface to downstream processing units.
   *
   * @todo this is a stub.

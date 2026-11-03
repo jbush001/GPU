@@ -44,8 +44,7 @@ class CacheUpdateRequest (implicit cfg: GpuConfig) extends Bundle {
   val last = Bool()
 }
 
-/**
-  * - Tracks pending L1 instruction cache misses,
+/** - Tracks pending L1 instruction cache misses,
   * - Detects when multiple threads miss on the same address and consolidates
   *   requests.
   * - Issues requests to the memory arbiter.

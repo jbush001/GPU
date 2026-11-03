@@ -19,11 +19,10 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
- * Floating-point multiplication.
- * Pipelined with 2 cycles of latency. Accepts a new operation every clock
- * cycle.
- */
+/** Floating-point multiplication.
+  * Pipelined with 2 cycles of latency. Accepts a new operation every clock
+  * cycle.
+  */
 class FloatMul extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
@@ -52,9 +51,8 @@ class FloatMul extends Module {
   io.product := normalize.io.product
 }
 
-/**
- * Add exponents, multiply fractions
- */
+/** Add exponents, multiply fractions
+  */
 class FpMulMultiply extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())

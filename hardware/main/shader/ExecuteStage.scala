@@ -20,8 +20,7 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-/**
-  * Final stage in the instruction pipeline, responsible for:
+/** Final stage in the instruction pipeline, responsible for:
   * - Performing arithmetic and logical operations.
   * - Handling branches.
   * - Writing results back to the register file.
@@ -90,25 +89,25 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
   val product = vecOp(io.decodedInstruction.bits.operand1, io.decodedInstruction.bits.operand2)((_, a, b) => (extendMultiplier(a) * extendMultiplier(b)).asUInt)
 
   val binOps = Seq[(OpCode.Type, (Int, UInt, UInt) => UInt)](
-    OpCode.And -> ((_, a, b) => a & b),
-    OpCode.Or -> ((_, a, b) => a | b),
-    OpCode.Xor -> ((_, a, b) => a ^ b),
-    OpCode.Addi -> ((_, a, b) => a + b),
-    OpCode.Subi -> ((_, a, b) => a - b),
-    OpCode.Muli -> ((i, _, _) => (product(i)(31, 0))),
-    OpCode.Mulih -> ((i, _, _) => (product(i)(63, 32).asUInt)),
+    OpCode.And    -> ((_, a, b) => a & b),
+    OpCode.Or     -> ((_, a, b) => a | b),
+    OpCode.Xor    -> ((_, a, b) => a ^ b),
+    OpCode.Addi   -> ((_, a, b) => a + b),
+    OpCode.Subi   -> ((_, a, b) => a - b),
+    OpCode.Muli   -> ((i, _, _) => (product(i)(31, 0))),
+    OpCode.Mulih  -> ((i, _, _) => (product(i)(63, 32).asUInt)),
     OpCode.Mulihu -> ((i, _, _) => (product(i)(63, 32).asUInt)),
-    OpCode.Shl -> ((_, a, b) => (a << b(4, 0))(31, 0)),
-    OpCode.Shr -> ((_, a, b) => (a.asSInt >> b(4, 0)).asUInt),
-    OpCode.Shru -> ((_, a, b) => a >> b(4, 0)),
+    OpCode.Shl    -> ((_, a, b) => (a << b(4, 0))(31, 0)),
+    OpCode.Shr    -> ((_, a, b) => (a.asSInt >> b(4, 0)).asUInt),
+    OpCode.Shru   -> ((_, a, b) => a >> b(4, 0)),
     OpCode.LoadLo -> ((_, a, _) => a(31, 16) ## io.decodedInstruction.bits.meta.immediateValue(15, 0)),
     OpCode.LoadHi -> ((_, a, _) => io.decodedInstruction.bits.meta.immediateValue(15, 0) ## a(15, 0)),
-    OpCode.Ftoi -> ((_, a, _) => Float32(a).toFixedPoint().asUInt),
-    OpCode.Itof -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
-    OpCode.Fabs -> ((_, a, _) => Float32(a).abs.raw),
-    OpCode.Fmin -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
-    OpCode.Fmax -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b)),
-    OpCode.Recip -> ((_, a, _) => Float32(a).reciprocalEstimate().raw)
+    OpCode.Ftoi   -> ((_, a, _) => Float32(a).toFixedPoint().asUInt),
+    OpCode.Itof   -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
+    OpCode.Fabs   -> ((_, a, _) => Float32(a).abs.raw),
+    OpCode.Fmin   -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
+    OpCode.Fmax   -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b)),
+    OpCode.Recip  -> ((_, a, _) => Float32(a).reciprocalEstimate().raw)
   )
 
   val singleCycleResult0 = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {

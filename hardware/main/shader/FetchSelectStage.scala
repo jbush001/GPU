@@ -20,8 +20,7 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-/**
-  * This is the first stage in the instruction pipeline, responsible for:
+/** This is the first stage in the instruction pipeline, responsible for:
   * - Allocating/deallocating threads for jobs.
   * - Maintaining the program counter for each thread.
   * - Selecting which thread to issue to the instruction cache each cycle.

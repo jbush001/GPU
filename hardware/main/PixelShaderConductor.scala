@@ -29,8 +29,7 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   val texels = Vec(Color.numChannels, Vec(Consts.pixelsPerQuad, Float32()))
 }
 
-/**
-  * PixelShaderConductor handles batching requests for [[ShaderCore]],
+/** PixelShaderConductor handles batching requests for [[ShaderCore]],
   * It collects rasterized quads from the rasterizer, dispatches shading
   * jobs to the shader core, and sends shaded quads to the tile buffer,
   * tracking the state of all in-flight quads. It also mediates access to

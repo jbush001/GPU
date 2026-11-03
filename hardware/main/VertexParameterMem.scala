@@ -19,8 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
-  * Stores raw and shaded vertex parameters, acting as a communication channel
+/** Stores raw and shaded vertex parameters, acting as a communication channel
   * between vertex processing stages and [[TriangleSetup]].
   *
   * Memory is arranged as a 16 row by M column array. Each vertex shader

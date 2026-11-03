@@ -19,17 +19,16 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
- * Module to compute the reciprocal of a 32-bit floating point number.
- * Uses an initial reciprocal estimate x_0 of the denominator d and
- * refines it with two Newton-Raphson iterations of the form:
- *
- *   x_{n+1} = x_n * (2 - d * x_n)
- *
- * [[https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division]]
- *
- * Pipelined with 5 cycles of latency. Accepts a new operation every clock cycle.
- */
+/** Module to compute the reciprocal of a 32-bit floating point number.
+  * Uses an initial reciprocal estimate x_0 of the denominator d and
+  * refines it with two Newton-Raphson iterations of the form:
+  *
+  *   x_{n+1} = x_n * (2 - d * x_n)
+  *
+  * [[https://en.wikipedia.org/wiki/Division_algorithm#Newton%E2%80%93Raphson_division]]
+  *
+  * Pipelined with 5 cycles of latency. Accepts a new operation every clock cycle.
+  */
 class FloatReciprocal extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())

@@ -21,8 +21,7 @@ import chisel3.util._
 import gpu._
 import scala.annotation.nowarn
 
-/**
-  * opcode instruction field values
+/** opcode instruction field values
   * @see [[docs/shader-isa.md]] for details of the instruction encodings.
   */
 object OpCode extends ChiselEnum {
@@ -65,8 +64,7 @@ object OpCode extends ChiselEnum {
   private val _reserveWidth = Value(127.U)
 }
 
-/**
-  * special register indices
+/** special register indices
   * @see [[docs/shader-isa.md]] for details of the encodings.
   */
 object SpecialReg {
@@ -104,8 +102,7 @@ object SpecialReg {
   val TexelT          = 245
 }
 
-/**
-  * Decoded instruction fields
+/** Decoded instruction fields
   */
 class InstructionMetadata(implicit cfg: GpuConfig) extends Bundle {
   val pc = UInt(cfg.busAddressBits.W)
@@ -124,8 +121,7 @@ class WritebackRequest(implicit cfg: GpuConfig) extends Bundle {
   val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
 }
 
-/**
-  * Instruction decode stage.
+/** Instruction decode stage.
   * - This stage decodes the instruction and reads the source registers.
   * - Handles writing back to registers.
   * - Handles special register access

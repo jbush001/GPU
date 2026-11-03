@@ -20,8 +20,7 @@ import chisel3._
 import chisel3.simulator.scalatest.ChiselSim
 import chisel3.experimental.SourceInfo
 
-/**
-  * This mixin allows tests to directly poke/peek/expect custom [[Bundle]]
+/** This mixin allows tests to directly poke/peek/expect custom [[Bundle]]
   * types. The implicit classes here wrap these types and create new
   * overridden versions of these functions.
   */

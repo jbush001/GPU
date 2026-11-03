@@ -19,11 +19,10 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/**
- * Floating-point addition.
- * Pipelined with 3 cycles of latency. Accepts a new operation every clock
- * cycle.
- */
+/** Floating-point addition.
+  * Pipelined with 3 cycles of latency. Accepts a new operation every clock
+  * cycle.
+  */
  class FloatAdd extends Module {
   val io = IO(new Bundle {
     val en = Input(Bool())
@@ -59,8 +58,7 @@ import chisel3.util._
   io.sum := normalize.io.result
 }
 
-/**
-  * - Compare magnitudes and route larger and smaller absolute values to
+/** - Compare magnitudes and route larger and smaller absolute values to
   *   appropriate lanes.
   * - Compute alignment shift count, shift smaller value to align decimal
   *   points.
@@ -107,8 +105,7 @@ class FpAddAlign extends Module {
   io.smallerFractionAligned := RegEnable(smallerFractionAlignedNext, 0.U(24.W), io.en)
 }
 
-/**
-  * Add/subtract aligned fractions
+/** Add/subtract aligned fractions
   */
 class FpAddSum extends Module {
   val io = IO(new Bundle {
@@ -140,8 +137,7 @@ class FpAddSum extends Module {
   io.isInf2 := RegEnable(io.isInf1, false.B, io.en)
 }
 
-/**
-  * Find leading zero, shift to renormalize
+/** Find leading zero, shift to renormalize
   */
 class FpAddNormalize extends Module {
   val io = IO(new Bundle {

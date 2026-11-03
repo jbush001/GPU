@@ -33,8 +33,7 @@ class FetchedInstruction(implicit val cfg: GpuConfig) extends Bundle {
   val jobId = UInt(cfg.shaderJobIdBits.W)
 }
 
-/**
-  * Instruction cache. This is a direct mapped cache, with two cycles of latency.
+/** Instruction cache. This is a direct mapped cache, with two cycles of latency.
   * The first stage reads tag memory to determine if the requested address is in
   * the cache. The second stage reads the instruction memory and returns the
   * instruction if it is a hit.
