@@ -182,7 +182,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
         when (exMemoryAddress(31)) {
           io.controlBus.writeValue.valid := true.B // Control bus transfer
         }.otherwise {
-          dataMem.write(exMemoryAddress, idOperand2Reg)
+          dataMem.write(exMemoryAddress, exAluOp2)
         }
       }
       is (CpOpcode.BEQ) {
