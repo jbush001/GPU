@@ -37,23 +37,22 @@ object CpOpcode {
   val JALR   = 15.U(5.W)
 }
 
-object ControlRegister extends ChiselEnum {
-  val ClearColor,
-    ClearDepth,
-    TileWriteFlags,
-    StartFlush,
-    ShaderAddress,
-    NumVaryings,
-    TileOffsetX,
-    TileOffsetY = Value
+object ControlRegister {
+  val width = 8
+  val ClearColor     = 0x00.U(width.W)
+  val ClearDepth     = 0x01.U(width.W)
+  val TileWriteFlags = 0x02.U(width.W)
+  val StartFlush     = 0x03.U(width.W)
+  val ShaderAddress  = 0x04.U(width.W)
+  val NumVaryings    = 0x05.U(width.W)
+  val TileOffsetX    = 0x06.U(width.W)
+  val TileOffsetY    = 0x07.U(width.W)
 }
 
-/** Configuration and control for all units from the command processor.
-  */
 class ControlBus extends Bundle {
   val writeValue = Valid(new Bundle {
-    val address = ControlRegister()
-    val data = UInt(32.W)
+    val address = UInt(ControlRegister.width.W)
+    val data    = UInt(32.W)
   })
 }
 
@@ -153,8 +152,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   )
 
   val exMemoryAddress = exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
-  io.controlBus.writeValue.bits.address := (exMemoryAddress(ControlRegister.getWidth - 1, 0)
-    .asTypeOf(ControlRegister()))
+  io.controlBus.writeValue.bits.address := exMemoryAddress(ControlRegister.width - 1, 0)
   io.controlBus.writeValue.bits.data := exAluOp2
   io.controlBus.writeValue.valid := false.B
 

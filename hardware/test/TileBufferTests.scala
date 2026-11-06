@@ -114,7 +114,7 @@ class TileBufferReference(implicit cfg: GpuConfig) {
 class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  def writeControl(dut: TileBuffer, address: ControlRegister.Type, data: UInt): Unit = {
+  def writeControl(dut: TileBuffer, address: UInt, data: UInt): Unit = {
     dut.io.controlBus.writeValue.bits.address.poke(address)
     dut.io.controlBus.writeValue.bits.data.poke(data)
     dut.io.controlBus.writeValue.valid.poke(true)

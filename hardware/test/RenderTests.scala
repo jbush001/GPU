@@ -163,7 +163,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  def writeControlReg(dut: SimTop, address: ControlRegister.Type, data: Int): Unit = {
+  def writeControlReg(dut: SimTop, address: UInt, data: Int): Unit = {
     dut.io.controlBus.writeValue.valid.poke(true.B)
     dut.io.controlBus.writeValue.bits.address.poke(address)
     dut.io.controlBus.writeValue.bits.data.poke(data)
