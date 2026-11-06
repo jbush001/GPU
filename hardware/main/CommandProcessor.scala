@@ -65,8 +65,7 @@ class ControlBus extends Bundle {
   * These are fully documented in [[docs/command-format.md]]
   *
   * This uses a minimal RISC pipeline with four stages.
-  * - This has one branch delay slot.
-  * - Loads must insert one cycle delay slot before the value can be used.
+  * Loads must insert one cycle delay slot before the value can be used.
   */
 class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
@@ -132,7 +131,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////////////
   // Stage 2: Instruction decode/register fetch
   ///////////////////////////////////////////////////////////////////
-  val idValid = RegNext(ifValid, init = false.B)
+  val idValid = RegNext(ifValid && !branchTaken, init = false.B)
   val idPc = RegNext(pcReg)
   val idInstruction = RegNext(ifInstruction)
   val idOperand1Reg = RegNext(bypassOperand(ifInstruction.rs1, registerFile(ifInstruction.rs1)))
