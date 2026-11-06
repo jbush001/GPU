@@ -76,6 +76,11 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val loadProgram = Flipped(Valid(UInt(32.W)))
   })
 
+  val dataWidth:          Int = 32
+  val instructionMemSize: Int = 1024 // words
+  val dataMemSize:        Int = 1024 // words
+  val numRegisters:       Int = 8
+
   class Instruction extends Bundle {
     val imm = SInt(18.W)   // 31-14
     val rs2 = UInt(3.W)    // 13-11
@@ -83,18 +88,6 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val rd  = UInt(3.W)    // 7-5
     val opcode = UInt(5.W) // 4-0
   }
-
-  // XXX Stub need to implement this.
-  io.readPort.burst.valid := false.B
-  io.readPort.burst.bits.address := 0.U
-  io.readPort.burst.bits.length := 0.U
-  io.readPort.data.ready := true.B
-
-  // Instruction format:
-  val dataWidth:          Int = 32
-  val instructionMemSize: Int = 1024 // words
-  val dataMemSize:        Int = 1024 // words
-  val numRegisters:       Int = 8
 
   val instructionMem = SyncReadMem(instructionMemSize, new Instruction)
   val dataMem = SyncReadMem(dataMemSize, UInt(dataWidth.W))
@@ -140,7 +133,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   // Stage 2: Instruction decode/register fetch
   ///////////////////////////////////////////////////////////////////
   val idValid = RegNext(ifValid, init = false.B)
-  val idPc = RegNext(pcReg, init = 0.U)
+  val idPc = RegNext(pcReg)
   val idInstruction = RegNext(ifInstruction)
   val idOperand1Reg = RegNext(bypassOperand(ifInstruction.rs1, registerFile(ifInstruction.rs1)))
   val idOperand2Reg = RegNext(bypassOperand(ifInstruction.rs2, registerFile(ifInstruction.rs2)))
@@ -151,17 +144,14 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////////////
   // Stage 3: Execute/data memory access
   ///////////////////////////////////////////////////////////////////
-  val exBranchTarget = idPc + idInstruction.imm.pad(log2Up(instructionMemSize)).asUInt
-  val exAluResult = WireInit(0.U(dataWidth.W))
+  val exBranchTarget = (idPc + idInstruction.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
   val exAluOp1 = bypassOperand(idInstruction.rs1, idOperand1Reg)
   val exOp2IsImm = (idInstruction.opcode === CpOpcode.ADDI
     || idInstruction.opcode === CpOpcode.SRLI)
-  val exAluOp2 = Wire(UInt(dataWidth.W))
-  when (exOp2IsImm) {
-    exAluOp2 := idInstruction.imm.pad(dataWidth).asUInt
-  }.otherwise {
-    exAluOp2 := bypassOperand(idInstruction.rs2, idOperand2Reg)
-  }
+  val exAluOp2 = Mux(exOp2IsImm,
+    idInstruction.imm.pad(dataWidth).asUInt,
+    bypassOperand(idInstruction.rs2, idOperand2Reg)
+  )
 
   val exMemoryAddress = exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
   io.controlBus.writeValue.bits.address := (exMemoryAddress(ControlRegister.getWidth - 1, 0)
@@ -169,6 +159,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   io.controlBus.writeValue.bits.data := exAluOp2
   io.controlBus.writeValue.valid := false.B
 
+  val exAluResult = WireInit(0.U(dataWidth.W))
   when (idValid) {
     switch (idInstruction.opcode) {
       is (CpOpcode.ADD, CpOpcode.ADDI) { exAluResult := exAluOp1 + exAluOp2 }
@@ -203,7 +194,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       }
       is (CpOpcode.JALR) {
         branchTaken := true.B
-        branchPc := exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
+        branchPc := exMemoryAddress(log2Up(instructionMemSize) - 1, 0)
       }
     }
   }
@@ -236,4 +227,10 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       }
     }
   }
+
+  // XXX Stub need to implement this.
+  io.readPort.burst.valid := false.B
+  io.readPort.burst.bits.address := 0.U
+  io.readPort.burst.bits.length := 0.U
+  io.readPort.data.ready := true.B
 }
