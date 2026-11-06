@@ -20,21 +20,26 @@ import chisel3._
 import chisel3.util._
 
 object CpOpcode {
-  val AND    = 1.U(5.W)
-  val SUB    = 2.U(5.W)
+  val AND    = 0.U(5.W)
+  val OR     = 1.U(5.W)
+  val XOR    = 2.U(5.W)
   val ADD    = 3.U(5.W)
-  val OR     = 4.U(5.W)
-  val SRL    = 5.U(5.W)
-  val LW     = 6.U(5.W)
-  val SW     = 7.U(5.W)
-  val SRLI   = 8.U(5.W)
+  val SUB    = 4.U(5.W)
+  val SLTU   = 5.U(5.W)
+  val SLL    = 6.U(5.W)
+  val SRL    = 8.U(5.W)
   val ADDI   = 9.U(5.W)
-  val MOVEHI = 10.U(5.W)
-  val MOVE   = 11.U(5.W)
-  val BEQ    = 12.U(5.W)
-  val BNE    = 13.U(5.W)
-  val JAL    = 14.U(5.W)
-  val JALR   = 15.U(5.W)
+  val SLTUI  = 10.U(5.W)
+  val SLLI   = 11.U(5.W)
+  val SRLI   = 12.U(5.W)
+  val LW     = 13.U(5.W)
+  val SW     = 14.U(5.W)
+  val MOVEHI = 15.U(5.W)
+  val MOVEI  = 16.U(5.W)
+  val BEQ    = 17.U(5.W)
+  val BNE    = 18.U(5.W)
+  val JAL    = 19.U(5.W)
+  val JALR   = 20.U(5.W)
 }
 
 object ControlRegister {
@@ -109,6 +114,10 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val writebackData = WireInit(0.U(dataWidth.W))
   val writebackValid = WireInit(false.B)
 
+  def bypassOperand(regIndex: UInt, regData: UInt): UInt = {
+    Mux(writebackValid && writebackIndex === regIndex, writebackData, regData)
+  }
+
   ///////////////////////////////////////////////////////////////////
   // Stage 1: Instruction fetch
   ///////////////////////////////////////////////////////////////////
@@ -122,10 +131,6 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val ifValid = RegNext(!io.halt, init = false.B)
   val ifInstruction = instructionMem.read(ifNextPc)
   pcReg := ifNextPc
-
-  def bypassOperand(regIndex: UInt, regData: UInt): UInt = {
-    Mux(writebackValid && writebackIndex === regIndex, writebackData, regData)
-  }
 
   ///////////////////////////////////////////////////////////////////
   // Stage 2: Instruction decode/register fetch
@@ -145,7 +150,8 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val exBranchTarget = (idPc + idInstruction.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
   val exAluOp1 = bypassOperand(idInstruction.rs1, idOperand1Reg)
   val exOp2IsImm = (idInstruction.opcode === CpOpcode.ADDI
-    || idInstruction.opcode === CpOpcode.SRLI)
+    || idInstruction.opcode === CpOpcode.SRLI
+    || idInstruction.opcode === CpOpcode.SLTUI)
   val exAluOp2 = Mux(exOp2IsImm,
     idInstruction.imm.pad(dataWidth).asUInt,
     bypassOperand(idInstruction.rs2, idOperand2Reg)
@@ -163,9 +169,11 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       is (CpOpcode.SUB) { exAluResult := exAluOp1 - exAluOp2 }
       is (CpOpcode.AND) { exAluResult := exAluOp1 & exAluOp2 }
       is (CpOpcode.OR) { exAluResult := exAluOp1 | exAluOp2 }
+      is (CpOpcode.XOR) { exAluResult := exAluOp1 ^ exAluOp2 }
       is (CpOpcode.SRL, CpOpcode.SRLI) { exAluResult := exAluOp1 >> exAluOp2(4, 0) }
+      is (CpOpcode.SLTU, CpOpcode.SLTUI) { exAluResult := (exAluOp1 < exAluOp2).asUInt }
       is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
-      is (CpOpcode.MOVE) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
+      is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
       is (CpOpcode.SW) {
         when (exMemoryAddress(31)) {
           io.controlBus.writeValue.valid := true.B // Control bus transfer
@@ -210,7 +218,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     switch(exInstruction.opcode) {
       is(CpOpcode.ADD, CpOpcode.ADDI, CpOpcode.SUB, CpOpcode.AND,
         CpOpcode.OR, CpOpcode.SRL, CpOpcode.SRLI, CpOpcode.MOVEHI,
-        CpOpcode.MOVE) {
+        CpOpcode.MOVEI, CpOpcode.XOR, CpOpcode.SLTU, CpOpcode.SLTUI) {
         writebackData := exAluResultReg
         writebackValid := true.B
       }

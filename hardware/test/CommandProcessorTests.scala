@@ -52,9 +52,9 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
   test("CommandProcessor basic operation") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, Seq(
-        rInstruction(CpOpcode.MOVE, 1, 0, 0, 0),
+        rInstruction(CpOpcode.MOVEI, 1, 0, 0, 0),
         rInstruction(CpOpcode.MOVEHI, 1, 1, 0, 0x80000000 >> 14),
-        rInstruction(CpOpcode.MOVE, 2, 0, 0, 1234),
+        rInstruction(CpOpcode.MOVEI, 2, 0, 0, 1234),
         rInstruction(CpOpcode.ADDI, 2, 2, 0, 1),
         rInstruction(CpOpcode.SW, 0, 1, 2),
         0,
