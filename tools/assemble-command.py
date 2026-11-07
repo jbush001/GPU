@@ -27,15 +27,16 @@ from pathlib import Path
 # +-----------------------------------+-----+-----+-----+---------+
 #
 
-FMT_RRR = 0
-FMT_RRI = 1
-FMT_LOAD = 2
-FMT_STORE = 3
-FMT_RI = 4
-FMT_COND_BRANCH = 5
-FMT_JAL = 6
-FMT_JALR = 7
+FMT_RRR = 0  # mnenomic r0, r1, r2
+FMT_RRI = 1  # mnenomic r0, r1, num
+FMT_LOAD = 2 # mnenomic r0, offset(r1)
+FMT_STORE = 3 # mnenomic r0, offset(r1)
+FMT_RI = 4  # mnenomic r0, num
+FMT_COND_BRANCH = 5  # mnenomic r0, r1, label
+FMT_JAL = 6  # mnenomic r0, label
+FMT_JALR = 7  # mnenomic r0, r1
 
+# Each entry is a tuple of (opcode, format)
 INSTRS = {
     'and': (0, FMT_RRR),
     'or': (1, FMT_RRR),
@@ -86,42 +87,6 @@ class Assembler:
         self.code = []
         self.fixups = []
         self.line_map = {}
-        self.PSEUDO_INSTRS = {
-            'nop': self._expand_nop,
-            'loadi': self._expand_loadi,
-            'move': self._expand_move,
-            'clear': self._expand_clear,
-            'b': self._expand_b,
-        }
-
-    def _expand_nop(self, lineno):
-        # nop == addi r0, r0, 0
-        self.emit_inst(lineno, 1)  # addi r0, r0, 0
-
-    def _expand_loadi(self, lineno):
-        # loadi <rd>, <imm> == movei <rd>, <imm & 0x3fff>; movehi <rd>, <imm >> 14 & 0x3ffff
-        rd = parse_reg_operand(lineno, self.next_token())
-        self.match(',')
-        raw_int = int(self.next_token(), 0)
-        self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3fff)
-        self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 14) & 0x3ffff)
-
-    def _expand_move(self, lineno):
-        # move <rd>, <rs> == addi <rd>, <rs>, 53
-        rd = parse_reg_operand(lineno, self.next_token())
-        self.match(',')
-        rs = parse_reg_operand(lineno, self.next_token())
-        self.emit_inst(lineno, INSTRS['addi'][0], rd, rs, 53)
-
-    def _expand_clear(self, lineno):
-        # clear <rd> == xor <rd>, <rd>, <rd>
-        rd = parse_reg_operand(lineno, self.next_token())
-        self.emit_inst(lineno, INSTRS['xor'][0], rd, rd, rd)
-
-    def _expand_b(self, lineno):
-        # b <target> == beq r0, r0, <target>
-        target = self.next_token()
-        self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0, self.encode_imm(int(target, 0)))
 
     def assemble(self, source):
         for lineno, line in enumerate(source.split('\n'), 1):
@@ -294,8 +259,10 @@ class Assembler:
                 raise Exception('Internal error: unknown format')
 
     def encode_imm(self, imm):
+        """Convert an signed immediate value to its 18-bit two's complement
+        representation.
+        """
         if imm < 0:
-            # convert to two's complement 18-bit representation
             imm = (1 << 18) + imm
         return imm
 
@@ -303,7 +270,9 @@ class Assembler:
         return len(self.code) * 4
 
     def add_branch_fixup(self, symbol, lineno):
-        """Create a fixup at the current address for a branch to a label that may not yet be defined."""
+        """Create a fixup at the current address for a branch to a label that
+        may not yet be defined.
+        """
         self.fixups.append((self.get_current_addr(), symbol, lineno))
 
     def emit_label(self, name, lineno):
