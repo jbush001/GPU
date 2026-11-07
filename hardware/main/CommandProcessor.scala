@@ -105,6 +105,8 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       instructionMem.write(imLoadAddress, io.loadProgram.bits.asTypeOf(new Instruction))
       imLoadAddress := imLoadAddress + 1.U
     }
+
+    pcReg := 0.U // When this exits halt, program will restart
   }.otherwise {
     imLoadAddress := 0.U
   }
