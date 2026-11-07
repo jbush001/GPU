@@ -42,7 +42,10 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
 
     Files.write(sourcePath, source.getBytes(StandardCharsets.UTF_8))
     val exitCode = Process(Seq("python3", "tools/assemble-command.py", sourcePath.toString)).!(logger)
-    assert(exitCode == 0, s"Assembler failed with exit code $exitCode:\n$output")
+    if (exitCode != 0) {
+        fail(s"Assembler failed with exit code $exitCode:\n$output")
+    }
+
     Files.readAllLines(hexPath).toArray.toSeq.map(_.toString).map(BigInt(_, 16))
   }
 
@@ -57,10 +60,11 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     dut.io.halt.poke(false)
   }
 
-  def runProgram(dut: CommandProcessor, maxCycles: Int = 1000): Seq[ControlWrite] = {
+  def runProgram(dut: CommandProcessor): Seq[ControlWrite] = {
     dut.io.halt.poke(false)
     val writes = ArrayBuffer[ControlWrite]()
     var cycles = 0
+    val maxCycles = 5000
 
     while (cycles < maxCycles) {
       if (dut.io.controlBus.writeValue.valid.peek().litToBoolean) {
@@ -139,5 +143,49 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
       ))
     }
   }
-}
 
+  // Exercises subroutine calls, memory access, arithmetic
+  test("CommandProcessor fibonacci") {
+    simulate(new CommandProcessor) { dut =>
+      loadProgram(dut, assembleProgram(
+        """
+          |           clear r5
+          |           loadi r6, 64 ; Stack pointer
+          |           loadi r0, 10
+          |           jal r7, fib  ; Call fib(10)
+          |
+          |; Report result then signal completion.
+          |           loadi r1, 0x80000000
+          |           sw r0, 0(r1)
+          |           sw r0, 255(r1)
+          |
+          |; r0 is argument and result. r6 is the pointer to the base of the
+          |; current stack frame. r7 hold the return address.
+          |fib:       sltui r1, r0, 2
+          |           bne r1, r5, return
+          |           addi r6, r6, -3
+          |           sw r7, 0(r6)    ; Save return address
+          |           sw r0, 1(r6)    ; Save original argument
+          |
+          |           addi r0, r0, -1
+          |           jal r7, fib     ; Call fib(n - 1)
+          |           sw r0, 2(r6)    ; Save this return value
+          |
+          |           lw r1, 1(r6)    ; Restore original argument
+          |           nop
+          |           addi r0, r1, -2
+          |           jal r7, fib     ; Call fib(n - 2)
+          |
+          |           lw r1, 2(r6)    ; Load first result
+          |           nop
+          |           add r0, r0, r1  ; Add two results together
+          |           lw r7, 0(r6)    ; restore return address
+          |           addi r6, r6, 3  ; Deallocate stack frame
+          |return:    jalr r7, r7
+          |""".stripMargin
+      ))
+
+      assert(runProgram(dut) == Seq(ControlWrite(0, 55)))
+    }
+  }
+}
