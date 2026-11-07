@@ -152,6 +152,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val exAluOp1 = bypassOperand(idInstruction.rs1, idOperand1Reg)
   val exOp2IsImm = (idInstruction.opcode === CpOpcode.ADDI
     || idInstruction.opcode === CpOpcode.SRLI
+    || idInstruction.opcode === CpOpcode.SLLI
     || idInstruction.opcode === CpOpcode.SLTUI)
   val exAluOp2 = Mux(exOp2IsImm,
     idInstruction.imm.pad(dataWidth).asUInt,
@@ -172,6 +173,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       is (CpOpcode.OR) { exAluResult := exAluOp1 | exAluOp2 }
       is (CpOpcode.XOR) { exAluResult := exAluOp1 ^ exAluOp2 }
       is (CpOpcode.SRL, CpOpcode.SRLI) { exAluResult := exAluOp1 >> exAluOp2(4, 0) }
+      is (CpOpcode.SLL, CpOpcode.SLLI) { exAluResult := exAluOp1 << exAluOp2(4, 0) }
       is (CpOpcode.SLTU, CpOpcode.SLTUI) { exAluResult := (exAluOp1 < exAluOp2).asUInt }
       is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
       is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
@@ -219,7 +221,8 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     switch(exInstruction.opcode) {
       is(CpOpcode.ADD, CpOpcode.ADDI, CpOpcode.SUB, CpOpcode.AND,
         CpOpcode.OR, CpOpcode.SRL, CpOpcode.SRLI, CpOpcode.MOVEHI,
-        CpOpcode.MOVEI, CpOpcode.XOR, CpOpcode.SLTU, CpOpcode.SLTUI) {
+        CpOpcode.MOVEI, CpOpcode.XOR, CpOpcode.SLTU, CpOpcode.SLTUI,
+        CpOpcode.SLL, CpOpcode.SLLI) {
         writebackData := exAluResultReg
         writebackValid := true.B
       }

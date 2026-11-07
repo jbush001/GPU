@@ -188,4 +188,31 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
       assert(runProgram(dut) == Seq(ControlWrite(0, 55)))
     }
   }
+
+  test("CommandProcessor bit reverse") {
+    simulate(new CommandProcessor) { dut =>
+      loadProgram(dut, assembleProgram(
+        """
+          |           loadi r0, 0xf00d1234
+          |           movei r1, 0 ; result
+          |           movei r2, 33 ; loop counter
+          |           movei r3, 1 ; mask
+          |           movei r4, 0 ; zero reg
+          |loop:      slli r1, r1, 1
+          |           and r4, r0, r3
+          |           or r1, r1, r4
+          |           srli r0, r0, 1
+          |           addi r2, r2, -1
+          |           bne r2, r4, loop
+          |; Done, report result
+          |           loadi r2, 0x80000000
+          |           sw r1, 0(r2)
+          |           sw r1, 255(r2)
+          |""".stripMargin
+      ))
+
+      assert(runProgram(dut) == Seq(ControlWrite(0, 0x2c48b00f)))
+    }
+  }
 }
+
