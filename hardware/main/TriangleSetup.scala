@@ -63,16 +63,16 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   when (io.controlBus.writeValue.valid) {
     switch (io.controlBus.writeValue.bits.address) {
-      is (ControlRegister.ShaderAddress) {
+      is (ControlRegisterIndex.ShaderAddress) {
         shaderAddress := io.controlBus.writeValue.bits.data
       }
-      is (ControlRegister.NumVaryings) {
+      is (ControlRegisterIndex.NumVaryings) {
         numVaryings := io.controlBus.writeValue.bits.data
       }
-      is (ControlRegister.TileOffsetX) {
+      is (ControlRegisterIndex.TileOffsetX) {
         tileOffset.x := io.controlBus.writeValue.bits.data(15, 0).asSInt
       }
-      is (ControlRegister.TileOffsetY) {
+      is (ControlRegisterIndex.TileOffsetY) {
         tileOffset.y := io.controlBus.writeValue.bits.data(15, 0).asSInt
       }
     }

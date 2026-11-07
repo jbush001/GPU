@@ -127,7 +127,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     val flags = (if (depthWrite) 1 else 0) |
       (if (depthCheck) 2 else 0) |
       (if (blend) 4 else 0)
-    writeControl(dut, ControlRegister.TileWriteFlags, flags.U)
+    writeControl(dut, ControlRegisterIndex.TileWriteFlags, flags.U)
   }
 
   // Push a quad through the DUT pipeline.
@@ -154,7 +154,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   /** Read all data out of the tile buffer into a native Scala sequence. */
   def flush(dut: TileBuffer, select: RenderBufferId.Type): Either[Seq[Int], Seq[Float]] = {
-    writeControl(dut, ControlRegister.StartFlush, select.asUInt)
+    writeControl(dut, ControlRegisterIndex.StartFlush, select.asUInt)
     dut.io.flushData.ready.poke(false)
     dut.io.flushData.valid.expect(0)
 

@@ -53,7 +53,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   when (gpu.io.lastTriangle) {
     completeReg := true.B
   }.elsewhen (io.controlBus.writeValue.valid
-    && io.controlBus.writeValue.bits.address === ControlRegister.StartFlush) {
+    && io.controlBus.writeValue.bits.address === ControlRegisterIndex.StartFlush) {
     completeReg := false.B // Hack
   }
 
@@ -64,7 +64,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   gpu.io.controlBus <> io.controlBus
 
   val flushBufferSel = WireDefault(0.U.asTypeOf(RenderBufferId()))
-  when (io.controlBus.writeValue.valid && io.controlBus.writeValue.bits.address === ControlRegister.StartFlush) {
+  when (io.controlBus.writeValue.valid && io.controlBus.writeValue.bits.address === ControlRegisterIndex.StartFlush) {
     flushBufferSel := io.controlBus.writeValue.bits.data(0).asTypeOf(RenderBufferId())
   }
 
@@ -195,8 +195,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
-    writeControlReg(dut, ControlRegister.NumVaryings, varyings.head.length)
-    writeControlReg(dut, ControlRegister.ShaderAddress, 0) // XXX hardcoded for this test.
+    writeControlReg(dut, ControlRegisterIndex.NumVaryings, varyings.head.length)
+    writeControlReg(dut, ControlRegisterIndex.ShaderAddress, 0) // XXX hardcoded for this test.
 
     // Run a flush to clear out the buffer initially
     flushBuffer(dut, None, 0, 0)
@@ -208,9 +208,9 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
       for (tileColumn <- 0 until fbSize / cfg.tileSizePixels) {
         nextVertexBaseAddress = 0
 
-        writeControlReg(dut, ControlRegister.TileOffsetX,
+        writeControlReg(dut, ControlRegisterIndex.TileOffsetX,
           tileColumn * cfg.tileSizePixels)
-        writeControlReg(dut, ControlRegister.TileOffsetY,
+        writeControlReg(dut, ControlRegisterIndex.TileOffsetY,
           tileRow * cfg.tileSizePixels)
 
         var triangleIndex = 0
@@ -297,7 +297,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   // XXX placeholder until we implement proper memory interface for TileBuffer
   // flushes.
   def flushBuffer(dut: SimTop, out: Option[Array[Int]], start: Int, stride: Int) = {
-    writeControlReg(dut, ControlRegister.StartFlush, RenderBufferId.Color.litValue.toInt)
+    writeControlReg(dut, ControlRegisterIndex.StartFlush, RenderBufferId.Color.litValue.toInt)
     dut.io.flushColor.ready.poke(true)
 
     var fbIndex = start
@@ -326,7 +326,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.clock.step() // Clear last pixel
 
     // Need to read the depth buffer in order to clear it.
-    writeControlReg(dut, ControlRegister.StartFlush, RenderBufferId.Depth.litValue.toInt)
+    writeControlReg(dut, ControlRegisterIndex.StartFlush, RenderBufferId.Depth.litValue.toInt)
 
     for (_ <- 0 until cfg.totalTilePixels) {
       dut.clock.step()

@@ -75,18 +75,18 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
   when (io.controlBus.writeValue.valid) {
     switch (io.controlBus.writeValue.bits.address) {
-      is (ControlRegister.ClearColor) {
+      is (ControlRegisterIndex.ClearColor) {
         clearColor := Color.fromArgb32(io.controlBus.writeValue.bits.data)
       }
-      is (ControlRegister.ClearDepth) {
+      is (ControlRegisterIndex.ClearDepth) {
         clearDepth := Float32(io.controlBus.writeValue.bits.data)
       }
-      is (ControlRegister.TileWriteFlags) {
+      is (ControlRegisterIndex.TileWriteFlags) {
         enableDepthWrite := io.controlBus.writeValue.bits.data(0)
         enableDepthCheck := io.controlBus.writeValue.bits.data(1)
         enableBlend := io.controlBus.writeValue.bits.data(2)
       }
-      is (ControlRegister.StartFlush) {
+      is (ControlRegisterIndex.StartFlush) {
         startFlush := true.B
         flushBufferSel := Mux(io.controlBus.writeValue.bits.data(0),
           RenderBufferId.Depth, RenderBufferId.Color)

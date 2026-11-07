@@ -20,43 +20,44 @@ import chisel3._
 import chisel3.util._
 
 object CpOpcode {
-  val AND    = 0.U(5.W)
-  val OR     = 1.U(5.W)
-  val XOR    = 2.U(5.W)
-  val ADD    = 3.U(5.W)
-  val SUB    = 4.U(5.W)
-  val SLTU   = 5.U(5.W)
-  val SLL    = 6.U(5.W)
-  val SRL    = 8.U(5.W)
-  val ADDI   = 9.U(5.W)
-  val SLTUI  = 10.U(5.W)
-  val SLLI   = 11.U(5.W)
-  val SRLI   = 12.U(5.W)
-  val LW     = 13.U(5.W)
-  val SW     = 14.U(5.W)
-  val MOVEHI = 15.U(5.W)
-  val MOVEI  = 16.U(5.W)
-  val BEQ    = 17.U(5.W)
-  val BNE    = 18.U(5.W)
-  val JAL    = 19.U(5.W)
-  val JALR   = 20.U(5.W)
+  val AND    = 0.U
+  val OR     = 1.U
+  val XOR    = 2.U
+  val ADD    = 3.U
+  val SUB    = 4.U
+  val SLTU   = 5.U
+  val SLL    = 6.U
+  val SRL    = 8.U
+  val ADDI   = 9.U
+  val SLTUI  = 10.U
+  val SLLI   = 11.U
+  val SRLI   = 12.U
+  val LW     = 13.U
+  val SW     = 14.U
+  val MOVEHI = 15.U
+  val MOVEI  = 16.U
+  val BEQ    = 17.U
+  val BNE    = 18.U
+  val JAL    = 19.U
+  val JALR   = 20.U
 }
 
-object ControlRegister {
+object ControlRegisterIndex {
   val width = 8
-  val ClearColor     = 0x00.U(width.W)
-  val ClearDepth     = 0x01.U(width.W)
-  val TileWriteFlags = 0x02.U(width.W)
-  val StartFlush     = 0x03.U(width.W)
-  val ShaderAddress  = 0x04.U(width.W)
-  val NumVaryings    = 0x05.U(width.W)
-  val TileOffsetX    = 0x06.U(width.W)
-  val TileOffsetY    = 0x07.U(width.W)
+
+  val ClearColor     = 0.U
+  val ClearDepth     = 1.U
+  val TileWriteFlags = 2.U
+  val StartFlush     = 3.U
+  val ShaderAddress  = 4.U
+  val NumVaryings    = 5.U
+  val TileOffsetX    = 6.U
+  val TileOffsetY    = 7.U
 }
 
 class ControlBus extends Bundle {
   val writeValue = Valid(new Bundle {
-    val address = UInt(ControlRegister.width.W)
+    val address = UInt(ControlRegisterIndex.width.W)
     val data    = UInt(32.W)
   })
 }
@@ -158,7 +159,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   )
 
   val exMemoryAddress = exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
-  io.controlBus.writeValue.bits.address := exMemoryAddress(ControlRegister.width - 1, 0)
+  io.controlBus.writeValue.bits.address := exMemoryAddress(ControlRegisterIndex.width - 1, 0)
   io.controlBus.writeValue.bits.data := exAluOp2
   io.controlBus.writeValue.valid := false.B
 

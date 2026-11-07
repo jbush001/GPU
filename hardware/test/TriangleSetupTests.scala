@@ -57,9 +57,9 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   def submitParams(dut: TriangleSetup, params: InputParams, outVaryingCoeffs: Array[Float]): Option[Int] = {
-    writeControlReg(dut, ControlRegister.NumVaryings, params.varyings(0).length)
-    writeControlReg(dut, ControlRegister.TileOffsetX, params.tileLeft)
-    writeControlReg(dut, ControlRegister.TileOffsetY, params.tileTop)
+    writeControlReg(dut, ControlRegisterIndex.NumVaryings, params.varyings(0).length)
+    writeControlReg(dut, ControlRegisterIndex.TileOffsetX, params.tileLeft)
+    writeControlReg(dut, ControlRegisterIndex.TileOffsetY, params.tileTop)
 
     val vertexParamMem = Array.fill(1024)(0)
     val baseAddresses = Array(100, 210, 308)
