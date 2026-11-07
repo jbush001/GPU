@@ -99,12 +99,12 @@ class Assembler:
         self.emit_inst(lineno, 1)  # addi r0, r0, 0
 
     def _expand_loadi(self, lineno):
-        # loadi <rd>, <imm> == movei <rd>, <imm & 0x3ffff>; movehi <rd>, <imm >> 18 & 0x3fff
+        # loadi <rd>, <imm> == movei <rd>, <imm & 0x3fff>; movehi <rd>, <imm >> 14 & 0x3ffff
         rd = parse_reg_operand(lineno, self.next_token())
         self.match(',')
         raw_int = int(self.next_token(), 0)
-        self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3ffff)
-        self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 18) & 0x3fff)
+        self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3fff)
+        self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 14) & 0x3ffff)
 
     def _expand_move(self, lineno):
         # move <rd>, <rs> == addi <rd>, <rs>, 53
@@ -136,7 +136,7 @@ class Assembler:
             # XXX does not do range checking, although it's unlikely you'd
             # ever hit that.
             to_addr = self.labels[symbol]
-            offset = (((to_addr - (from_addr + 4)) // 4) &
+            offset = (((to_addr - from_addr) // 4) &
                       ((1 << 18) - 1))
             self.code[from_addr // 4] |= offset << 14
 
@@ -201,18 +201,18 @@ class Assembler:
             self.emit_inst(lineno, 1, 0, 0, 0, 0)  # addi r0, r0, 0
         elif lookahead == 'loadi':
             # Load constant. This is a pseudo-instruction that expands to two
-            # instructions: loadhi and loadi.
+            # instructions: movei and movehi.
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             raw_int = int(next_token(), 0)
-            self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3ffff)
-            self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 18) & 0x3fff)
+            self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3fff)
+            self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 14) & 0x3ffff)
         elif lookahead == 'move':
             # Pseudo-instruction that expands to addi rd, rs, 0
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             rs = parse_reg_operand(lineno, next_token())
-            self.emit_inst(lineno, INSTRS['addi'][0], rd, rs, 53)
+            self.emit_inst(lineno, INSTRS['addi'][0], rd, rs, 0)
         elif lookahead == 'clear':
             # Pseudo-instruction that expands to xor rd, rd, rd
             rd = parse_reg_operand(lineno, next_token())
@@ -220,7 +220,8 @@ class Assembler:
         elif lookahead == 'b':
             # Unconditional branch. This is a pseudo-instruction that expands to beq r0, r0, target
             target = next_token()
-            self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0, self.encode_imm(int(target, 0)))
+            self.add_branch_fixup(target, lineno)
+            self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0)
         else:
             if lookahead in INSTRS:
                 opcode, format = INSTRS[lookahead]
@@ -234,6 +235,11 @@ class Assembler:
                 match(',')
                 rs2 = parse_reg_operand(lineno, next_token())
                 self.emit_inst(lineno, opcode, rd, rs1, rs2)
+            elif format == FMT_RI:
+                rd = parse_reg_operand(lineno, next_token())
+                match(',')
+                imm = self.encode_imm(int(next_token(), 0))
+                self.emit_inst(lineno, opcode, rd, 0, 0, imm)
             elif format == FMT_RRI:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
@@ -242,7 +248,7 @@ class Assembler:
                 imm = int(next_token(), 0)
                 imm = self.encode_imm(imm)
                 self.emit_inst(lineno, opcode, rd, rs, 0, imm)
-            elif format == FMT_LOAD or format == FMT_STORE:
+            elif format in (FMT_LOAD, FMT_STORE):
                 op0 = parse_reg_operand(lineno, next_token())
                 match(',')
                 lookahead = next_token()
@@ -324,3 +330,4 @@ if __name__ == "__main__":
         asm.write_hex_file(path.with_suffix('.hex'))
     except AssembleError as exc:
         print(str(exc))
+        sys.exit(1)
