@@ -148,7 +148,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////////////
   // Stage 3: Execute/data memory access
   ///////////////////////////////////////////////////////////////////
-  val exBranchTarget = (idPc + idInstruction.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
+  branchPc := (idPc + idInstruction.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
   val exAluOp1 = bypassOperand(idInstruction.rs1, idOperand1Reg)
   val exOp2IsImm = (idInstruction.opcode === CpOpcode.ADDI
     || idInstruction.opcode === CpOpcode.SRLI
@@ -187,18 +187,15 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       is (CpOpcode.BEQ) {
         when (exAluOp1 === exAluOp2) {
           branchTaken := true.B
-          branchPc := exBranchTarget
         }
       }
       is (CpOpcode.BNE) {
         when (exAluOp1 =/= exAluOp2) {
           branchTaken := true.B
-          branchPc := exBranchTarget
         }
       }
       is (CpOpcode.JAL) {
         branchTaken := true.B
-        branchPc := exBranchTarget
       }
       is (CpOpcode.JALR) {
         branchTaken := true.B
