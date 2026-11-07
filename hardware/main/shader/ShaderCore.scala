@@ -55,6 +55,8 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
       val addr = UInt(3.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     })
+
+    val invalidateICache = Input(Bool())
   })
 
   val icacheFillUnit = Module(new ICacheFillUnit)
@@ -81,6 +83,7 @@ class ShaderCore(implicit cfg: GpuConfig) extends Module {
   instructionFetchStage.io.updateCache <> icacheFillUnit.io.updateCache
   instructionFetchStage.io.fetchedInstruction <> instructionDecodeStage.io.fetchedInstruction
   instructionFetchStage.io.squash <> executeStage.io.squash
+  instructionFetchStage.io.invalidateICache := io.invalidateICache
 
   instructionDecodeStage.io.decodedInstruction <> executeStage.io.decodedInstruction
   io.regRead <> instructionDecodeStage.io.regRead

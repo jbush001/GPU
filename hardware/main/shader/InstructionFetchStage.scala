@@ -37,9 +37,6 @@ class FetchedInstruction(implicit val cfg: GpuConfig) extends Bundle {
   * The first stage reads tag memory to determine if the requested address is in
   * the cache. The second stage reads the instruction memory and returns the
   * instruction if it is a hit.
-  *
-  * @todo probably need a way to force cache invalidation externally when
-  *       a shader program is updated by the host.
   */
 class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   val instructionWidth = 32
@@ -66,6 +63,9 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     // From ExecuteStage. Indicate that a thread should be squashed due to a branch or
     // other control flow change.
     val squash = Flipped(Valid(UInt(log2Up(cfg.shaderThreads).W)))
+
+    // Remove all cached instructions
+    val invalidateICache = Input(Bool())
   })
 
   ///////////////////////////////////////////////////////////
@@ -73,6 +73,9 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
   ///////////////////////////////////////////////////////////
   val tagMemory = SyncReadMem(cfg.icacheLines, UInt(cfg.icacheTagBits.W), SyncReadMem.WriteFirst)
   val tagValidRegs = RegInit(VecInit.fill(cfg.icacheLines)(false.B))
+  when (io.invalidateICache) {
+    tagValidRegs.foreach(_ := false.B)
+  }
 
   val stage1 = new {
     val validUpdated = io.updateCache.valid && io.updateCache.bits.last && (io.updateCache.bits.address.index === io.fetchRequest.bits.pc.index)

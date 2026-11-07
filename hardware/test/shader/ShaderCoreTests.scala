@@ -60,6 +60,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     core.io.icacheReadPort <> arbiter.io.readPorts(0)
     arbiter.io.axiBus <> memory.io
     memory.dap <> io.dap
+    core.io.invalidateICache := false.B
 
     core.io.regRead <> io.regRead
     core.io.regReadData <> io.regReadData

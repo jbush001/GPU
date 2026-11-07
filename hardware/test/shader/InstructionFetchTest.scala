@@ -175,4 +175,31 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
       dut.io.fillRequest.bits.address.raw.expect((address + cfg.cacheLineSizeBytes * cfg.icacheLines).U)
     }
   }
+
+  test("InstructionFetchStage invalidate ICache") {
+    simulate(new InstructionFetchStage()) { dut =>
+      val address = 0x1000
+
+      simulateCacheMiss(dut, address)
+
+      // Fill the cache line so it is valid.
+      simulateCacheFill(dut, address, Seq.tabulate(16)(i => i + 1000L))
+
+      // Invalidate the cache.
+      dut.io.invalidateICache.poke(true.B)
+      dut.clock.step()
+      dut.io.invalidateICache.poke(false.B)
+
+      // The tag should now be invalid, causing a miss on the next fetch.
+      dut.io.fetchRequest.valid.poke(true.B)
+      dut.io.fetchRequest.bits.pc.raw.poke(address)
+      dut.io.fetchRequest.bits.thread.poke(1)
+      dut.clock.step()
+      dut.io.icacheNearMiss.expect(false.B)
+      dut.io.fetchedInstruction.valid.expect(false.B)
+      dut.io.fillRequest.valid.expect(true.B)
+      dut.io.fillRequest.bits.address.raw.expect(address.U)
+    }
+  }
 }
+
