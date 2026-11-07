@@ -92,9 +92,9 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
       loadProgram(dut, assembleProgram(
         """
           |; Initialize list
-          |           clear r0
+          |           clear r0 ; this is always zero
           |           movei r1, 17
-          |           sw r1, 0(r0)
+          |           sw r1, (r0)
           |           movei r1, 5
           |           sw r1, 1(r0)
           |           movei r1, 13
@@ -105,9 +105,8 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |           sw r1, 4(r0)
           |
           |; Sort loop
-          |           clear r0
           |           movei r2, 4 ; End address
-          |outer:     clear r1
+          |outer:     clear r1    ; r1 is the current index
           |inner:     lw r3, 0(r1)
           |           lw r4, 1(r1)
           |           nop
@@ -122,15 +121,14 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |           bne r2, r0, outer
           |
           |; Copy out
-          |           loadi r1, 0x80000000
-          |           movei r2, 5
-          |           movei r0, 0
-          |out_loop:  lw r4, 0(r0)
+          |           clear r1      ; source pointer
+          |           movei r2, 5   ; end pointer
+          |out_loop:  lw r3, (r1)
           |           nop
-          |           sw r4, 0(r1)
-          |           addi r0, r0, 1
-          |           bne r0, r2, out_loop
-          |           sw r4, 255(r1)
+          |           sw r3, -256(r0) ; write out
+          |           addi r1, r1, 1
+          |           bne r1, r2, out_loop
+          |           sw r4, -1(r0) ; Write end reigster
           |""".stripMargin
       ))
 
@@ -149,37 +147,34 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
-          |           clear r5
+          |           clear r0     ; r0 is always zero
           |           loadi r6, 64 ; Stack pointer
-          |           loadi r0, 10
+          |           loadi r1, 10
           |           jal r7, fib  ; Call fib(10)
+          |           sw r1, -256(r0) ; return result
+          |           sw r1, -1(r0) ; signal completion
           |
-          |; Report result then signal completion.
-          |           loadi r1, 0x80000000
-          |           sw r0, 0(r1)
-          |           sw r0, 255(r1)
-          |
-          |; r0 is argument and result. r6 is the pointer to the base of the
-          |; current stack frame. r7 hold the return address.
-          |fib:       sltui r1, r0, 2
-          |           bne r1, r5, return
-          |           addi r6, r6, -3
+          |; r1 is argument and result. r6 is the pointer to the base of the
+          |; current stack frame. r7 holds the return address.
+          |fib:       sltui r2, r1, 2
+          |           bne r2, r0, return
+          |           addi r6, r6, -3 ; Allocate stack frame
           |           sw r7, 0(r6)    ; Save return address
-          |           sw r0, 1(r6)    ; Save original argument
+          |           sw r1, 1(r6)    ; Save original argument
           |
-          |           addi r0, r0, -1
+          |           addi r1, r1, -1
           |           jal r7, fib     ; Call fib(n - 1)
-          |           sw r0, 2(r6)    ; Save this return value
+          |           sw r1, 2(r6)    ; Save this return value
           |
           |           lw r1, 1(r6)    ; Restore original argument
           |           nop
-          |           addi r0, r1, -2
+          |           addi r1, r1, -2
           |           jal r7, fib     ; Call fib(n - 2)
           |
-          |           lw r1, 2(r6)    ; Load first result
+          |           lw r2, 2(r6)    ; Load first result
           |           nop
-          |           add r0, r0, r1  ; Add two results together
-          |           lw r7, 0(r6)    ; restore return address
+          |           add r1, r1, r2  ; Add two results together
+          |           lw r7, (r6)     ; restore return address
           |           addi r6, r6, 3  ; Deallocate stack frame
           |return:    jalr r7, r7
           |""".stripMargin
@@ -193,21 +188,20 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
-          |           loadi r0, 0xf00d1234
-          |           movei r1, 0 ; result
-          |           movei r2, 33 ; loop counter
-          |           movei r3, 1 ; mask
-          |           movei r4, 0 ; zero reg
-          |loop:      slli r1, r1, 1
-          |           and r4, r0, r3
-          |           or r1, r1, r4
-          |           srli r0, r0, 1
-          |           addi r2, r2, -1
-          |           bne r2, r4, loop
+          |           clear r0 ; this is always 0
+          |           loadi r1, 0xf00d1234
+          |           movei r2, 0 ; result
+          |           movei r3, 32 ; loop counter
+          |           movei r4, 1 ; mask
+          |loop:      slli r2, r2, 1
+          |           and r5, r1, r4
+          |           or r2, r2, r5
+          |           srli r1, r1, 1
+          |           addi r3, r3, -1
+          |           bne r3, r0, loop
           |; Done, report result
-          |           loadi r2, 0x80000000
-          |           sw r1, 0(r2)
-          |           sw r1, 255(r2)
+          |           sw r2, -256(r0)
+          |           sw r2, -1(r0)
           |""".stripMargin
       ))
 

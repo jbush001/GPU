@@ -101,9 +101,9 @@ class Assembler:
             # XXX does not do range checking, although it's unlikely you'd
             # ever hit that.
             to_addr = self.labels[symbol]
-            offset = (((to_addr - from_addr) // 4) &
+            offset = ((to_addr - from_addr) &
                       ((1 << 18) - 1))
-            self.code[from_addr // 4] |= offset << 14
+            self.code[from_addr] |= offset << 14
 
     def write_list_file(self, source, output_filename):
         """Create an annotated listing file with source code and generated machine code."""
@@ -114,7 +114,7 @@ class Assembler:
                 if instructions is not None:
                     for i, addr in enumerate(instructions):
                         if i == 0:
-                            list_file.write(f'{lineno:>4}   {addr * 4:04x}   {self.code[addr]:08x}   {source_line}\n')
+                            list_file.write(f'{lineno:>4}   {addr:04x}   {self.code[addr]:08x}   {source_line}\n')
                         else:
                             list_file.write(f'{"":4}   {addr * 4:04x}   {self.code[addr]:08x}\n')
                 else:
@@ -267,7 +267,7 @@ class Assembler:
         return imm
 
     def get_current_addr(self):
-        return len(self.code) * 4
+        return len(self.code)
 
     def add_branch_fixup(self, symbol, lineno):
         """Create a fixup at the current address for a branch to a label that
@@ -280,7 +280,7 @@ class Assembler:
         if name in self.labels:
             raise AssembleError(lineno, f'Redefined label {name}')
 
-        self.labels[name] = len(self.code) * 4
+        self.labels[name] = len(self.code)
 
     def emit_inst(self, lineno, opcode, rd, rs1, rs2, imm = 0):
         value = (imm << 14) | (rs2 << 11) | (rs1 << 8) | (rd << 5) | opcode

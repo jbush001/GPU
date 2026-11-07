@@ -180,7 +180,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
       is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
       is (CpOpcode.SW) {
-        when (exMemoryAddress(31)) {
+        when (exMemoryAddress(31, 8) === 0xffffff.U) {
           io.controlBus.writeValue.valid := true.B // Control bus transfer
         }.otherwise {
           dataMem.write(exMemoryAddress, exAluOp2)
