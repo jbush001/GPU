@@ -45,15 +45,19 @@ object CpOpcode {
 object ControlRegisterIndex {
   val width = 8
 
-  val ClearColor     = 0.U
-  val ClearDepth     = 1.U
-  val TileWriteFlags = 2.U
-  val StartFlush     = 3.U
-  val ShaderAddressL = 4.U
-  val ShaderAddressH = 5.U
-  val NumVaryings    = 6.U
-  val TileOffsetX    = 7.U
-  val TileOffsetY    = 8.U
+  val ClearColor        = 0.U
+  val ClearDepth        = 1.U
+  val TileWriteFlags    = 2.U
+  val ShaderAddressL    = 4.U
+  val ShaderAddressH    = 5.U
+  val NumVaryings       = 6.U
+  val TileOffsetX       = 7.U
+  val TileOffsetY       = 8.U
+  val TileWriteAddressH = 9.U
+  val TileWriteAddressL = 10.U
+  val TileWriteStride   = 11.U // bytes between the start of two adjacent rows
+  val TileWriteStart    = 12.U
+  val TileClearStart    = 13.U
 }
 
 class ControlBus extends Bundle {

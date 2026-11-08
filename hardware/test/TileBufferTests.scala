@@ -154,7 +154,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   /** Read all data out of the tile buffer into a native Scala sequence. */
   def flush(dut: TileBuffer, select: RenderBufferId.Type): Either[Seq[Int], Seq[Float]] = {
-    writeControl(dut, ControlRegisterIndex.StartFlush, select.asUInt)
+    writeControl(dut, ControlRegisterIndex.TileClearStart, select.asUInt)
     dut.io.flushData.ready.poke(false)
     dut.io.flushData.valid.expect(0)
 

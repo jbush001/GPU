@@ -38,10 +38,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     val lastTriangle = Output(Bool())
 
     val controlBus = Flipped(new ControlBus)
-    val flushData = Decoupled(new Bundle {
-      val depth = Float32()
-      val color = Color()
-    })
+    val tileWriterDone = Output(Bool())
   })
 
   val rasterizer              = Module(new Rasterizer)
@@ -52,6 +49,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val pixelShaderConductor    = Module(new PixelShaderConductor)
   val shaderCore              = Module(new ShaderCore)
   val memoryArbiter           = Module(new MemoryArbiter(1, 1))
+  val tileWriter              = Module(new TileWriter)
   val floatArrayToColor       = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
 
@@ -80,15 +78,12 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   memoryArbiter.io.axiBus <> io.axiBus
   shaderCore.io.invalidateICache := false.B
 
-  memoryArbiter.io.writePorts(0).burst.valid := false.B
-  memoryArbiter.io.writePorts(0).data.valid := false.B
-  memoryArbiter.io.writePorts(0).burst.bits.address := 0.U
-  memoryArbiter.io.writePorts(0).burst.bits.length := 0.U
-  memoryArbiter.io.writePorts(0).data.bits := 0.U
-
-  tileBuffer.io.flushData <> io.flushData
+  tileBuffer.io.flushData <> tileWriter.io.flushData
+  tileWriter.io.writePort <> memoryArbiter.io.writePorts(0)
+  io.tileWriterDone := tileWriter.io.done
   rasterizer.io.params <> triangleSetup.io.rasterizerParams
   tileBuffer.io.controlBus <> io.controlBus
+  tileWriter.io.controlBus <> io.controlBus
   pixelShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff
 
   pixelShaderConductor.io.textureFetchRequest <> texturePatternGenerator.io.textureFetchRequest

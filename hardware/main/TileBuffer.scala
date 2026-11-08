@@ -90,10 +90,9 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
         enableDepthCheck := io.controlBus.writeValue.bits.data(1)
         enableBlend := io.controlBus.writeValue.bits.data(2)
       }
-      is (ControlRegisterIndex.StartFlush) {
+      is (ControlRegisterIndex.TileWriteStart, ControlRegisterIndex.TileClearStart) {
         startFlush := true.B
-        flushBufferSel := Mux(io.controlBus.writeValue.bits.data(0),
-          RenderBufferId.Depth, RenderBufferId.Color)
+        flushBufferSel := io.controlBus.writeValue.bits.data(0).asTypeOf(RenderBufferId())
       }
     }
   }
@@ -158,6 +157,8 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
   // Flush state handling.
   when(startFlush) {
+    assert(!flushActiveReg,
+      "TileBuffer flush started while another flush is active")
     flushActiveReg := true.B
     flushCounterReg := 0.U
   }.elsewhen(flushActiveReg && flushCounterReg.andR && io.flushData.ready) {
