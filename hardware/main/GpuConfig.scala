@@ -31,7 +31,7 @@ case class GpuConfig(
   tileSizePixels:      Int = 64,
   edgeFunctionBits:    Int = 40,
   coordinateBits:      Int = 16,
-  busAddressBits:      Int = 36, // Virtual address
+  busAddressBits:      Int = 64,
   busDataBits:         Int = 64,
   busBurstLengthBits:  Int = 8,
   shaderThreads:       Int = 8, // Number of hardware threads per shader core

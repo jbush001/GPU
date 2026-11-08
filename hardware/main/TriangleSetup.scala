@@ -63,8 +63,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   when (io.controlBus.writeValue.valid) {
     switch (io.controlBus.writeValue.bits.address) {
-      is (ControlRegisterIndex.ShaderAddress) {
-        shaderAddress := io.controlBus.writeValue.bits.data
+      is (ControlRegisterIndex.ShaderAddressL) {
+        shaderAddress := Cat(shaderAddress(cfg.busAddressBits-1, 32), io.controlBus.writeValue.bits.data)
+      }
+      is (ControlRegisterIndex.ShaderAddressH) {
+        shaderAddress := Cat(io.controlBus.writeValue.bits.data, shaderAddress(31, 0))
       }
       is (ControlRegisterIndex.NumVaryings) {
         numVaryings := io.controlBus.writeValue.bits.data

@@ -196,7 +196,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
     writeControlReg(dut, ControlRegisterIndex.NumVaryings, varyings.head.length)
-    writeControlReg(dut, ControlRegisterIndex.ShaderAddress, 0) // XXX hardcoded for this test.
+    writeControlReg(dut, ControlRegisterIndex.ShaderAddressL, 0) // XXX hardcoded for this test.
+    writeControlReg(dut, ControlRegisterIndex.ShaderAddressH, 0) // XXX hardcoded for this test.
 
     // Run a flush to clear out the buffer initially
     flushBuffer(dut, None, 0, 0)

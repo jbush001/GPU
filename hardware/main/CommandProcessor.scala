@@ -49,10 +49,11 @@ object ControlRegisterIndex {
   val ClearDepth     = 1.U
   val TileWriteFlags = 2.U
   val StartFlush     = 3.U
-  val ShaderAddress  = 4.U
-  val NumVaryings    = 5.U
-  val TileOffsetX    = 6.U
-  val TileOffsetY    = 7.U
+  val ShaderAddressL = 4.U
+  val ShaderAddressH = 5.U
+  val NumVaryings    = 6.U
+  val TileOffsetX    = 7.U
+  val TileOffsetY    = 8.U
 }
 
 class ControlBus extends Bundle {
