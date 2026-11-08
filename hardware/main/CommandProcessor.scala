@@ -61,10 +61,20 @@ object ControlRegisterIndex {
 }
 
 class ControlBus extends Bundle {
-  val writeValue = Valid(new Bundle {
+  val regWrite = Valid(new Bundle {
     val address = UInt(ControlRegisterIndex.width.W)
     val data    = UInt(32.W)
   })
+}
+
+class CpMmio extends Bundle {
+  val regWrite = Valid(new Bundle {
+    val address = UInt(ControlRegisterIndex.width.W)
+    val data    = UInt(32.W)
+  })
+
+  val regReadAddr = Valid(UInt(32.W))
+  val regReadData = Input(UInt(32.W))
 }
 
 /** Interfaces between the host CPU and the GPU.
@@ -85,10 +95,38 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val loadProgram = Flipped(Valid(UInt(32.W)))
   })
 
+  val pipeline = Module(new CpPipeline)
+  pipeline.io.halt := io.halt
+  pipeline.io.loadProgram := io.loadProgram
+  io.controlBus.regWrite.valid := pipeline.io.mmio.regWrite.valid
+  io.controlBus.regWrite.bits.address := pipeline.io.mmio.regWrite.bits.address(ControlRegisterIndex.width-1, 0)
+  io.controlBus.regWrite.bits.data := pipeline.io.mmio.regWrite.bits.data
+  pipeline.io.mmio.regReadData := 0.U
+
+  // XXX Stub need to implement this.
+  io.readPort.burst.valid := false.B
+  io.readPort.burst.bits.address := 0.U
+  io.readPort.burst.bits.length := 0.U
+  io.readPort.data.ready := true.B
+}
+
+/**
+  * The command processor pipeline.
+  * This implements a small RISC processor
+  */
+class CpPipeline extends Module {
+  val io = IO(new Bundle {
+    val halt = Input(Bool())
+    val loadProgram = Flipped(Valid(UInt(32.W)))
+    val mmio = new CpMmio
+  })
+
   val dataWidth:          Int = 32
   val instructionMemSize: Int = 1024 // words
   val dataMemSize:        Int = 1024 // words
   val numRegisters:       Int = 8
+
+  require(isPow2(dataMemSize))
 
   class Instruction extends Bundle {
     val imm = SInt(18.W)   // 31-14
@@ -167,11 +205,15 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   )
 
   val exMemoryAddress = exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
-  io.controlBus.writeValue.bits.address := exMemoryAddress(ControlRegisterIndex.width - 1, 0)
-  io.controlBus.writeValue.bits.data := exAluOp2
-  io.controlBus.writeValue.valid := false.B
+  val addrIsMmio = exMemoryAddress(31, log2Up(dataMemSize)).orR
+  io.mmio.regWrite.bits.address := exMemoryAddress(ControlRegisterIndex.width - 1, 0)
+  io.mmio.regWrite.bits.data := exAluOp2
+  io.mmio.regWrite.valid := false.B
+  io.mmio.regReadAddr.bits := exMemoryAddress(ControlRegisterIndex.width - 1, 0)
+  io.mmio.regReadAddr.valid := false.B
 
   val exAluResult = WireInit(0.U(dataWidth.W))
+  val exWritebackMmio = WireInit(false.B)
   when (idValid) {
     switch (idInstruction.opcode) {
       is (CpOpcode.ADD, CpOpcode.ADDI) { exAluResult := exAluOp1 + exAluOp2 }
@@ -185,10 +227,16 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
       is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
       is (CpOpcode.SW) {
-        when (exMemoryAddress(31, 8) === 0xffffff.U) {
-          io.controlBus.writeValue.valid := true.B // Control bus transfer
+        when (addrIsMmio) {
+          io.mmio.regWrite.valid := true.B
         }.otherwise {
           dataMem.write(exMemoryAddress, exAluOp2)
+        }
+      }
+      is (CpOpcode.LW) {
+        when (addrIsMmio) {
+          io.mmio.regReadAddr.valid := true.B
+          exWritebackMmio := true.B
         }
       }
       is (CpOpcode.BEQ) {
@@ -216,6 +264,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val exInstruction = RegNext(idInstruction)
   val exMemoryResult = dataMem.read(exMemoryAddress)
   val exAluResultReg = RegNext(exAluResult)
+  val exWritebackMmioReg = RegNext(exWritebackMmio)
 
   ///////////////////////////////////////////////////////////////////
   // Stage 4: Writeback
@@ -231,8 +280,12 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
         writebackValid := true.B
       }
       is(CpOpcode.LW) {
-        writebackData := exMemoryResult
         writebackValid := true.B
+        when (exWritebackMmioReg) {
+          writebackData := io.mmio.regReadData
+        }.otherwise {
+          writebackData := exMemoryResult
+        }
       }
       is(CpOpcode.JAL, CpOpcode.JALR) {
         writebackData := exPc + 1.U
@@ -240,10 +293,5 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       }
     }
   }
-
-  // XXX Stub need to implement this.
-  io.readPort.burst.valid := false.B
-  io.readPort.burst.bits.address := 0.U
-  io.readPort.burst.bits.length := 0.U
-  io.readPort.data.ready := true.B
 }
+

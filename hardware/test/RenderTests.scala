@@ -53,9 +53,9 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   io.complete := completeReg
   when (gpu.io.lastTriangle) {
     completeReg := true.B
-  }.elsewhen (io.controlBus.writeValue.valid
-    && (io.controlBus.writeValue.bits.address === ControlRegisterIndex.TileWriteStart
-      || io.controlBus.writeValue.bits.address === ControlRegisterIndex.TileClearStart)) {
+  }.elsewhen (io.controlBus.regWrite.valid
+    && (io.controlBus.regWrite.bits.address === ControlRegisterIndex.TileWriteStart
+      || io.controlBus.regWrite.bits.address === ControlRegisterIndex.TileClearStart)) {
     // This is a hack: because the control processor isn't fully wired in,
     // we need a way to check when the render is finished. The complete
     // flag is cleared as a side effect when a new tile is started.
@@ -156,11 +156,11 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   def writeControlReg(dut: SimTop, address: UInt, data: Int): Unit = {
-    dut.io.controlBus.writeValue.valid.poke(true.B)
-    dut.io.controlBus.writeValue.bits.address.poke(address)
-    dut.io.controlBus.writeValue.bits.data.poke(data)
+    dut.io.controlBus.regWrite.valid.poke(true.B)
+    dut.io.controlBus.regWrite.bits.address.poke(address)
+    dut.io.controlBus.regWrite.bits.data.poke(data)
     dut.clock.step()
-    dut.io.controlBus.writeValue.valid.poke(false.B)
+    dut.io.controlBus.regWrite.valid.poke(false.B)
   }
 
   def runRenderTest(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Float, Float, Float)],

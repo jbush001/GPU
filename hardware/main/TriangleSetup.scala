@@ -75,22 +75,22 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val tileOffset = RegInit(0.U.asTypeOf(Point2D()))
   val shaderAddress = RegInit(0.U(cfg.busAddressBits.W))
 
-  when (io.controlBus.writeValue.valid) {
-    switch (io.controlBus.writeValue.bits.address) {
+  when (io.controlBus.regWrite.valid) {
+    switch (io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.ShaderAddressL) {
-        shaderAddress := Cat(shaderAddress(cfg.busAddressBits-1, 32), io.controlBus.writeValue.bits.data)
+        shaderAddress := Cat(shaderAddress(cfg.busAddressBits-1, 32), io.controlBus.regWrite.bits.data)
       }
       is (ControlRegisterIndex.ShaderAddressH) {
-        shaderAddress := Cat(io.controlBus.writeValue.bits.data, shaderAddress(31, 0))
+        shaderAddress := Cat(io.controlBus.regWrite.bits.data, shaderAddress(31, 0))
       }
       is (ControlRegisterIndex.NumVaryings) {
-        numVaryings := io.controlBus.writeValue.bits.data
+        numVaryings := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.TileOffsetX) {
-        tileOffset.x := io.controlBus.writeValue.bits.data(15, 0).asSInt
+        tileOffset.x := io.controlBus.regWrite.bits.data(15, 0).asSInt
       }
       is (ControlRegisterIndex.TileOffsetY) {
-        tileOffset.y := io.controlBus.writeValue.bits.data(15, 0).asSInt
+        tileOffset.y := io.controlBus.regWrite.bits.data(15, 0).asSInt
       }
     }
   }

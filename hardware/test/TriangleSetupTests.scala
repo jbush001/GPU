@@ -49,11 +49,11 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   def writeControlReg(dut: TriangleSetup, address: UInt, data: Int): Unit = {
-    dut.io.controlBus.writeValue.valid.poke(true.B)
-    dut.io.controlBus.writeValue.bits.address.poke(address)
-    dut.io.controlBus.writeValue.bits.data.poke(data)
+    dut.io.controlBus.regWrite.valid.poke(true.B)
+    dut.io.controlBus.regWrite.bits.address.poke(address)
+    dut.io.controlBus.regWrite.bits.data.poke(data)
     dut.clock.step()
-    dut.io.controlBus.writeValue.valid.poke(false.B)
+    dut.io.controlBus.regWrite.valid.poke(false.B)
   }
 
   def submitParams(dut: TriangleSetup, params: InputParams, outVaryingCoeffs: Array[Float]): Option[Int] = {

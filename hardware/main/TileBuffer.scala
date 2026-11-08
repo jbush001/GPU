@@ -77,22 +77,22 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val enableBlend = RegInit(false.B)
 
   // Handle configuration register writes from [[CommandProcessor]]
-  when (io.controlBus.writeValue.valid) {
-    switch (io.controlBus.writeValue.bits.address) {
+  when (io.controlBus.regWrite.valid) {
+    switch (io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.ClearColor) {
-        clearColor := Color.fromArgb32(io.controlBus.writeValue.bits.data)
+        clearColor := Color.fromArgb32(io.controlBus.regWrite.bits.data)
       }
       is (ControlRegisterIndex.ClearDepth) {
-        clearDepth := Float32(io.controlBus.writeValue.bits.data)
+        clearDepth := Float32(io.controlBus.regWrite.bits.data)
       }
       is (ControlRegisterIndex.TileWriteFlags) {
-        enableDepthWrite := io.controlBus.writeValue.bits.data(0)
-        enableDepthCheck := io.controlBus.writeValue.bits.data(1)
-        enableBlend := io.controlBus.writeValue.bits.data(2)
+        enableDepthWrite := io.controlBus.regWrite.bits.data(0)
+        enableDepthCheck := io.controlBus.regWrite.bits.data(1)
+        enableBlend := io.controlBus.regWrite.bits.data(2)
       }
       is (ControlRegisterIndex.TileWriteStart, ControlRegisterIndex.TileClearStart) {
         startFlush := true.B
-        flushBufferSel := io.controlBus.writeValue.bits.data(0).asTypeOf(RenderBufferId())
+        flushBufferSel := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
       }
     }
   }

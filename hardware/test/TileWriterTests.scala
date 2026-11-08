@@ -24,11 +24,11 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig(tileSizePixels = 4)
 
   def writeControl(dut: TileWriter, address: UInt, data: Long): Unit = {
-    dut.io.controlBus.writeValue.bits.address.poke(address)
-    dut.io.controlBus.writeValue.bits.data.poke(data)
-    dut.io.controlBus.writeValue.valid.poke(true.B)
+    dut.io.controlBus.regWrite.bits.address.poke(address)
+    dut.io.controlBus.regWrite.bits.data.poke(data)
+    dut.io.controlBus.regWrite.valid.poke(true.B)
     dut.clock.step()
-    dut.io.controlBus.writeValue.valid.poke(false.B)
+    dut.io.controlBus.regWrite.valid.poke(false.B)
   }
 
   def pokeColor(dut: TileWriter, argb: Int): Unit = {
@@ -54,7 +54,7 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   test("TileWriter flush") {
     simulate(new TileWriter) { dut =>
-      dut.io.controlBus.writeValue.valid.poke(false.B)
+      dut.io.controlBus.regWrite.valid.poke(false.B)
       dut.io.flushData.valid.poke(false.B)
       dut.io.writePort.data.ready.poke(true.B)
 
@@ -91,7 +91,7 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   test("TileWriter clear") {
     simulate(new TileWriter) { dut =>
-      dut.io.controlBus.writeValue.valid.poke(false.B)
+      dut.io.controlBus.regWrite.valid.poke(false.B)
       dut.io.flushData.valid.poke(false.B)
       dut.io.writePort.data.ready.poke(true.B)
 

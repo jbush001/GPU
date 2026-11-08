@@ -67,15 +67,15 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     val maxCycles = 5000
 
     while (cycles < maxCycles) {
-      if (dut.io.controlBus.writeValue.valid.peek().litToBoolean) {
-        val writeAddress = dut.io.controlBus.writeValue.bits.address.peek().litValue.toInt
+      if (dut.io.controlBus.regWrite.valid.peek().litToBoolean) {
+        val writeAddress = dut.io.controlBus.regWrite.bits.address.peek().litValue.toInt
         if (writeAddress == CompletionAddress) {
           return writes.toSeq
         }
 
         writes += ControlWrite(
           writeAddress,
-          dut.io.controlBus.writeValue.bits.data.peek().litValue
+          dut.io.controlBus.regWrite.bits.data.peek().litValue
         )
       }
 

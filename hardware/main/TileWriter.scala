@@ -42,24 +42,24 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   val clearStart = WireInit(false.B)
   val startBufferSel = WireInit(RenderBufferId.Color)
 
-  when (io.controlBus.writeValue.valid) {
-    switch(io.controlBus.writeValue.bits.address) {
+  when (io.controlBus.regWrite.valid) {
+    switch(io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.TileWriteAddressL) {
-        outputAddressReg := outputAddressReg(cfg.busAddressBits - 1, 32) ## io.controlBus.writeValue.bits.data
+        outputAddressReg := outputAddressReg(cfg.busAddressBits - 1, 32) ## io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.TileWriteAddressH) {
-        outputAddressReg := io.controlBus.writeValue.bits.data ## outputAddressReg(31, 0)
+        outputAddressReg := io.controlBus.regWrite.bits.data ## outputAddressReg(31, 0)
       }
       is (ControlRegisterIndex.TileWriteStride) {
-        outputStrideReg := io.controlBus.writeValue.bits.data
+        outputStrideReg := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.TileWriteStart) {
         writeStart := true.B
-        startBufferSel := io.controlBus.writeValue.bits.data(0).asTypeOf(RenderBufferId())
+        startBufferSel := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
       }
       is (ControlRegisterIndex.TileClearStart) {
         clearStart := true.B
-        startBufferSel := io.controlBus.writeValue.bits.data(0).asTypeOf(RenderBufferId())
+        startBufferSel := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
       }
     }
   }

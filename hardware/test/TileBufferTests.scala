@@ -115,11 +115,11 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
   def writeControl(dut: TileBuffer, address: UInt, data: UInt): Unit = {
-    dut.io.controlBus.writeValue.bits.address.poke(address)
-    dut.io.controlBus.writeValue.bits.data.poke(data)
-    dut.io.controlBus.writeValue.valid.poke(true)
+    dut.io.controlBus.regWrite.bits.address.poke(address)
+    dut.io.controlBus.regWrite.bits.data.poke(data)
+    dut.io.controlBus.regWrite.valid.poke(true)
     dut.clock.step()
-    dut.io.controlBus.writeValue.valid.poke(false)
+    dut.io.controlBus.regWrite.valid.poke(false)
   }
 
   def setWriteFlags(dut: TileBuffer, depthWrite: Boolean, depthCheck: Boolean,
