@@ -78,14 +78,20 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
   val shaderAddress = UInt(cfg.busAddressBits.W)
 }
 
-/** Determines pixel coverage for a triangle.
+/** Determines pixel coverage for a triangle within the current tile.
   *
   * This sweeps over the triangle using an approach based on Pineda "A parallel
   * algorithm for polygon rasterization" (SIGGRAPH 88). It outputs 2x2 aligned
-  * quads with one bit per pixel to indicate coverage.
+  * quads with one bit per pixel to indicate coverage. Quads with no coverage
+  * are skipped. The final quad for each triangle has `lastQuad` set so downstream
+  * units know the triangle is complete.
   *
+  * @note If a triangle does not cover any pixels within the current tile,
+  *      this will output a single quad with an empty coverage mask and the
+  *      `lastQuad` flag set to signal completion.
   * @todo Support MSAA, which would return an N-bit mask for each of the quads.
-  * @todo Optimize the sweep algorithm; it currently scans the entire tile.
+  * @todo Optimize the sweep algorithm; it currently scans the entire tile, which
+  *       results in a lot of idle output cycles.
   */
 class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

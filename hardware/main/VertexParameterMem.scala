@@ -22,9 +22,9 @@ import chisel3.util._
 /** Stores raw and shaded vertex parameters, acting as a communication channel
   * between vertex processing stages and [[TriangleSetup]].
   *
-  * Memory is arranged as a 16 row by M column array. Each vertex shader
-  * vector store writes a full column. Each vertex has an arbitrary number of
-  * parameters.
+  * Memory is arranged as a 16 row by M column array.
+  * Vertex shaders process one vertex per vector lane, so a vector store
+  * writes one parameter for up to 16 vertices at once in a single column.
   *
   *  [ v0a0   v0a1 ...  v0aN  v16a0 v16a1 ... v16aN ]
   *  [ v1a0   v1a1 ...  v1aN  v17a0 v17a1 ... v17aN ]

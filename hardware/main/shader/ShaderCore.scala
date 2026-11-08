@@ -20,20 +20,33 @@ import chisel3._
 import chisel3.util._
 import gpu._
 
-/** Top level shader core, which can run multiple shader program threads.
-  * The regRead/regWrite ports form the primary interface to fixed function
-  * hardware.
-  * @see [[docs/shader-microarchitecture.md]] for details of the pipeline.
+/** Multithreaded SIMD vector processor that executes shader programs.
+  *
+  * Each job is one hardware thread running `GpuConfig.shaderVectorLanes`
+  * parallel pixels. The core switches between threads each cycle to hide
+  * latency from register reads and texture fetches. This core assigns
+  * incoming job requests to idle threads, which run until a HALT
+  * instruction executes.
+  *
+  * The core doesn't directly access fixed-function state. Shader inputs
+  * and outputs, including texture results, are read and written through
+  * the shaderRegRead/shaderRegWrite ports, via[[PixelShaderConductor]].
+  *
+  * Instructions are fetched from system memory through icacheReadPort.
+  *
+  * @see docs/shader-microarchitecture.md for the pipeline and <doc> for the
+  *      instruction set.
   */
-class ShaderCore(implicit cfg: GpuConfig) extends Module {
+  class ShaderCore(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val icacheReadPort = new MemReadPort
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
 
-      /** The jobId uniquely identifies this job. It is included with each
-        * external special register read.
-        */
+    /** Identifies this job to the [[PixelShaderConductor]]. Chosen by the
+      * conductor and unique among jobs in flight. The core attaches it to
+      * shaderRegRead and shaderRegWrite requests.
+      */
       val jobId = UInt(cfg.shaderJobIdBits.W)
     }))
 

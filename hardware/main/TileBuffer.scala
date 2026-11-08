@@ -30,16 +30,19 @@ class ShadedQuad(implicit cfg: GpuConfig) extends Bundle {
   val depths = Vec(Consts.pixelsPerQuad, Float32())
 }
 
-/** Stores rendered depth, and color information for square subset of the
-  * framebuffer.
+/** Working storage for color and depth information for the framebuffer tile
+  * currently being rendered.
   *
-  * This module performs alpha blending, depth tests, and other pixel-level
-  * operations. It has a three stage read/modify/write pipeline that accepts
-  * one 2x2 quad per cycle. It stores all information in on-chip SRAM. When
-  * rendering completes for a tile, a flush copies the buffer contents to
-  * external memory.
-  * This stores color and depth values in a native format; conversions only
-  * occur in other blocks when flushing.
+  * Shaded 2x2 pixel quads arrive from [[PixelShaderConductor]]. Each is
+  * depth-tested and alpha-blended with the stored values, and the surviving
+  * color and depth are written back. This data is stored entirely in on-chip
+  * SRAM. When the tile is complete, a flush operation streams its contents
+  * to be written back to external memory and clears the buffer for the next
+  * tile.
+  *
+  * Values are stored in a native formats ([[Color]] and [[Float32]]).
+  * Conversion to the external-memory format happens downstream, during the
+  * flush.
   *
   * Constraints:
   *
@@ -73,6 +76,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val enableDepthCheck = RegInit(true.B)
   val enableBlend = RegInit(false.B)
 
+  // Handle configuration register writes from [[CommandProcessor]]
   when (io.controlBus.writeValue.valid) {
     switch (io.controlBus.writeValue.bits.address) {
       is (ControlRegisterIndex.ClearColor) {
@@ -98,9 +102,16 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val memoryAddrBits = log2Up(memorySize)
   val flushActiveReg = RegInit(false.B)
 
-  // The memory address references quads, but we need pixels.
-  // During a flush after cycle 0, there is an invariant that flushCounterReg
-  // always corresponds to the data on the read port of the SRAMs.
+  // Index of the pixel currently being flushed. The SRAMs are addressed by
+  // quad, but we need to flush pixels in raster order, so the upper
+  // memoryAddrBits bits are the quad address and the low 2 bits select a
+  // pixel within the quad.
+  //
+  // Invariant: after the second cycle of a flush, flushCounterReg is the
+  // index of the pixel whose data is on the SRAM read port. The read address
+  // is driven from flushCounterNext to keep this true across the synchronous
+  // read latency, and the counter only advances when flushData fires to
+  // maintain this even when there is backpressure.
   val flushCounterReg = Reg(UInt((memoryAddrBits + 2).W))
   val flushCounterNext = Mux(io.flushData.fire,
     flushCounterReg + 1.U, flushCounterReg)
@@ -109,8 +120,9 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val colorMemory = SyncReadMem(memorySize, Vec(Consts.pixelsPerQuad, Color()))
   val depthMemory = SyncReadMem(memorySize, Vec(Consts.pixelsPerQuad, Float32()))
 
-  // During a flush, pixels stored in each quad need to be sent to memory in
-  // linear raster order. These do the shuffling to flatten them.
+  // This does the shuffling to convert from quads to raster order. We scan
+  // each row of quads twice, once for the upper row of pixels, and again for
+  // the lower.
   val coordBits = log2Up(cfg.tileSizePixels)
   val flushX = flushCounterNext(coordBits - 1, 0)
   val flushY = flushCounterNext(coordBits * 2 - 1, coordBits)

@@ -63,15 +63,15 @@ class ControlBus extends Bundle {
   })
 }
 
-/** The Command Processor interfaces between the host CPU and the GPU
-  * execution units. It reads sequential command streams from shared memory,
-  * configures hardware state, and orchestrates downstream work pipelines.
+/** Interfaces between the host CPU and the GPU.
+  * This reads commands from shared memory, and coordinates activity on the GPU
+  * pipeline units
   *
-  * Command packets are variable length, starting with a single byte opcode.
-  * These are fully documented in [[docs/command-format.md]]
+  * This contains a small RISC pipeline running firmware that is dynamically
+  * loaded from the host. Command packets are variable length, starting with a
+  * single byte opcode. These are documented in [[docs/command-format.md]]
   *
-  * This uses a minimal RISC pipeline with four stages.
-  * Loads must insert one cycle delay slot before the value can be used.
+  * @note Loads must insert one cycle delay slot before the value can be used.
   */
 class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

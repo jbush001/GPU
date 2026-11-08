@@ -24,9 +24,15 @@ object Consts {
   final val pixelsPerQuad = 4
 }
 
+/** Compile-time parameters that size and configure the GPU hardware.
+  *
+  * A single instance is passed implicitly to every module, so changing a
+  * value here reconfigures the whole design at elaboration time.
+  * Several fields are coupled; the constraints are noted per field and
+  * checked below.
+  */
 case class GpuConfig(
-  // Configurable design parameters
-  traceEnable:         Boolean = false,
+  traceEnable:         Boolean = false, // printfs shader instruction execution.
 
   tileSizePixels:      Int = 64,
   edgeFunctionBits:    Int = 40,

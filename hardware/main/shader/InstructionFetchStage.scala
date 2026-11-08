@@ -93,8 +93,10 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
 
   val stage2 = new {
     // A near miss occurs when a cache line is filled the same cycle that a thread tries
-    // to read it. We shouldn't treat as a miss, since the system will hang, but we do
-    // need to restart the thread to pick up the instruction.
+    // to read it. It is too late for the thread to pick up the value, but if we
+    // suspended the thread as normal, it would never receive a wakeup  (and thus would
+    // hang). The right solution is to restart the thread from the same location to
+    // pick up the new value.
     val nearMiss = (io.updateCache.valid
             && io.updateCache.bits.last
             && stage1.fetchRequestReg.valid

@@ -53,8 +53,12 @@ class Float32 extends Bundle {
     this.abs.raw > that.abs.raw && !this.isNaN && !that.isNaN
   }
 
-  /** Convert to an unsigned number such that unsigned integer comparisons
-    * yield the same result as floating point comparisons.
+  /** Helper function for comparison. Maps this value to a 32-bit unsigned key
+    * such that comparing keys as unsigned integers orders values the same way
+    * as floating-point comparisons.
+    *
+    * @note This does not handle NaN or signed zero; that is handled in the next
+    *       function.
     */
   private def toOrderable: UInt = {
     !this.isNegative ## (this.raw(30, 0) ^ Fill(31, this.isNegative))
@@ -101,11 +105,16 @@ class Float32 extends Bundle {
     result
   }
 
-  /** Convert to unsigned normalized fixed-point representation
-    * This differs from the fixed point conversion in that 1.0 is represented
-    * by (2^N - 1). We can perform this optimially in hardware with the
-    * formula ((M << N) - M) >> N the value will be clamped into the target
-    * range [0, 2^width - 1]
+  /** Converts this value to an unsigned normalized integer (UNORM) of `width`
+    * bits, mapping [0.0, 1.0] to [0, 2^width - 1].
+    *
+    * Unlike [[toFixed]], where 1.0 is 2^width, 1.0 here maps to the maximum
+    * value, 2^width - 1. With M the value as fixed-point, the result is
+    * M * (2^width - 1) / 2^width, computed as ((M << width) - M) >> width
+    * to avoid a multiplier.
+    *
+    * Inputs below 0.0 clamp to 0, inputs above 1.0 (including +infinity) clamp
+    * to 2^width - 1. NaN also maps to maximum value.
     */
   def toUnorm(width: Int): UInt = {
     require(width >= 0 && width <= 24,

@@ -19,7 +19,9 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** AXI bus interface.
+/** AXI bus interface, through which the GPU reads and writes system memory.
+  * This is used to transfer commands, texture data, and rendered pixels.
+  *
   * @see AMBA AXI Protocol Specification, Issue L
   * [[https://developer.arm.com/documentation/ihi0022/latest]]
   */

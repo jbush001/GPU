@@ -24,12 +24,26 @@ class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vpmReadAddrBits.W))
 }
 
-/** Compute edge functions and other coefficients for rasterization
-  * and interpolation.
-  * Parameter memory format (for each vertex)
-  *  0 - x, y (16 bit point each)
-  *  1 - 1.0 / w (float)
-  *  2 - varying 0...
+/** Computes edge functions and varying interpolation coefficients for
+  * each triangle, culling back-facing and colinear triangles.
+  *
+  * Reads three vertices stored in [[VertexParameterMem]], sends edge equations
+  * to the [[Rasterizer]] and per-varying interpolation coefficients to the
+  * [[PixelShaderConductor]]. The coefficients are set up for
+  * perspective-correct interpolation using each vertex's 1/w.
+  *
+  * This module is not pipelined. Each triangle takes at least 12 cycles,
+  * plus additional cycles per varying. startTriangle deasserts `ready` while a
+  * this is in progress. However, this computes coefficients for the next
+  * triangle while the current one is being rendered so the downstream
+  * pipeline can stay fully utilized.
+  *
+  * Parameter memory layout, per vertex (oriented vertically, with one 32-bit
+  * word per row):
+  *
+  *   - 0: x, y (two 16-bit integer pixel coordinates, packed)
+  *   - 1: 1.0 / w (IEEE 754 single)
+  *   - 2...: varyings 0..N-1 (IEEE 754 single each)
   *
   *  @todo Does not implement top-left rule for pixel hits.
   */

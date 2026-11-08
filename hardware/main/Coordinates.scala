@@ -26,7 +26,7 @@ class Point2D(implicit cfg: GpuConfig) extends Bundle {
   val x = SInt(cfg.coordinateBits.W)
   val y = SInt(cfg.coordinateBits.W)
 
-  /** Component-wise subtraction, returning a vector this - that */
+  /** Component-wise subtraction, returning a vector `this` - `that` */
   def -(that: Point2D) = Point2D(this.x -% that.x, this.y -% that.y)
 }
 

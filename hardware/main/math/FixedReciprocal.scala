@@ -19,10 +19,13 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** Fixed-point reciprocal module.
-  * Computes a 0.24 reciprocal of an unsigned integer input.
-  * @note This is not pipelined: 5 cycles of latency, accepts a new operation
-  *  every 5 cycles.
+/** Computes the reciprocal of an unsigned integer, returning a fixed-point
+  * result in UQ0.48
+  *
+  * Used by [[TriangleSetup]] to normalize by the triangle's area.
+  *
+  * @note Not pipelined. The result arrives 5 cycles after `divisor` is valid,
+  *       and a new request may be issued only every 5 cycles.
   * @note The result is undefined for an input of zero.
   */
 class FixedReciprocal(implicit cfg: GpuConfig) extends Module {

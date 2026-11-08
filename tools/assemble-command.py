@@ -14,7 +14,7 @@
 #   limitations under the License.
 #
 
-"""Assembler for CommandProcessor"""
+"""Assembler for CommandProcessor firmware"""
 
 import sys
 from pathlib import Path
@@ -27,14 +27,14 @@ from pathlib import Path
 # +-----------------------------------+-----+-----+-----+---------+
 #
 
-FMT_RRR = 0  # mnenomic r0, r1, r2
-FMT_RRI = 1  # mnenomic r0, r1, num
-FMT_LOAD = 2 # mnenomic r0, offset(r1)
-FMT_STORE = 3 # mnenomic r0, offset(r1)
-FMT_RI = 4  # mnenomic r0, num
-FMT_COND_BRANCH = 5  # mnenomic r0, r1, label
-FMT_JAL = 6  # mnenomic r0, label
-FMT_JALR = 7  # mnenomic r0, r1
+FMT_RRR = 0  # <mnenomic> r0, r1, r2
+FMT_RRI = 1  # <mnenomic> r0, r1, num
+FMT_LOAD = 2 # <mnenomic> r0, offset(r1)
+FMT_STORE = 3 # <mnenomic> r0, offset(r1)
+FMT_RI = 4  # <mnenomic> r0, num
+FMT_COND_BRANCH = 5  # <mnenomic> r0, r1, label
+FMT_JAL = 6  # <mnenomic> r0, label
+FMT_JALR = 7  # <mnenomic> r0, r1
 
 # Each entry is a tuple of (opcode, format)
 INSTRS = {

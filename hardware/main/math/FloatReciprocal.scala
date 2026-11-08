@@ -19,7 +19,7 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** Module to compute the reciprocal of a 32-bit floating point number.
+/** Compute the reciprocal of a 32-bit floating point number.
   * Uses an initial reciprocal estimate x_0 of the denominator d and
   * refines it with two Newton-Raphson iterations of the form:
   *

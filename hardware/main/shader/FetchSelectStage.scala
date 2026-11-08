@@ -150,11 +150,8 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   //    add r4, r1, r5
   //
   // The second instruction reads r1 before the first instruction writes it.
-  // Not every instruction will have this hazard, but we enforce a 3-cycle delay
+  // Not every instruction will have this hazard, but we enforce a delay
   // to simplify the pipeline.
-  // TODO an alternate approach would be to make the virtual vector register width
-  // wider than the number of physical execution units and issue the same
-  // instruction multiple times with a "chime" index.
   val rawLatency = 4 // Will issue every nth cycle, where n = rawLatency + 1
   val issueRawDelayReg = RegInit(VecInit.fill(cfg.shaderThreads)(0.U(3.W)))
   val inRawWait = Wire(Vec(cfg.shaderThreads, Bool()))
