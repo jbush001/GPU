@@ -41,17 +41,6 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.flushData.bits.depth.poke(0.0f)
   }
 
-  def sendPixel(dut: TileWriter, argb: Int): Unit = {
-    pokeColor(dut, argb)
-    dut.io.flushData.valid.poke(true.B)
-    while (!dut.io.flushData.ready.peek().litToBoolean) {
-      dut.clock.step()
-    }
-
-    dut.clock.step()
-    dut.io.flushData.valid.poke(false.B)
-  }
-
   test("TileWriter flush") {
     simulate(new TileWriter) { dut =>
       dut.io.controlBus.regWrite.valid.poke(false.B)
@@ -69,11 +58,20 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
         dut.io.writePort.burst.bits.length.expect(1.U)
         dut.clock.step()
 
-        for (word <- 0 until 2) {
+        for (word <- 0 until cfg.tileSizePixels / 2) {
           val lowPixel = 0xff000000 | (row * 4 + word * 2)
           val highPixel = 0xff000000 | (row * 4 + word * 2 + 1)
-          sendPixel(dut, lowPixel)
-          sendPixel(dut, highPixel)
+          pokeColor(dut, lowPixel)
+          dut.io.flushData.valid.poke(true.B)
+          while (!dut.io.flushData.ready.peek().litToBoolean) {
+            dut.clock.step()
+          }
+          dut.clock.step()
+
+          pokeColor(dut, highPixel)
+          while (!dut.io.flushData.ready.peek().litToBoolean) {
+            dut.clock.step()
+          }
 
           dut.io.writePort.data.valid.expect(true.B)
           val expected = (BigInt(highPixel & 0xffffffffL) << 32) |
@@ -97,8 +95,14 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
       writeControl(dut, ControlRegisterIndex.TileClearStart, RenderBufferId.Depth.litValue.toLong)
       dut.io.writePort.burst.valid.expect(false.B)
+      dut.io.flushData.valid.poke(true.B)
+      pokeColor(dut, 0)
       for (_ <- 0 until cfg.totalTilePixels) {
-        sendPixel(dut, 0)
+        while (!dut.io.flushData.ready.peek().litToBoolean) {
+          dut.clock.step()
+        }
+
+        dut.clock.step()
         dut.io.writePort.data.valid.expect(false.B)
       }
 

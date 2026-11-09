@@ -73,19 +73,18 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   val wordReg = RegInit(0.U(log2Ceil(wordsPerRow).W)) // count of words written in current row.
   val burstAddressReg = Reg(UInt(cfg.busAddressBits.W))
   val activeStrideReg = Reg(UInt(32.W))
-  val lowPixelReg = Reg(UInt(32.W))
-  val lowPixelValidReg = RegInit(false.B)
-  val highPixelReg = Reg(UInt(cfg.busDataBits.W))
-  val highPixelValidReg = RegInit(false.B)
   val clearCountReg = RegInit(0.U(log2Ceil(cfg.totalTilePixels).W))
+  val upsizer = Module(new AxiDataUpsizer)
 
   io.writePort.burst.valid := stateReg === State.IssueBurst
   io.writePort.burst.bits.address := burstAddressReg
   io.writePort.burst.bits.length := (wordsPerRow - 1).U
-  io.writePort.data.valid := stateReg === State.WriteData && highPixelValidReg
-  io.writePort.data.bits := highPixelReg ## lowPixelReg
-  io.flushData.ready := (stateReg === State.Clear) ||
-    (stateReg === State.WriteData && !highPixelValidReg)
+  val writing = stateReg === State.WriteData
+  upsizer.io.flushData.valid := io.flushData.valid && writing
+  upsizer.io.flushData.bits := io.flushData.bits.color.toArgb32
+  io.flushData.ready := stateReg === State.Clear ||
+    (writing && upsizer.io.flushData.ready)
+  io.writePort.data <> upsizer.io.data
   io.done := stateReg === State.Idle
 
   switch (stateReg) {
@@ -99,8 +98,6 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
           "TileWriter output stride must fit a complete tile row")
         assert(startBufferSel === RenderBufferId.Color,
           "TileWriter currently supports only color buffer writes")
-        assert(!highPixelValidReg && !lowPixelValidReg,
-          "TileWriter started while previous data is still valid")
         rowReg := 0.U
         burstAddressReg := outputAddressReg
         activeStrideReg := outputStrideReg
@@ -115,24 +112,7 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
       stateReg := State.WriteData
     }
     is (State.WriteData) {
-      when (io.flushData.fire) {
-        // The data bus width holds two pixels, so we need to wait for two to
-        // arrive from the flushData interface before we can issue a write
-        // cycle.
-        when (lowPixelValidReg) {
-          highPixelReg := io.flushData.bits.color.toArgb32
-          highPixelValidReg := true.B
-        }.otherwise {
-          lowPixelReg := io.flushData.bits.color.toArgb32
-          lowPixelValidReg := true.B
-        }
-      }
-
       when (io.writePort.data.fire) {
-        assert(highPixelValidReg && lowPixelValidReg,
-          "TileWriter attempted to write data without two valid pixels")
-        highPixelValidReg := false.B
-        lowPixelValidReg := false.B
         when (wordReg === (wordsPerRow - 1).U) {
           when (rowReg === (cfg.tileSizePixels - 1).U) {
             stateReg := State.Idle
@@ -159,5 +139,29 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
 
   when (stateReg =/= State.Idle) {
     assert(!writeStart && !clearStart, "TileWriter started while another operation is active")
+  }
+}
+
+class AxiDataUpsizer(implicit val cfg: GpuConfig) extends Module {
+  val io = IO(new Bundle {
+    val flushData = Flipped(Decoupled(UInt(32.W)))
+    val data = Decoupled(UInt(cfg.busDataBits.W))
+  })
+
+  val lowReg = Reg(UInt(32.W))
+  val hasLow = RegInit(false.B)
+
+  io.flushData.ready := !hasLow || io.data.ready
+
+  io.data.valid := hasLow && io.flushData.valid
+  io.data.bits := io.flushData.bits ## lowReg
+
+  when(io.flushData.fire) {
+    when(hasLow) {
+      hasLow := false.B
+    }.otherwise {
+      lowReg := io.flushData.bits
+      hasLow := true.B
+    }
   }
 }
