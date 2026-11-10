@@ -73,15 +73,15 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   val numVaryings = RegInit(0.U(5.W))
   val tileOffset = RegInit(0.U.asTypeOf(Point2D()))
-  val shaderAddress = RegInit(0.U(cfg.busAddressBits.W))
+  val shaderAddress = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
 
   when (io.controlBus.regWrite.valid) {
     switch (io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.ShaderAddressL) {
-        shaderAddress := Cat(shaderAddress(cfg.busAddressBits-1, 32), io.controlBus.regWrite.bits.data)
+        shaderAddress(0) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.ShaderAddressH) {
-        shaderAddress := Cat(io.controlBus.regWrite.bits.data, shaderAddress(31, 0))
+        shaderAddress(1) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.NumVaryings) {
         numVaryings := io.controlBus.regWrite.bits.data
@@ -191,7 +191,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         rasterizerParamsReg.boundingBox.right := tileOffset.x + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.boundingBox.bottom := tileOffset.y + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
-        rasterizerParamsReg.shaderAddress := shaderAddress
+        rasterizerParamsReg.shaderAddress := shaderAddress.asUInt
         setupParamsReg := io.startTriangle.bits
         readParameterMem(0.U, 0.U) // read X0/Y0
         stateReg := 1.U

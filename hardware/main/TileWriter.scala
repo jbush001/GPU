@@ -36,7 +36,7 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   val pixelsPerWord = cfg.busDataBits / 32
   val wordsPerRow = cfg.tileSizePixels / pixelsPerWord
 
-  val outputAddressReg = RegInit(0.U(cfg.busAddressBits.W))
+  val outputAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
   val outputStrideReg = RegInit(0.U(32.W))
   val writeStart = WireInit(false.B)
   val clearStart = WireInit(false.B)
@@ -45,10 +45,10 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   when (io.controlBus.regWrite.valid) {
     switch(io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.TileWriteAddressL) {
-        outputAddressReg := outputAddressReg(cfg.busAddressBits - 1, 32) ## io.controlBus.regWrite.bits.data
+        outputAddressReg(0) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.TileWriteAddressH) {
-        outputAddressReg := io.controlBus.regWrite.bits.data ## outputAddressReg(31, 0)
+        outputAddressReg(1) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.TileWriteStride) {
         outputStrideReg := io.controlBus.regWrite.bits.data
@@ -90,7 +90,7 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   switch (stateReg) {
     is (State.Idle) {
       when (writeStart) {
-        assert(outputAddressReg(2, 0) === 0.U,
+        assert(outputAddressReg.asUInt(2, 0) === 0.U,
           "TileWriter output address must be 8-byte aligned")
         assert(outputStrideReg(2, 0) === 0.U,
           "TileWriter output stride must be 8-byte aligned")
@@ -99,7 +99,7 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
         assert(startBufferSel === RenderBufferId.Color,
           "TileWriter currently supports only color buffer writes")
         rowReg := 0.U
-        burstAddressReg := outputAddressReg
+        burstAddressReg := outputAddressReg.asUInt
         activeStrideReg := outputStrideReg
         stateReg := State.IssueBurst
       }.elsewhen (clearStart) {

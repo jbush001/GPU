@@ -48,13 +48,13 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
       dut.io.writePort.data.ready.poke(true.B)
 
       writeControl(dut, ControlRegisterIndex.TileWriteAddressL, 0x100)
-      writeControl(dut, ControlRegisterIndex.TileWriteAddressH, 0)
+      writeControl(dut, ControlRegisterIndex.TileWriteAddressH, 0x2)
       writeControl(dut, ControlRegisterIndex.TileWriteStride, 24)
       writeControl(dut, ControlRegisterIndex.TileWriteStart, RenderBufferId.Color.litValue.toLong)
 
       for (row <- 0 until cfg.tileSizePixels) {
         dut.io.writePort.burst.valid.expect(true.B)
-        dut.io.writePort.burst.bits.address.expect(0x100 + row * 24)
+        dut.io.writePort.burst.bits.address.expect(0x200000100L + row * 24)
         dut.io.writePort.burst.bits.length.expect(1.U)
         dut.clock.step()
 
