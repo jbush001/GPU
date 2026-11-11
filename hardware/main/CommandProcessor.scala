@@ -153,9 +153,8 @@ class CpDma(implicit cfg: GpuConfig) extends Module {
   gearbox.io.in <> readFifo
   io.dmaData <> gearbox.io.out
 
-  // XXX note bad things will happen if we request new data before the previous transfer is complete.
-  // Need to check for that here.
-  io.memReadPort.burst.valid := io.startTransfer.valid
+  // If the FIFO is not empty, don't start a new burst.
+  io.memReadPort.burst.valid := io.startTransfer.valid && !readFifo.valid
   io.memReadPort.burst.bits.address := io.startTransfer.bits.startAddress
   io.memReadPort.burst.bits.length := io.startTransfer.bits.length
 }
