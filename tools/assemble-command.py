@@ -33,8 +33,9 @@ FMT_LOAD = 2 # <mnenomic> r0, offset(r1)
 FMT_STORE = 3 # <mnenomic> r0, offset(r1)
 FMT_RI = 4  # <mnenomic> r0, num
 FMT_COND_BRANCH = 5  # <mnenomic> r0, r1, label
-FMT_JAL = 6  # <mnenomic> r0, label
-FMT_JALR = 7  # <mnenomic> r0, r1
+FMT_COND_BRANCHI = 6  # <mnenomic> r0, imm, label
+FMT_JAL = 7  # <mnenomic> r0, label
+FMT_JALR = 8  # <mnenomic> r0, r1
 
 # Each entry is a tuple of (opcode, format)
 INSTRS = {
@@ -45,19 +46,25 @@ INSTRS = {
     'sub': (4, FMT_RRR),
     'sltu': (5, FMT_RRR),
     'sll': (6, FMT_RRR),
-    'srl': (8, FMT_RRR),
-    'addi': (9, FMT_RRI),
-    'sltui': (10, FMT_RRI),
-    'slli': (11, FMT_RRI),
-    'srli': (12, FMT_RRI),
-    'lw': (13, FMT_LOAD),
-    'sw': (14, FMT_STORE),
-    'movehi': (15, FMT_RRI),
-    'movei': (16, FMT_RI),
-    'beq': (17, FMT_COND_BRANCH),
-    'bne': (18, FMT_COND_BRANCH),
-    'jal': (19, FMT_JAL),
-    'jalr': (20, FMT_JALR)
+    'srl': (7, FMT_RRR),
+    'beq': (8, FMT_COND_BRANCH),
+    'bne': (9, FMT_COND_BRANCH),
+    'andi': (16, FMT_RRI),
+    'ori': (17, FMT_RRI),
+    'xori': (18, FMT_RRI),
+    'addi': (19, FMT_RRI),
+    'subi': (20, FMT_RRI),
+    'sltui': (21, FMT_RRI),
+    'slli': (22, FMT_RRI),
+    'srli': (23, FMT_RRI),
+    'beqi': (24, FMT_COND_BRANCHI),
+    'bnei': (25, FMT_COND_BRANCHI),
+    'lw': (26, FMT_LOAD),
+    'sw': (27, FMT_STORE),
+    'movehi': (28, FMT_RRI),
+    'movei': (29, FMT_RI),
+    'jal': (30, FMT_JAL),
+    'jalr': (31, FMT_JALR)
 }
 
 class AssembleError(Exception):
@@ -80,6 +87,15 @@ def parse_reg_operand(lineno, token):
     else:
         raise AssembleError(lineno, f'Invalid register {token}')
 
+def parse_imm_operand(lineno, token):
+    try:
+        imm = int(token, 0)
+        if imm < 0:
+            imm = (1 << 18) + imm
+
+        return imm
+    except ValueError:
+        raise AssembleError(lineno, f'Invalid immediate {token}')
 
 class Assembler:
     def __init__(self):
@@ -187,6 +203,20 @@ class Assembler:
             target = next_token()
             self.add_branch_fixup(target, lineno)
             self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0)
+        elif lookahead == 'bz':
+            # Branch if zero. This is a pseudo-instruction that expands to beq rs, r0, target
+            rs = parse_reg_operand(lineno, next_token())
+            match(',')
+            target = next_token()
+            self.add_branch_fixup(target, lineno)
+            self.emit_inst(lineno, INSTRS['beqi'][0], 0, rs, 0, 0)
+        elif lookahead == 'bnz':
+            # Branch if not zero. This is a pseudo-instruction that expands to bne rs, r0, target
+            rs = parse_reg_operand(lineno, next_token())
+            match(',')
+            target = next_token()
+            self.add_branch_fixup(target, lineno)
+            self.emit_inst(lineno, INSTRS['bnei'][0], 0, rs, 0, 0)
         else:
             if lookahead in INSTRS:
                 opcode, format = INSTRS[lookahead]
@@ -203,15 +233,14 @@ class Assembler:
             elif format == FMT_RI:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
-                imm = self.encode_imm(int(next_token(), 0))
+                imm = parse_imm_operand(lineno, next_token())
                 self.emit_inst(lineno, opcode, rd, 0, 0, imm)
             elif format == FMT_RRI:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
                 rs = parse_reg_operand(lineno, next_token())
                 match(',')
-                imm = int(next_token(), 0)
-                imm = self.encode_imm(imm)
+                imm = parse_imm_operand(lineno, next_token())
                 self.emit_inst(lineno, opcode, rd, rs, 0, imm)
             elif format in (FMT_LOAD, FMT_STORE):
                 op0 = parse_reg_operand(lineno, next_token())
@@ -219,8 +248,7 @@ class Assembler:
                 lookahead = next_token()
                 # Check if the lookahead is a number
                 if lookahead[0].isdigit() or (lookahead[0] == '-' and lookahead[1:].isdigit()):
-                    imm = int(lookahead, 0)
-                    imm = self.encode_imm(imm)
+                    imm = parse_imm_operand(lineno, lookahead)
 
                     match('(')
                 else:
@@ -244,6 +272,14 @@ class Assembler:
                 target = next_token()
                 self.add_branch_fixup(target, lineno)
                 self.emit_inst(lineno, opcode, 0, rs1, rs2)
+            elif format == FMT_COND_BRANCHI:
+                rs1 = parse_reg_operand(lineno, next_token())
+                match(',')
+                imm = parse_imm_operand(lineno, next_token())
+                match(',')
+                target = next_token()
+                self.add_branch_fixup(target, lineno)
+                self.emit_inst(lineno, opcode, 0, rs1, 0, imm)
             elif format == FMT_JAL:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
@@ -257,14 +293,6 @@ class Assembler:
                 self.emit_inst(lineno, opcode, rd, rs, 0, 0)
             else:
                 raise Exception('Internal error: unknown format')
-
-    def encode_imm(self, imm):
-        """Convert an signed immediate value to its 18-bit two's complement
-        representation.
-        """
-        if imm < 0:
-            imm = (1 << 18) + imm
-        return imm
 
     def get_current_addr(self):
         return len(self.code)

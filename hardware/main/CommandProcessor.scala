@@ -177,6 +177,11 @@ class DecoupledDownsizer(implicit cfg: GpuConfig) extends Module {
   }
 }
 
+// Note: we've chosen an encoding where arithmetic instrutions
+// that have an immediate operand have the high bit set, and
+// the immediate and register forms of instructions have the same
+// four low bits. This basically makes immediate forms free
+// in terms of decoder hardware.
 object CpOpcode {
   val AND    = 0.U
   val OR     = 1.U
@@ -185,19 +190,25 @@ object CpOpcode {
   val SUB    = 4.U
   val SLTU   = 5.U
   val SLL    = 6.U
-  val SRL    = 8.U
-  val ADDI   = 9.U
-  val SLTUI  = 10.U
-  val SLLI   = 11.U
-  val SRLI   = 12.U
-  val LW     = 13.U
-  val SW     = 14.U
-  val MOVEHI = 15.U
-  val MOVEI  = 16.U
-  val BEQ    = 17.U
-  val BNE    = 18.U
-  val JAL    = 19.U
-  val JALR   = 20.U
+  val SRL    = 7.U
+  val BEQ    = 8.U
+  val BNE    = 9.U
+  val ANDI   = 16.U
+  val ORI    = 17.U
+  val XORI   = 18.U
+  val ADDI   = 19.U
+  val SUBI   = 20.U
+  val SLTUI  = 21.U
+  val SLLI   = 22.U
+  val SRLI   = 23.U
+  val BEQI   = 24.U
+  val BNEI   = 25.U
+  val LW     = 26.U
+  val SW     = 27.U
+  val MOVEHI = 28.U
+  val MOVEI  = 29.U
+  val JAL    = 30.U
+  val JALR   = 31.U
 }
 
 /**
@@ -306,21 +317,22 @@ class CpPipeline extends Module {
   val exWritebackMmio = WireInit(false.B)
   when (idValid) {
     switch (idInstruction.opcode) {
+      is (CpOpcode.AND, CpOpcode.ANDI) { exAluResult := exAluOp1 & exAluOp2 }
+      is (CpOpcode.OR, CpOpcode.ORI) { exAluResult := exAluOp1 | exAluOp2 }
+      is (CpOpcode.XOR, CpOpcode.XORI) { exAluResult := exAluOp1 ^ exAluOp2 }
       is (CpOpcode.ADD, CpOpcode.ADDI) { exAluResult := exAluOp1 + exAluOp2 }
-      is (CpOpcode.SUB) { exAluResult := exAluOp1 - exAluOp2 }
-      is (CpOpcode.AND) { exAluResult := exAluOp1 & exAluOp2 }
-      is (CpOpcode.OR) { exAluResult := exAluOp1 | exAluOp2 }
-      is (CpOpcode.XOR) { exAluResult := exAluOp1 ^ exAluOp2 }
-      is (CpOpcode.SRL, CpOpcode.SRLI) { exAluResult := exAluOp1 >> exAluOp2(4, 0) }
-      is (CpOpcode.SLL, CpOpcode.SLLI) { exAluResult := exAluOp1 << exAluOp2(4, 0) }
+      is (CpOpcode.SUB, CpOpcode.SUBI) { exAluResult := exAluOp1 - exAluOp2 }
       is (CpOpcode.SLTU, CpOpcode.SLTUI) { exAluResult := (exAluOp1 < exAluOp2).asUInt }
-      is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
-      is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
-      is (CpOpcode.SW) {
-        when (addrIsMmio) {
-          io.mmio.regWrite.valid := true.B
-        }.otherwise {
-          dataMem.write(exMemoryAddress, exAluOp2)
+      is (CpOpcode.SLL, CpOpcode.SLLI) { exAluResult := exAluOp1 << exAluOp2(4, 0) }
+      is (CpOpcode.SRL, CpOpcode.SRLI) { exAluResult := exAluOp1 >> exAluOp2(4, 0) }
+      is (CpOpcode.BEQ, CpOpcode.BEQI) {
+        when (exAluOp1 === exAluOp2) {
+          branchTaken := true.B
+        }
+      }
+      is (CpOpcode.BNE, CpOpcode.BNEI) {
+        when (exAluOp1 =/= exAluOp2) {
+          branchTaken := true.B
         }
       }
       is (CpOpcode.LW) {
@@ -329,16 +341,15 @@ class CpPipeline extends Module {
           exWritebackMmio := true.B
         }
       }
-      is (CpOpcode.BEQ) {
-        when (exAluOp1 === exAluOp2) {
-          branchTaken := true.B
+      is (CpOpcode.SW) {
+        when (addrIsMmio) {
+          io.mmio.regWrite.valid := true.B
+        }.otherwise {
+          dataMem.write(exMemoryAddress, exAluOp2)
         }
       }
-      is (CpOpcode.BNE) {
-        when (exAluOp1 =/= exAluOp2) {
-          branchTaken := true.B
-        }
-      }
+      is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
+      is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
       is (CpOpcode.JAL) {
         branchTaken := true.B
       }

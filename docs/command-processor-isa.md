@@ -1,12 +1,12 @@
 # Command Processor ISA Reference
 
-## 1. Overview
+## Overview
 
 The Command Processor contains a small RISC pipeline running firmware loaded
 from the host CPU. This program parses command streams from shared memory and
 coordinates activity across the GPU pipeline units.
 
-## 2. Instruction Format
+## Instruction Format
 
 All instructions are 32 bits wide. The instruction format is highly regular,
 containing an 18-bit signed immediate, three 3-bit register identifiers
@@ -15,11 +15,11 @@ containing an 18-bit signed immediate, three 3-bit register identifiers
 ```
  31                                 14 13 12 11  9 8   5 4       0
 ├─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┴─┼─┴─┴─┼─┴─┴─┼─┴─┴─┼─┴─┴─┴─┴─┤
-│              imm (18)               │ rs2 │ rs1 │  rd │ opcd (5)│
+│              imm (18)               │ rs2 │ rs1 │  rd │opcode(5)│
 └─────────────────────────────────────┴─────┴─────┴─────┴─────────┘
 ```
 
-## 3. Instruction Set (Opcodes)
+## Instruction Set (Opcodes)
 
 | Opcode | Mnemonic              | Description                                              |
 | ------ | --------------------- | -------------------------------------------------------- |
@@ -30,19 +30,25 @@ containing an 18-bit signed immediate, three 3-bit register identifiers
 |    4   |   SUB rd, rs0, rs1    | Integer Subtraction                                      |
 |    5   |   SLTU rd, rs0, rs1   | Set Less Than Unsigned                                   |
 |    6   |   SLL rd, rs0, rs1    | Shift Left Logical                                       |
-|    8   |   SRL rd, rs0, rs1    | Shift Right Logical                                      |
-|    9   |   ADDI rd, rs0, imm   | Add Immediate                                            |
-|    10  |   SLTUI rd, rs0, imm  | Set Less Than Unsigned Immediate                         |
-|    11  |   SLLI rd, rs0, imm   | Shift Left Logical Immediate                             |
-|    12  |   SRLI rd, rs0, imm   | Shift Right Logical Immediate                            |
-|    13  |   LW rd, imm(rs0)     | Load Word.<sup>1</sup>                                   |
-|    14  |   SW rs1, imm(rs0)    | Store Word                                               |
-|    15  |   MOVEHI rd, rs1, imm | Move High Immediate `rd = (imm << 14) + (rs1 & 0x3fff)`  |
-|    16  |   MOVEI rd, imm       | Move Immediate: `rd = imm`                               |
-|    17  |   BEQ rs1, rs2, offs  | Branch if Equal: `if (rs1 == rs2) PC = PC + imm`         |
-|    18  |   BNE rs1, rs2, offs  | Branch if Not Equal: `if (rs1 != rs2) PC = PC + imm`     |
-|    19  |   JAL rd, offs        | Jump and Link: `rd = PC + 4; PC = PC + imm`              |
-|    20  |   JALR rd, rs1, offs  | Jump and Link Register: `rd = PC + 4; PC = rs1 + imm`    |
+|    7   |   SRL rd, rs0, rs1    | Shift Right Logical                                      |
+|    8   |   BEQ rs1, rs2, offs  | Branch if Equal: `if (rs1 == rs2) PC = PC + imm`         |
+|    9   |   BNE rs1, rs2, offs  | Branch if Not Equal: `if (rs1 != rs2) PC = PC + imm`     |
+|   16   |   ANDI rd, rs0, rs1   | Bitwise AND immediate                                    |
+|   17   |   ORI rd, rs0, rs1    | Bitwise OR immediate                                     |
+|   18   |   XORI rd, rs0, rs1   | Bitwise XOR immediate                                    |
+|   19   |   ADDI rd, rs0, rs1   | Integer Addition immediate                               |
+|   20   |   SUBI rd, rs0, rs1   | Integer Subtraction immediate                            |
+|   21   |   SLTUI rd, rs0, rs1  | Set Less Than Unsigned immediate                         |
+|   22   |   SLLI rd, rs0, rs1   | Shift Left Logical immediate                             |
+|   23   |   SRLI rd, rs0, rs1   | Shift Right Logical immediate                            |
+|   24   |   BEQI rs1, rs2, offs | Branch if Equal immediate                                |
+|   25   |   BNEI rs1, rs2, offs | Branch if Not Equal immediate                            |
+|   26   |   LW rd, imm(rs0)     | Load Word.<sup>1</sup>                                   |
+|   27   |   SW rs1, imm(rs0)    | Store Word                                               |
+|   28   |   MOVEHI rd, rs1, imm | Move High Immediate `rd = (imm << 14) + (rs1 & 0x3fff)`  |
+|   29   |   MOVEI rd, imm       | Move Immediate: `rd = imm`                               |
+|   30   |   JAL rd, offs        | Jump and Link: `rd = PC + 4; PC = PC + imm`              |
+|   31   |   JALR rd, rs1, offs  | Jump and Link Register: `rd = PC + 4; PC = rs1 + imm`    |
 
 1. Loads require a one-cycle delay slot before the loaded value can be safely used by a subsequent instruction.
 
@@ -56,10 +62,13 @@ actually encoded as other instruction types.
 | move rd, rs            | addi rd, rs, 0                |
 | clear rd               | xor rd, rd, rd                |
 | b target               | beq r0, r0, target            |
+| bz rs, target          | beqi r0, 0, target            |
+| bnz rs, target         | bnei r0, 0, target            |
 
-## 4. Memory-Mapped I/O (MMIO)
+## Memory-Mapped Control Registers
 
-The processor communicates with the host and GPU control units via memory-mapped special registers.
+The processor communicates with the host and GPU control units via special registers
+that are memory-mapped into the command processor address space.
 
 | Address  | R/W | Description                                                      |
 | -------- | --- | ---------------------------------------------------------------- |

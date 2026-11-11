@@ -141,14 +141,14 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |           lw r4, 1(r1)
           |           nop
           |           sltu r5, r4, r3
-          |           beq r5, r0, noswap
+          |           bz r5, noswap
           |           ; swap
           |           sw r3, 1(r1)
           |           sw r4, 0(r1)
           |noswap:    addi r1, r1, 1
           |           bne r1, r2, inner
           |           addi r2, r2, -1
-          |           bne r2, r0, outer
+          |           bnz r2, outer
           |
           |; Copy out
           |           clear r1      ; source pointer
@@ -187,7 +187,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |; r1 is argument and result. r6 is the pointer to the base of the
           |; current stack frame. r7 holds the return address.
           |fib:       sltui r2, r1, 2
-          |           bne r2, r0, return
+          |           bnz r2, return
           |           addi r6, r6, -3 ; Allocate stack frame
           |           sw r7, 0(r6)    ; Save return address
           |           sw r1, 1(r6)    ; Save original argument
@@ -228,7 +228,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |           or r2, r2, r5
           |           srli r1, r1, 1
           |           addi r3, r3, -1
-          |           bne r3, r0, loop
+          |           bnz r3, loop
           |; Done, report result
           |           sw r2, -256(r0)
           |           sw r2, -1(r0)
@@ -250,12 +250,12 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |             sw r2, -510(r0)   ; DMA length
           |read_loop:
           |wait_ready:  lw r1, -509(r0)   ; DMA status
-          |             beq r1, r0, wait_ready
+          |             bz r1, wait_ready
           |             lw r1, -508(r0)   ; DMA data
           |             nop
           |             sw r1, -256(r0)   ; store to output
           |             addi r2, r2, -1
-          |             bne r2, r0, read_loop
+          |             bnz r2, read_loop
           |             sw r2, -1(r0)    ; terminate
           |""".stripMargin
       ))
