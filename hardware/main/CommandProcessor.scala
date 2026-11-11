@@ -137,6 +137,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   pipeline.io.mmio.regReadData := mmioReadResponse
 }
 
+/** Reads data from system memory and provides a Decoupled interface. */
 class CpDma(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val memReadPort = new MemReadPort
@@ -159,6 +160,7 @@ class CpDma(implicit cfg: GpuConfig) extends Module {
   io.memReadPort.burst.bits.length := io.startTransfer.bits.length
 }
 
+/** Adapts the 64-bit data bus to a 32-bit Decoupled interface. */
 class CpDataDownsizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val in = Flipped(Decoupled(UInt(cfg.busDataBits.W)))
@@ -175,32 +177,32 @@ class CpDataDownsizer(implicit cfg: GpuConfig) extends Module {
   }
 }
 
-  object CpOpcode {
-    val AND    = 0.U
-    val OR     = 1.U
-    val XOR    = 2.U
-    val ADD    = 3.U
-    val SUB    = 4.U
-    val SLTU   = 5.U
-    val SLL    = 6.U
-    val SRL    = 8.U
-    val ADDI   = 9.U
-    val SLTUI  = 10.U
-    val SLLI   = 11.U
-    val SRLI   = 12.U
-    val LW     = 13.U
-    val SW     = 14.U
-    val MOVEHI = 15.U
-    val MOVEI  = 16.U
-    val BEQ    = 17.U
-    val BNE    = 18.U
-    val JAL    = 19.U
-    val JALR   = 20.U
-  }
+object CpOpcode {
+  val AND    = 0.U
+  val OR     = 1.U
+  val XOR    = 2.U
+  val ADD    = 3.U
+  val SUB    = 4.U
+  val SLTU   = 5.U
+  val SLL    = 6.U
+  val SRL    = 8.U
+  val ADDI   = 9.U
+  val SLTUI  = 10.U
+  val SLLI   = 11.U
+  val SRLI   = 12.U
+  val LW     = 13.U
+  val SW     = 14.U
+  val MOVEHI = 15.U
+  val MOVEI  = 16.U
+  val BEQ    = 17.U
+  val BNE    = 18.U
+  val JAL    = 19.U
+  val JALR   = 20.U
+}
 
 /**
   * The command processor pipeline.
-  * This implements a small RISC processor
+  * This is a four-stage RISC Processor.
   */
 class CpPipeline extends Module {
   val io = IO(new Bundle {
