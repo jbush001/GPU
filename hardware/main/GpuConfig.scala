@@ -37,8 +37,6 @@ case class GpuConfig(
   tileSizePixels:      Int = 64,
   edgeFunctionBits:    Int = 40,
   coordinateBits:      Int = 16,
-  busAddressBits:      Int = 64,
-  busDataBits:         Int = 64,
   busBurstLengthBits:  Int = 8,
   shaderThreads:       Int = 8, // Number of hardware threads per shader core
   shaderVectorLanes:   Int = 16,
@@ -48,12 +46,17 @@ case class GpuConfig(
   triangleIdBits:      Int = 2,
   maxVaryings:         Int = 16,
   vpmColumns:          Int = 64,
-  numRegisters:        Int = 32
+  numShaderRegisters:  Int = 32,
+
+  // Changing these will break things. Maybe move to Axi.
+  busAddressBits:      Int = 64,
+  busDataBits:         Int = 64,
 ) {
   require(isPow2(tileSizePixels), "tileSizePixels must be a power of two")
   require(isPow2(shaderThreads), "shaderThreads must be a power of two")
   require(isPow2(shaderVectorLanes), "shaderVectorLanes must be a power of two")
   require(busDataBits % 8 == 0, "busDataBits must be a multiple of 8")
+  require(numShaderRegisters < 64)
 
   // Derived values
   val tileCoordBits = log2Up(tileSizePixels)
@@ -65,7 +68,7 @@ case class GpuConfig(
   val maxConcurrentTriangles = 1 << triangleIdBits
   val maxVaryingCoeffs = maxVaryings * 3 // 3 coefficients per varying
   val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
-  val gprIndexBits = log2Up(numRegisters)
+  val shaderGprIndexBits = log2Up(numShaderRegisters)
   val vpmColumnIndexBits = log2Up(vpmColumns)
   val vpmReadAddrBits = vpmColumnIndexBits + log2Up(shaderVectorLanes)
 }

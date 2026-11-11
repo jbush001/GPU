@@ -163,9 +163,9 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
     })
   })
 
-  val scalarRegisters = SyncReadMem(cfg.shaderThreads * cfg.numRegisters,
+  val scalarRegisters = SyncReadMem(cfg.shaderThreads * cfg.numShaderRegisters,
     UInt(32.W), SyncReadMem.Undefined)
-  val vectorRegisters = SyncReadMem(cfg.shaderThreads * cfg.numRegisters,
+  val vectorRegisters = SyncReadMem(cfg.shaderThreads * cfg.numShaderRegisters,
     Vec(cfg.shaderVectorLanes, UInt(32.W)), SyncReadMem.Undefined)
   val execMaskReg = RegInit(VecInit.fill(cfg.shaderThreads)(~0.U(cfg.shaderVectorLanes.W)))
   when (io.resetThread.valid) {
@@ -254,13 +254,13 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val operand2Index = io.fetchedInstruction.bits.instruction(30, 23)
 
   val scalarRead1 = scalarRegisters.read(io.fetchedInstruction.bits.thread
-    ## operand1Index(cfg.gprIndexBits - 1, 0))
+    ## operand1Index(cfg.shaderGprIndexBits - 1, 0))
   val scalarRead2 = scalarRegisters.read(io.fetchedInstruction.bits.thread
-    ## operand2Index(cfg.gprIndexBits - 1, 0))
+    ## operand2Index(cfg.shaderGprIndexBits - 1, 0))
   val vectorRead1 = vectorRegisters.read(io.fetchedInstruction.bits.thread
-    ## operand1Index(cfg.gprIndexBits - 1, 0))
+    ## operand1Index(cfg.shaderGprIndexBits - 1, 0))
   val vectorRead2 = vectorRegisters.read(io.fetchedInstruction.bits.thread
-    ## operand2Index(cfg.gprIndexBits - 1, 0))
+    ## operand2Index(cfg.shaderGprIndexBits - 1, 0))
 
   // Should not write and read the same register at the same time
   // (fetch select prevents this)
@@ -285,7 +285,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   }
 
   io.regRead.valid := isInputReg(operand1Index) && io.fetchedInstruction.valid && hasReg1Op
-  io.regRead.bits.addr := operand1Index(cfg.gprIndexBits - 1, 0)
+  io.regRead.bits.addr := operand1Index(cfg.shaderGprIndexBits - 1, 0)
   io.regRead.bits.jobId := decodedMetadata.jobId
 
 
@@ -337,7 +337,7 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   io.regWrite.valid := false.B
   when (io.writeback.valid) {
     val destReg = io.writeback.bits.destReg
-    val gprIndex = io.writeback.bits.thread ## destReg(cfg.gprIndexBits - 1, 0)
+    val gprIndex = io.writeback.bits.thread ## destReg(cfg.shaderGprIndexBits - 1, 0)
 
     if (cfg.traceEnable) {
       when (destReg < 128.U) {

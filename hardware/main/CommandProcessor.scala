@@ -19,29 +19,6 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-object CpOpcode {
-  val AND    = 0.U
-  val OR     = 1.U
-  val XOR    = 2.U
-  val ADD    = 3.U
-  val SUB    = 4.U
-  val SLTU   = 5.U
-  val SLL    = 6.U
-  val SRL    = 8.U
-  val ADDI   = 9.U
-  val SLTUI  = 10.U
-  val SLLI   = 11.U
-  val SRLI   = 12.U
-  val LW     = 13.U
-  val SW     = 14.U
-  val MOVEHI = 15.U
-  val MOVEI  = 16.U
-  val BEQ    = 17.U
-  val BNE    = 18.U
-  val JAL    = 19.U
-  val JALR   = 20.U
-}
-
 object ControlRegisterIndex {
   val width = 8
 
@@ -69,7 +46,7 @@ class ControlBus extends Bundle {
 
 class CpMmio extends Bundle {
   val regWrite = Valid(new Bundle {
-    val address = UInt(ControlRegisterIndex.width.W)
+    val address = UInt(32.W)
     val data    = UInt(32.W)
   })
 
@@ -89,25 +66,137 @@ class CpMmio extends Bundle {
   */
 class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val readPort = new MemReadPort
+    val memReadPort = new MemReadPort
     val controlBus = new ControlBus
     val halt = Input(Bool())
     val loadProgram = Flipped(Valid(UInt(32.W)))
   })
 
+  object RegAddresses {
+    val DmaAddrL = 0xfffffe00L.U
+    val DmaAddrH = 0xfffffe01L.U
+    val DmaLength = 0xfffffe02L.U
+    val DmaStatus = 0xfffffe03L.U
+    val DmaData = 0xfffffe04L.U
+  }
+
   val pipeline = Module(new CpPipeline)
+  val dma = Module(new CpDma)
+  dma.io.memReadPort <> io.memReadPort
+
+  val dmaStartAddress = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
+  dma.io.startTransfer.bits.startAddress := dmaStartAddress.asUInt
+
+  // Since the length write kicks off the transfer, we can use the payload here.
+  // (note divide the length by half since the word has half the bus data width)
+  dma.io.startTransfer.bits.length := pipeline.io.mmio.regWrite.bits.data(4, 1)
+
   pipeline.io.halt := io.halt
   pipeline.io.loadProgram := io.loadProgram
-  io.controlBus.regWrite.valid := pipeline.io.mmio.regWrite.valid
-  io.controlBus.regWrite.bits.address := pipeline.io.mmio.regWrite.bits.address(ControlRegisterIndex.width-1, 0)
+  val mmioAddr = pipeline.io.mmio.regWrite.bits.address
+  io.controlBus.regWrite.bits.address := mmioAddr(ControlRegisterIndex.width - 1, 0)
   io.controlBus.regWrite.bits.data := pipeline.io.mmio.regWrite.bits.data
-  pipeline.io.mmio.regReadData := 0.U
+  io.controlBus.regWrite.valid := false.B
+  dma.io.startTransfer.valid := false.B
+  when (pipeline.io.mmio.regWrite.valid) {
+    // MMIO writes
+    when (mmioAddr(31, 8) === 0xffffff.U) {
+      io.controlBus.regWrite.valid := true.B
+    }.otherwise {
+      switch (mmioAddr) {
+        is(RegAddresses.DmaAddrL) {
+          dmaStartAddress(0) := pipeline.io.mmio.regWrite.bits.data
+        }
+        is(RegAddresses.DmaAddrH) {
+          dmaStartAddress(1) := pipeline.io.mmio.regWrite.bits.data
+        }
+        is(RegAddresses.DmaLength) {
+          // A side effect of writing the DMA length is the start of a transfer.
+          // The length is hardwired above.
+          dma.io.startTransfer.valid := true.B
+        }
+      }
+    }
+  }
 
-  // XXX Stub need to implement this.
-  io.readPort.burst.valid := false.B
-  io.readPort.burst.bits.address := 0.U
-  io.readPort.burst.bits.length := 0.U
-  io.readPort.data.ready := true.B
+  val mmioReadResponse = Reg(UInt(32.W))
+  dma.io.dmaData.ready := false.B
+  when (pipeline.io.mmio.regReadAddr.valid) {
+    switch (pipeline.io.mmio.regReadAddr.bits) {
+      is (RegAddresses.DmaStatus) {
+        mmioReadResponse := dma.io.dmaData.valid.asUInt
+      }
+
+      is (RegAddresses.DmaData) {
+        mmioReadResponse := dma.io.dmaData.bits
+        dma.io.dmaData.ready := true.B
+      }
+    }
+  }
+
+  pipeline.io.mmio.regReadData := mmioReadResponse
+}
+
+class CpDma(implicit cfg: GpuConfig) extends Module {
+  val io = IO(new Bundle {
+    val memReadPort = new MemReadPort
+    val startTransfer = Flipped(Valid(new Bundle {
+      val startAddress = UInt(cfg.busAddressBits.W)
+      val length = UInt(4.W)
+    }))
+
+    val dmaData = Decoupled(UInt(32.W))
+  })
+
+  val readFifo = Queue(io.memReadPort.data, entries = 16)
+  val gearbox = Module(new CpDataDownsizer)
+  gearbox.io.in <> readFifo
+  io.dmaData <> gearbox.io.out
+
+  // XXX note bad things will happen if we request new data before the previous transfer is complete.
+  // Need to check for that here.
+  io.memReadPort.burst.valid := io.startTransfer.valid
+  io.memReadPort.burst.bits.address := io.startTransfer.bits.startAddress
+  io.memReadPort.burst.bits.length := io.startTransfer.bits.length
+}
+
+class CpDataDownsizer(implicit cfg: GpuConfig) extends Module {
+  val io = IO(new Bundle {
+    val in = Flipped(Decoupled(UInt(cfg.busDataBits.W)))
+    val out = Decoupled(UInt(32.W))
+  })
+
+  val selectUpper = RegInit(false.B)
+
+  io.out.valid := io.in.valid
+  io.in.ready  := io.out.ready && selectUpper
+  io.out.bits := Mux(selectUpper, io.in.bits(63, 32), io.in.bits(31, 0))
+  when(io.out.fire) {
+    selectUpper := !selectUpper
+  }
+}
+
+object CpOpcode {
+  val AND    = 0.U
+  val OR     = 1.U
+  val XOR    = 2.U
+  val ADD    = 3.U
+  val SUB    = 4.U
+  val SLTU   = 5.U
+  val SLL    = 6.U
+  val SRL    = 8.U
+  val ADDI   = 9.U
+  val SLTUI  = 10.U
+  val SLLI   = 11.U
+  val SRLI   = 12.U
+  val LW     = 13.U
+  val SW     = 14.U
+  val MOVEHI = 15.U
+  val MOVEI  = 16.U
+  val BEQ    = 17.U
+  val BNE    = 18.U
+  val JAL    = 19.U
+  val JALR   = 20.U
 }
 
 /**
@@ -206,10 +295,10 @@ class CpPipeline extends Module {
 
   val exMemoryAddress = exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
   val addrIsMmio = exMemoryAddress(31, log2Up(dataMemSize)).orR
-  io.mmio.regWrite.bits.address := exMemoryAddress(ControlRegisterIndex.width - 1, 0)
+  io.mmio.regWrite.bits.address := exMemoryAddress
   io.mmio.regWrite.bits.data := exAluOp2
   io.mmio.regWrite.valid := false.B
-  io.mmio.regReadAddr.bits := exMemoryAddress(ControlRegisterIndex.width - 1, 0)
+  io.mmio.regReadAddr.bits := exMemoryAddress
   io.mmio.regReadAddr.valid := false.B
 
   val exAluResult = WireInit(0.U(dataWidth.W))

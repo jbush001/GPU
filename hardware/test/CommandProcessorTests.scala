@@ -60,11 +60,14 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     dut.io.halt.poke(false)
   }
 
-  def runProgram(dut: CommandProcessor): Seq[ControlWrite] = {
+  def runProgram(dut: CommandProcessor, memory: Seq[Int] = Seq()): Seq[ControlWrite] = {
     dut.io.halt.poke(false)
     val writes = ArrayBuffer[ControlWrite]()
     var cycles = 0
     val maxCycles = 5000
+    var readBurstActive = false
+    var readBurstAddress = 0
+    var readBurstCount = 0
 
     while (cycles < maxCycles) {
       if (dut.io.controlBus.regWrite.valid.peek().litToBoolean) {
@@ -77,6 +80,33 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           writeAddress,
           dut.io.controlBus.regWrite.bits.data.peek().litValue
         )
+      }
+
+      if (dut.io.memReadPort.burst.valid.peek().litToBoolean) {
+        // Handle memory read burst if needed
+        assert(!readBurstActive,
+          "New memory read burst started before the previous one completed")
+        readBurstActive = true
+        dut.io.memReadPort.data.valid.poke(true)
+        readBurstCount = dut.io.memReadPort.burst.bits.length.peek().litValue.toInt + 1
+        readBurstAddress = dut.io.memReadPort.burst.bits.address.peek().litValue.toInt
+      }
+
+      if (readBurstActive) {
+        val upper = memory(readBurstAddress + 1).toLong
+        val lower = memory(readBurstAddress).toLong & 0xFFFFFFFFL
+        dut.io.memReadPort.data.bits.poke((upper << 32) | lower)
+        dut.io.memReadPort.data.valid.poke(true)
+
+        if (dut.io.memReadPort.data.ready.peek().litToBoolean) {
+          readBurstCount -= 2
+          readBurstAddress += 2
+          if (readBurstCount == 0) {
+            readBurstActive = false
+          }
+        }
+      } else {
+        dut.io.memReadPort.data.valid.poke(false)
       }
 
       dut.clock.step()
@@ -206,6 +236,31 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
       ))
 
       assert(runProgram(dut) == Seq(ControlWrite(0, 0x2c48b00f)))
+    }
+  }
+
+  test("CommandProcessor DMA transfer") {
+    simulate(new CommandProcessor) { dut =>
+      loadProgram(dut, assembleProgram(
+        """
+          |             clear r0 ; this is always 0
+          |             loadi r1, 123
+          |             sw r1, -512(r0)   ; DMA base address low
+          |             movei r2, 8
+          |             sw r2, -510(r0)   ; DMA length
+          |read_loop:
+          |wait_ready:  lw r1, -509(r0)   ; DMA status
+          |             beq r1, r0, wait_ready
+          |             lw r1, -508(r0)   ; DMA data
+          |             nop
+          |             sw r1, -256(r0)   ; store to output
+          |             addi r2, r2, -1
+          |             bne r2, r0, read_loop
+          |             sw r2, -1(r0)    ; terminate
+          |""".stripMargin
+      ))
+
+      assert(runProgram(dut, (1000 to 2000).toSeq) == (1123 until 1131).map(x => ControlWrite(0, BigInt(x))))
     }
   }
 }
