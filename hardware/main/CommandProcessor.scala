@@ -150,9 +150,9 @@ class CpDma(implicit cfg: GpuConfig) extends Module {
   })
 
   val readFifo = Queue(io.memReadPort.data, entries = 16)
-  val gearbox = Module(new CpDataDownsizer)
-  gearbox.io.in <> readFifo
-  io.dmaData <> gearbox.io.out
+  val downsizer = Module(new DecoupledDownsizer)
+  downsizer.io.wide <> readFifo
+  io.dmaData <> downsizer.io.narrow
 
   // If the FIFO is not empty, don't start a new burst.
   io.memReadPort.burst.valid := io.startTransfer.valid && !readFifo.valid
@@ -161,18 +161,18 @@ class CpDma(implicit cfg: GpuConfig) extends Module {
 }
 
 /** Adapts the 64-bit data bus to a 32-bit Decoupled interface. */
-class CpDataDownsizer(implicit cfg: GpuConfig) extends Module {
+class DecoupledDownsizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val in = Flipped(Decoupled(UInt(cfg.busDataBits.W)))
-    val out = Decoupled(UInt(32.W))
+    val wide = Flipped(Decoupled(UInt(cfg.busDataBits.W)))
+    val narrow = Decoupled(UInt(32.W))
   })
 
   val selectUpper = RegInit(false.B)
 
-  io.out.valid := io.in.valid
-  io.in.ready  := io.out.ready && selectUpper
-  io.out.bits := Mux(selectUpper, io.in.bits(63, 32), io.in.bits(31, 0))
-  when(io.out.fire) {
+  io.narrow.valid := io.wide.valid
+  io.wide.ready  := io.narrow.ready && selectUpper
+  io.narrow.bits := Mux(selectUpper, io.wide.bits(63, 32), io.wide.bits(31, 0))
+  when(io.narrow.fire) {
     selectUpper := !selectUpper
   }
 }

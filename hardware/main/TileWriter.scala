@@ -74,17 +74,21 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   val burstAddressReg = Reg(UInt(cfg.busAddressBits.W))
   val activeStrideReg = Reg(UInt(32.W))
   val clearCountReg = RegInit(0.U(log2Ceil(cfg.totalTilePixels).W))
-  val upsizer = Module(new AxiDataUpsizer)
+  val upsizer = Module(new DecoupledUpsizer)
 
   io.writePort.burst.valid := stateReg === State.IssueBurst
   io.writePort.burst.bits.address := burstAddressReg
   io.writePort.burst.bits.length := (wordsPerRow - 1).U
   val writing = stateReg === State.WriteData
-  upsizer.io.flushData.valid := io.flushData.valid && writing
-  upsizer.io.flushData.bits := io.flushData.bits.color.toArgb32
+
+  // XXX: using the upsizer like this is an inefficient way to handle this,
+  // since it only uses half the clock speed, during which it occupies
+  // the bus. There should be probably be a burst FIFO here.
+  upsizer.io.narrow.valid := io.flushData.valid && writing
+  upsizer.io.narrow.bits := io.flushData.bits.color.toArgb32
   io.flushData.ready := stateReg === State.Clear ||
-    (writing && upsizer.io.flushData.ready)
-  io.writePort.data <> upsizer.io.data
+    (writing && upsizer.io.narrow.ready)
+  io.writePort.data <> upsizer.io.wide
   io.done := stateReg === State.Idle
 
   switch (stateReg) {
@@ -142,25 +146,25 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   }
 }
 
-class AxiDataUpsizer(implicit val cfg: GpuConfig) extends Module {
+class DecoupledUpsizer(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val flushData = Flipped(Decoupled(UInt(32.W)))
-    val data = Decoupled(UInt(cfg.busDataBits.W))
+    val narrow = Flipped(Decoupled(UInt(32.W)))
+    val wide = Decoupled(UInt(cfg.busDataBits.W))
   })
 
   val lowReg = Reg(UInt(32.W))
   val hasLow = RegInit(false.B)
 
-  io.flushData.ready := !hasLow || io.data.ready
+  io.narrow.ready := !hasLow || io.wide.ready
 
-  io.data.valid := hasLow && io.flushData.valid
-  io.data.bits := io.flushData.bits ## lowReg
+  io.wide.valid := hasLow && io.narrow.valid
+  io.wide.bits := io.narrow.bits ## lowReg
 
-  when(io.flushData.fire) {
+  when(io.narrow.fire) {
     when(hasLow) {
       hasLow := false.B
     }.otherwise {
-      lowReg := io.flushData.bits
+      lowReg := io.narrow.bits
       hasLow := true.B
     }
   }
