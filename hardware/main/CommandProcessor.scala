@@ -30,8 +30,8 @@ object ControlRegisterIndex {
   val NumVaryings       = 6.U
   val TileOffsetX       = 7.U
   val TileOffsetY       = 8.U
-  val TileWriteAddressH = 9.U
-  val TileWriteAddressL = 10.U
+  val TileWriteAddressL = 9.U
+  val TileWriteAddressH = 10.U
   val TileWriteStride   = 11.U // bytes between the start of two adjacent rows
   val TileWriteStart    = 12.U
   val TileClearStart    = 13.U
@@ -175,28 +175,28 @@ class CpDataDownsizer(implicit cfg: GpuConfig) extends Module {
   }
 }
 
-object CpOpcode {
-  val AND    = 0.U
-  val OR     = 1.U
-  val XOR    = 2.U
-  val ADD    = 3.U
-  val SUB    = 4.U
-  val SLTU   = 5.U
-  val SLL    = 6.U
-  val SRL    = 8.U
-  val ADDI   = 9.U
-  val SLTUI  = 10.U
-  val SLLI   = 11.U
-  val SRLI   = 12.U
-  val LW     = 13.U
-  val SW     = 14.U
-  val MOVEHI = 15.U
-  val MOVEI  = 16.U
-  val BEQ    = 17.U
-  val BNE    = 18.U
-  val JAL    = 19.U
-  val JALR   = 20.U
-}
+  object CpOpcode {
+    val AND    = 0.U
+    val OR     = 1.U
+    val XOR    = 2.U
+    val ADD    = 3.U
+    val SUB    = 4.U
+    val SLTU   = 5.U
+    val SLL    = 6.U
+    val SRL    = 8.U
+    val ADDI   = 9.U
+    val SLTUI  = 10.U
+    val SLLI   = 11.U
+    val SRLI   = 12.U
+    val LW     = 13.U
+    val SW     = 14.U
+    val MOVEHI = 15.U
+    val MOVEI  = 16.U
+    val BEQ    = 17.U
+    val BNE    = 18.U
+    val JAL    = 19.U
+    val JALR   = 20.U
+  }
 
 /**
   * The command processor pipeline.
