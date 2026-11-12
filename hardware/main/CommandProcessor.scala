@@ -35,15 +35,25 @@ object ControlRegisterIndex {
   val TileWriteStride   = 11.U // bytes between the start of two adjacent rows
   val TileWriteStart    = 12.U
   val TileClearStart    = 13.U
+  val IndexBaseL        = 14.U
+  val IndexBaseH        = 15.U
+  val IndexCount        = 16.U
+  val AttrBase          = 32.U // Each entry is 16 bytes, up to 16 entries (32-96)
 }
 
+/** This is driven by the CommandProcessor and fans out to all of the functional
+  * units in the pipeline to control them.
+  */
 class ControlBus extends Bundle {
   val regWrite = Valid(new Bundle {
     val address = UInt(ControlRegisterIndex.width.W)
-    val data    = UInt(32.W)
+    val data = UInt(32.W)
   })
 }
 
+/** Internal interface between execution pipeline and the memory-mapped I/O
+  * subsystem.
+  */
 class CpMmio extends Bundle {
   val regWrite = Valid(new Bundle {
     val address = UInt(32.W)

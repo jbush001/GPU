@@ -38,23 +38,49 @@ import chisel3.util._
   */
 class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val writeParam = Flipped(Valid(new Bundle{
+    // From [[ShaderCore]]
+    val write0 = Flipped(Valid(new Bundle{
       val column = UInt(cfg.vpmColumnIndexBits.W)
       val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
-    val readAddr = Flipped(Valid(UInt(cfg.vpmReadAddrBits.W)))
-    val readValue = Output(UInt(32.W))
+    // To [[ShaderCore]]
+    val readAddr0 = Flipped(Valid(UInt(cfg.vpmColumnIndexBits.W)))
+    val readValue0 = Output(Vec(cfg.shaderVectorLanes, UInt(32.W)))
+
+    // From [[VertexFetcher]]
+    val write1 = Flipped(Decoupled(new Bundle{
+      val column = UInt(cfg.vpmColumnIndexBits.W)
+      val row = UInt(log2Up(cfg.shaderVectorLanes).W)
+      val value = UInt(32.W)
+    }))
+
+    // To [[TriangleSetup]]
+    val readAddr1 = Flipped(Valid(UInt(cfg.vpmReadAddrBits.W)))
+    val readValue1 = Output(UInt(32.W))
   })
 
   val mem = SyncReadMem(cfg.vpmColumns,
     Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
-  when (io.writeParam.valid) {
-    mem.write(io.writeParam.bits.column, io.writeParam.bits.value)
+  // Writes from the shader take priority.
+  io.write1.ready := !io.write0.valid
+  val writeEnble = io.write0.valid || io.write1.valid
+  val writeColumn = Mux(io.write0.valid, io.write0.bits.column, io.write1.bits.column)
+  val writeValue = Mux(io.write0.valid,
+    io.write0.bits.value,
+    VecInit(Seq.fill(cfg.shaderVectorLanes)(io.write1.bits.value)))
+  val writeMask = VecInit.tabulate(cfg.shaderVectorLanes) { i =>
+    io.write0.valid || (io.write1.bits.row === i.U)
   }
 
-  val readColumn = io.readAddr.bits(cfg.vpmReadAddrBits - 1, log2Up(cfg.shaderVectorLanes))
-  val readRowReg = RegNext(io.readAddr.bits(log2Up(cfg.shaderVectorLanes) - 1, 0))
-  io.readValue := mem.read(readColumn, io.readAddr.valid)(readRowReg)
+  when (writeEnble) {
+    mem.write(writeColumn, writeValue, writeMask)
+  }
+
+  io.readValue0 := mem.read(io.readAddr0.bits, io.readAddr0.valid)
+
+  val readColumn = io.readAddr1.bits(cfg.vpmReadAddrBits - 1, log2Up(cfg.shaderVectorLanes))
+  val readRowReg = RegNext(io.readAddr1.bits(log2Up(cfg.shaderVectorLanes) - 1, 0))
+  io.readValue1 := mem.read(readColumn, io.readAddr1.valid)(readRowReg)
 }

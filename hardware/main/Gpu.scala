@@ -58,10 +58,16 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
 
   triangleSetup.io.startTriangle <> io.startTriangle
   triangleSetup.io.controlBus <> io.controlBus
-  vertexParameterMem.io.writeParam <> io.writeVertexParam
-  triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr
-  triangleSetup.io.readValue := vertexParameterMem.io.readValue
+  vertexParameterMem.io.write0 <> io.writeVertexParam
+  triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr1
+  triangleSetup.io.readValue := vertexParameterMem.io.readValue1
   triangleSetup.io.triangleFinished <> pixelShaderConductor.io.triangleFinished
+
+  // XXX placeholder
+  vertexParameterMem.io.readAddr0.valid := false.B
+  vertexParameterMem.io.readAddr0.bits := DontCare
+  vertexParameterMem.io.write1.valid := false.B
+  vertexParameterMem.io.write1.bits := DontCare
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad

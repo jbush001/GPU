@@ -44,7 +44,7 @@ case class GpuConfig(
   cacheLineSizeBytes:  Int = 64,
   icacheLines:         Int = 64,
   triangleIdBits:      Int = 2,
-  maxVaryings:         Int = 16,
+  maxVertexAttribs:    Int = 16,
   vpmColumns:          Int = 64,
   numShaderRegisters:  Int = 32,
 
@@ -66,7 +66,7 @@ case class GpuConfig(
   val icacheTagBits = busAddressBits - icacheIndexBits - cacheLineOffsetBits
   val textureRequestIdBits = shaderJobIdBits + log2Up(shaderVectorLanes / Consts.pixelsPerQuad)
   val maxConcurrentTriangles = 1 << triangleIdBits
-  val maxVaryingCoeffs = maxVaryings * 3 // 3 coefficients per varying
+  val maxVaryingCoeffs = maxVertexAttribs * 3 // 3 coefficients per varying
   val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
   val shaderGprIndexBits = log2Up(numShaderRegisters)
   val vpmColumnIndexBits = log2Up(vpmColumns)

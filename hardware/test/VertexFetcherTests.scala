@@ -19,11 +19,11 @@ package gpu
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 
-class VertexFetchDmaTests extends AnyFunSuite with ChiselSim with TestHelpers {
+class VertexFetcherTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("VertexFetchDma basic operation") {
-    simulate(new VertexFetchDma) { dut =>
+  test("VertexFetcher basic operation") {
+    simulate(new VertexFetcher) { dut =>
       dut.clock.step()
     }
   }
