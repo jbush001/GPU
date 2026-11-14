@@ -33,11 +33,14 @@ import chisel3.util._
   *   is guaranteed to be non-zero.
   */
 class Float32 extends Bundle {
-  val raw = UInt(32.W)
+  // Representing with UInt and using accessors for the fields avoids
+  // an explosion of extra verilog signals in the design and makes
+  // waveform tracing easier.
+  val _bits = UInt(32.W)
 
-  def isNegative = raw(31)
-  def exponent = raw(30, 23)
-  def fraction = raw(22, 0)
+  def isNegative = _bits(31)
+  def exponent = _bits(30, 23)
+  def fraction = _bits(22, 0)
 
   def fullFraction = (!this.isZero ## this.fraction)
 
@@ -50,7 +53,7 @@ class Float32 extends Bundle {
   def neg = Float32(!this.isNegative, this.exponent, this.fraction)
 
   def absGreaterThan(that: Float32): Bool = {
-    this.abs.raw > that.abs.raw && !this.isNaN && !that.isNaN
+    this.abs.asUInt > that.abs.asUInt && !this.isNaN && !that.isNaN
   }
 
   /** Helper function for comparison. Maps this value to a 32-bit unsigned key
@@ -61,7 +64,7 @@ class Float32 extends Bundle {
     *       function.
     */
   private def toOrderable: UInt = {
-    !this.isNegative ## (this.raw(30, 0) ^ Fill(31, this.isNegative))
+    !this.isNegative ## (this._bits(30, 0) ^ Fill(31, this.isNegative))
   }
 
   def >(that: Float32): Bool = {
@@ -173,9 +176,7 @@ object Float32 {
 
   def apply(raw: UInt): Float32 = {
     require(raw.getWidth == 32)
-    val f = Wire(new Float32())
-    f.raw := raw
-    f
+    raw.asTypeOf(new Float32())
   }
 
   def apply(negative: Bool, exponent: UInt, fraction: UInt): Float32 = {
@@ -196,7 +197,7 @@ object Float32 {
     require(value.getWidth == 32, "value must be 32 bits wide") // XXX fixme
     val result = Wire(new Float32)
     when (value === 0.S) {
-      result.raw := 0.U
+      result := Float32.Zero
     }.otherwise {
       val absValue = value.abs.asUInt
       val leadingZeros = PriorityEncoder(Reverse(absValue))

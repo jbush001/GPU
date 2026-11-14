@@ -71,8 +71,8 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     val operand2 = Float32(io.decodedInstruction.bits.operand2(lane))
     val isSub = io.decodedInstruction.bits.meta.opcode === OpCode.Subf
     val invOperand2 = Float32(isSub ^ operand2.isNegative, operand2.exponent, operand2.fraction)
-    fpAddSubResult(lane) := FloatAdd(operand1, invOperand2).raw
-    fpMulResult(lane) := RegNext(FloatMul(operand1, operand2).raw) // Pad extra cycle of latency
+    fpAddSubResult(lane) := FloatAdd(operand1, invOperand2).asUInt
+    fpMulResult(lane) := RegNext(FloatMul(operand1, operand2).asUInt) // Pad extra cycle of latency
   }
 
   // Short latency operations (1 cycle)
@@ -103,11 +103,11 @@ class ExecuteStage(implicit val cfg: GpuConfig) extends Module {
     OpCode.LoadLo -> ((_, a, _) => a(31, 16) ## io.decodedInstruction.bits.meta.immediateValue(15, 0)),
     OpCode.LoadHi -> ((_, a, _) => io.decodedInstruction.bits.meta.immediateValue(15, 0) ## a(15, 0)),
     OpCode.Ftoi   -> ((_, a, _) => Float32(a).toFixedPoint().asUInt),
-    OpCode.Itof   -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).raw),
-    OpCode.Fabs   -> ((_, a, _) => Float32(a).abs.raw),
+    OpCode.Itof   -> ((_, a, _) => Float32.fromFixedPoint(a.asSInt).asUInt),
+    OpCode.Fabs   -> ((_, a, _) => Float32(a).abs.asUInt),
     OpCode.Fmin   -> ((i, a, b) => Mux(!fpGreater(i).asBool, a, b)),
     OpCode.Fmax   -> ((i, a, b) => Mux(fpGreater(i).asBool, a, b)),
-    OpCode.Recip  -> ((_, a, _) => Float32(a).reciprocalEstimate().raw)
+    OpCode.Recip  -> ((_, a, _) => Float32(a).reciprocalEstimate().asUInt)
   )
 
   val singleCycleResult0 = MuxLookup(io.decodedInstruction.bits.meta.opcode, WireInit(VectorResult(), DontCare))(binOps.map {

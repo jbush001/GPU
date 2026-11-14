@@ -286,17 +286,17 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
           && textureResponseJobId === regReadJobIdStage2Reg
           && (jobRegs(textureResponseJobId).returnedTexelBitmap | (1 << (quadsPerJob - 1)).U).andR) {
           val lastTexelOffset = cfg.shaderVectorLanes - Consts.pixelsPerQuad
-          io.shaderRegReadData.bits := jobRegs(textureResponseJobId).fetchedTexels(colorChannel).map(_.raw)
+          io.shaderRegReadData.bits := jobRegs(textureResponseJobId).fetchedTexels(colorChannel).map(_.asUInt)
 
           for (lane <- lastTexelOffset until cfg.shaderVectorLanes) {
-            io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane - lastTexelOffset).raw
+            io.shaderRegReadData.bits(lane) := io.textureFetchResponse.bits.texels(colorChannel)(lane - lastTexelOffset).asUInt
           }
         }.elsewhen (!readJobStage2.returnedTexelBitmap.andR) {
           io.shaderRegReadData.valid := false.B  // Need to wait for result
           readJobStage2.threadNeedsWake := true.B
         }.otherwise {
           val texelVal = readJobStage2.fetchedTexels(colorChannel(1, 0))
-          io.shaderRegReadData.bits := texelVal.map(_.raw)
+          io.shaderRegReadData.bits := texelVal.map(_.asUInt)
         }
       }
     }
@@ -396,6 +396,6 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   // Write coefficient memory during setup
   when (io.writeVaryingCoeff.valid) {
     val writeAddr = io.writeVaryingCoeff.bits.triangleId ## io.writeVaryingCoeff.bits.index
-    varyingCoeffMem.write(writeAddr, io.writeVaryingCoeff.bits.value.raw)
+    varyingCoeffMem.write(writeAddr, io.writeVaryingCoeff.bits.value.asUInt)
   }
 }

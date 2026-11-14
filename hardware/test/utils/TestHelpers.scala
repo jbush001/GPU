@@ -45,10 +45,10 @@ trait TestHelpers { this: ChiselSim =>
 
   implicit class Float32Ops(private val f: Float32) {
     def poke(value: Float): Unit = {
-      f.raw.poke((java.lang.Float.floatToRawIntBits(value).toLong & 0xffffffffL))
+      f._bits.poke((java.lang.Float.floatToRawIntBits(value).toLong & 0xffffffffL))
     }
 
-    def peek(): Float = java.lang.Float.intBitsToFloat(f.raw.peek().litValue.toInt)
+    def peek(): Float = java.lang.Float.intBitsToFloat(f._bits.peek().litValue.toInt)
     def expect(value: Float, epsilon: Float = 1e-6f)(implicit sourceInfo: SourceInfo): Unit = {
       val actual = f.peek()
       chisel3.assert(

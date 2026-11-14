@@ -36,7 +36,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.sourceQuad.bits.shaderAddress.poke(shaderAddress)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
-        dut.io.sourceQuad.bits.lambda(i)(j).raw.poke(lambda(i)(j))
+        dut.io.sourceQuad.bits.lambda(i)(j)._bits.poke(lambda(i)(j))
       }
     }
 
@@ -59,7 +59,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.shadedQuad.valid.expect(true)
     for (i <- colors.indices) {
       for (j <- colors(i).indices) {
-        dut.io.shadedQuad.bits.colors(i)(j).raw.expect(colors(i)(j))
+        dut.io.shadedQuad.bits.colors(i)(j)._bits.expect(colors(i)(j))
       }
     }
 
@@ -385,8 +385,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         }
 
         for (i <- 0 until 4) {
-          dut.io.textureFetchRequest.bits.coord(0)(i).raw.expect((j * 4 + i) + 100)
-          dut.io.textureFetchRequest.bits.coord(1)(i).raw.expect((j * 4 + i) + 200)
+          dut.io.textureFetchRequest.bits.coord(0)(i)._bits.expect((j * 4 + i) + 100)
+          dut.io.textureFetchRequest.bits.coord(1)(i)._bits.expect((j * 4 + i) + 200)
         }
 
         dut.clock.step()
@@ -398,7 +398,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.textureFetchResponse.bits.requestId.poke(requestId + (j << 4))
         for (i <- 0 until 4) {
           for (colorChannel <- 0 until Color.numChannels) {
-            dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.poke((j * 4 + i) + 300 + 10 * colorChannel)
+            dut.io.textureFetchResponse.bits.texels(colorChannel)(i)._bits.poke((j * 4 + i) + 300 + 10 * colorChannel)
           }
         }
 
@@ -436,7 +436,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.textureFetchResponse.bits.requestId.poke(requestId + (j << 4))
         for (i <- 0 until 4) {
           for (colorChannel <- 0 until Color.numChannels) {
-            dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.poke((j * 4 + i) + 300 + 10 * colorChannel)
+            dut.io.textureFetchResponse.bits.texels(colorChannel)(i)._bits.poke((j * 4 + i) + 300 + 10 * colorChannel)
           }
         }
 
@@ -498,7 +498,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.textureFetchResponse.bits.requestId.poke(requestId + (j << 4))
         for (i <- 0 until 4) {
           for (colorChannel <- 0 until Color.numChannels) {
-            dut.io.textureFetchResponse.bits.texels(colorChannel)(i).raw.poke((j * 4 + i) + 300 + 10 * colorChannel)
+            dut.io.textureFetchResponse.bits.texels(colorChannel)(i)._bits.poke((j * 4 + i) + 300 + 10 * colorChannel)
           }
         }
 
