@@ -76,7 +76,7 @@ class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
 
   // Writes from the shader take priority.
   io.write1.ready := !io.write0.valid
-  val writeEnble = io.write0.valid || io.write1.valid
+  val writeEnable = io.write0.valid || io.write1.valid
   val writeColumn = Mux(io.write0.valid, io.write0.bits.column, io.write1.bits.address.column)
   val writeValue = Mux(io.write0.valid,
     io.write0.bits.value,
@@ -85,7 +85,7 @@ class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
     io.write0.valid || (io.write1.bits.address.row === i.U)
   }
 
-  when (writeEnble) {
+  when (writeEnable) {
     mem.write(writeColumn, writeValue, writeMask)
   }
 
