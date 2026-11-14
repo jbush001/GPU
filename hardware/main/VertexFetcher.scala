@@ -49,13 +49,15 @@ class VertexFetcher(implicit cfg: GpuConfig) extends Module {
   }
 
   class AttrArray extends Bundle {
-    val config      = new AttrConfigWord()
+    val config = new AttrConfigWord()
+    val vpmColumnOffs = UInt(cfg.vpmColumnIndexBits.W)
     val baseAddress = Vec(2, UInt(32.W))
   }
 
   val attrArraysReg = RegInit(0.U.asTypeOf(Vec(cfg.maxVertexAttribs, new AttrArray)))
   val indexBaseReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
   val indexCountReg = RegInit(0.U(32.W))
+  val indexFormatReg = RegInit(0.U(2.W))
 
   when(io.controlBus.regWrite.valid) {
     val data = io.controlBus.regWrite.bits.data
@@ -79,6 +81,9 @@ class VertexFetcher(implicit cfg: GpuConfig) extends Module {
         is(2.U) {
           attrArraysReg(attrIdx).baseAddress(1) := data
         }
+        is(3.U) {
+          attrArraysReg(attrIdx).vpmColumnOffs := data(cfg.vpmColumnIndexBits - 1, 0)
+        }
       }
     }.otherwise {
       switch (addr) {
@@ -91,6 +96,9 @@ class VertexFetcher(implicit cfg: GpuConfig) extends Module {
         is(ControlRegisterIndex.IndexCount) {
           indexCountReg := data
         }
+        is(ControlRegisterIndex.IndexFormat) {
+          indexFormatReg := data
+        }
       }
     }
   }
@@ -101,4 +109,3 @@ class VertexFetcher(implicit cfg: GpuConfig) extends Module {
   io.vertexWrite.valid := false.B
   io.vertexWrite.bits := DontCare
 }
-

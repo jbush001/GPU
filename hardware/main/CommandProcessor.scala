@@ -38,6 +38,7 @@ object ControlRegisterIndex {
   val IndexBaseL        = 14.U
   val IndexBaseH        = 15.U
   val IndexCount        = 16.U
+  val IndexFormat       = 17.U
   val AttrBase          = 32.U // Each entry is 16 bytes, up to 16 entries (32-96)
 }
 
