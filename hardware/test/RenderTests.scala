@@ -180,7 +180,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  var nextVertexBaseAddress = 0
+  var nextVertexRow = 0
 
   def renderBuffer(dut: SimTop, programBytes: Seq[Long], vertices: Seq[(Float, Float, Float)],
     varyings: Seq[Seq[Float]], indices: Seq[Int]): Array[Int] = {
@@ -197,7 +197,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     for (tileRow <- 0 until fbSize / cfg.tileSizePixels) {
       for (tileColumn <- 0 until fbSize / cfg.tileSizePixels) {
-        nextVertexBaseAddress = 0
+        nextVertexRow = 0
 
         writeControlReg(dut, ControlRegisterIndex.TileOffsetX,
           tileColumn * cfg.tileSizePixels)
@@ -255,7 +255,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     for (((x, y, w), vertex) <- vertices.zipWithIndex) {
       val screenX = (((x + 1.0f) * fbWidth * 0.5f).toInt) & 0xffff
       val screenY = (((1.0f - y) * fbHeight * 0.5f).toInt) & 0xffff
-      val baseRow = nextVertexBaseAddress + vertex
+      val baseRow = nextVertexRow + vertex
       writeParameter(baseRow, 0, (screenX << 16) | screenY)
       writeParameter(baseRow, 1, java.lang.Float.floatToRawIntBits(1.0f / w) & 0xffffffffL)
       for ((value, index) <- varyings(vertex).zipWithIndex) {
@@ -280,10 +280,11 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     dut.io.startTriangle.bits.lastTriangle.poke(lastTriangle.B)
     for (vertex <- 0 until 3) {
-      dut.io.startTriangle.bits.vertexBaseAddr(vertex).poke(nextVertexBaseAddress + vertex)
+      dut.io.startTriangle.bits.vertexBaseAddr(vertex).row.poke(nextVertexRow + vertex)
+      dut.io.startTriangle.bits.vertexBaseAddr(vertex).column.poke(0)
     }
 
-    nextVertexBaseAddress += 3
+    nextVertexRow += 3
 
     dut.io.startTriangle.valid.poke(true.B)
     while (!dut.io.startTriangle.ready.peek().litToBoolean) {

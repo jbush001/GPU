@@ -70,5 +70,4 @@ case class GpuConfig(
   val varyingCoeffIndexBits = log2Up(maxVaryingCoeffs)
   val shaderGprIndexBits = log2Up(numShaderRegisters)
   val vpmColumnIndexBits = log2Up(vpmColumns)
-  val vpmReadAddrBits = vpmColumnIndexBits + log2Up(shaderVectorLanes)
 }

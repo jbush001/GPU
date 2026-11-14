@@ -63,8 +63,9 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     writeControlReg(dut, ControlRegisterIndex.ShaderAddressL, 0x100)
     writeControlReg(dut, ControlRegisterIndex.ShaderAddressH, 0x2)
 
-    val vertexParamMem = Array.fill(1024)(0)
-    val baseAddresses = Array(100, 210, 308)
+    val vertexParamMem = Array.fill(16, 1024)(0)
+    val baseRows = Array(1, 3, 7)
+    val baseColumns = Array(0, 10, 20)
 
     var waitCount = 0
     while (!dut.io.startTriangle.ready.peek().litToBoolean) {
@@ -75,9 +76,12 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       }
     }
 
-    dut.io.startTriangle.bits.vertexBaseAddr(0).poke(baseAddresses(0))
-    dut.io.startTriangle.bits.vertexBaseAddr(1).poke(baseAddresses(1))
-    dut.io.startTriangle.bits.vertexBaseAddr(2).poke(baseAddresses(2))
+    dut.io.startTriangle.bits.vertexBaseAddr(0).row.poke(baseRows(0))
+    dut.io.startTriangle.bits.vertexBaseAddr(0).column.poke(baseColumns(0))
+    dut.io.startTriangle.bits.vertexBaseAddr(1).row.poke(baseRows(1))
+    dut.io.startTriangle.bits.vertexBaseAddr(1).column.poke(baseColumns(1))
+    dut.io.startTriangle.bits.vertexBaseAddr(2).row.poke(baseRows(2))
+    dut.io.startTriangle.bits.vertexBaseAddr(2).column.poke(baseColumns(2))
     dut.io.startTriangle.bits.lastTriangle.poke(true)
 
     // Vertex memory layout
@@ -86,11 +90,10 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     //  2 - varying 0...
     for (vertexI <- 0 until 3) {
       val (x, y, invW) = params.vertices(vertexI)
-      val baseAddr = baseAddresses(vertexI)
-      vertexParamMem(baseAddr) = ((x << 16) | (y & 0xffff)).toInt
-      vertexParamMem(baseAddr + 16) = floatToRaw(invW)
+      vertexParamMem(baseRows(vertexI))(baseColumns(vertexI)) = ((x << 16) | (y & 0xffff)).toInt
+      vertexParamMem(baseRows(vertexI))(baseColumns(vertexI) + 1) = floatToRaw(invW)
       for ((v, i) <- params.varyings(vertexI).zipWithIndex) {
-        vertexParamMem(baseAddr + (2 + i) * 16) = floatToRaw(v)
+        vertexParamMem(baseRows(vertexI))(baseColumns(vertexI) + (2 + i)) = floatToRaw(v)
       }
     }
 
@@ -116,7 +119,8 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
       // Simulate parameter memory read
       if (dut.io.paramReadAddr.valid.peek().litToBoolean) {
-        val readVal = vertexParamMem(dut.io.paramReadAddr.bits.peek().litValue.toInt)
+        val addr = dut.io.paramReadAddr.bits
+        val readVal = vertexParamMem(addr.row.peek().litValue.toInt)(addr.column.peek().litValue.toInt)
         dut.clock.step()
         dut.io.readValue.poke(readVal)
       } else {

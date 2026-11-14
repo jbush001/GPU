@@ -21,7 +21,7 @@ import chisel3.util._
 
 class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   val lastTriangle = Bool()
-  val vertexBaseAddr = Vec(Consts.triangleVertices, UInt(cfg.vpmReadAddrBits.W))
+  val vertexBaseAddr = Vec(Consts.triangleVertices, new VpmAddress())
 }
 
 /** Computes edge functions and varying interpolation coefficients for
@@ -52,7 +52,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
 
     // To VertexParameterMem
-    val paramReadAddr = Valid(UInt(cfg.vpmReadAddrBits.W))
+    val paramReadAddr = Valid(new VpmAddress())
     val readValue = Input(UInt(32.W))
 
     // To Rasterizer
@@ -121,7 +121,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.writeVaryingCoeff.bits := DontCare
   io.writeVaryingCoeff.bits.triangleId := rasterizerParamsReg.triangleId
   io.paramReadAddr.valid := false.B
-  io.paramReadAddr.bits := 0.U
+  io.paramReadAddr.bits.row := 0.U
+  io.paramReadAddr.bits.column := 0.U
 
   val x0Reg = Reg(SInt(16.W))
   val y0Reg = Reg(SInt(16.W))
@@ -162,8 +163,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   def readParameterMem(vertex: UInt, index: UInt) = {
     io.paramReadAddr.valid := true.B
     val params = Mux(stateReg === 0.U, io.startTriangle.bits, setupParamsReg)
-    io.paramReadAddr.bits := (params.vertexBaseAddr(vertex)
-      + (index * cfg.shaderVectorLanes.U))
+    io.paramReadAddr.bits := params.vertexBaseAddr(vertex).columnOffset(index)
   }
 
   // XXX This is not technically correct. I'm not exactly sure why the
