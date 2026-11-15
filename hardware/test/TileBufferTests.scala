@@ -173,10 +173,11 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
           depthResults += dut.io.flushData.bits.depth.peek()
           totalRead += 1
         } else {
-          val color = convertChannel(dut.io.flushData.bits.color.channels(0).peek().litValue.toInt) << 16 |
-                      convertChannel(dut.io.flushData.bits.color.channels(1).peek().litValue.toInt) << 8 |
-                      convertChannel(dut.io.flushData.bits.color.channels(2).peek().litValue.toInt) |
-                      convertChannel(dut.io.flushData.bits.color.channels(3).peek().litValue.toInt) << 24
+          val channels = dut.io.flushData.bits.color.channels
+          val color = convertChannel(channels(0).peek().litValue.toInt) << 16 |
+                      convertChannel(channels(1).peek().litValue.toInt) << 8 |
+                      convertChannel(channels(2).peek().litValue.toInt) |
+                      convertChannel(channels(3).peek().litValue.toInt) << 24
 
           colorResults += color
           totalRead += 1

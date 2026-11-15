@@ -32,10 +32,9 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val divisor = Flipped(Valid(UInt(cfg.edgeFunctionBits.W)))
     val result = Output(UInt(48.W))
-    val done   = Output(Bool())
+    val done = Output(Bool())
   })
 
-  require(cfg.edgeFunctionBits >= 33)
   val fractionalBits = 40
 
   val cycleReg = RegInit(0.U(3.W))
@@ -74,25 +73,24 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
     product(72, 32) + product(31),
     product((fractionalBits * 2), fractionalBits) + product(fractionalBits - 1)
   )
-  val calcError =
-    ((BigInt(1) << (fractionalBits + 1)).U - productRounded)(fractionalBits, 0)
-  val calcEstimate = productRounded
+  val error = ((BigInt(1) << (fractionalBits + 1)).U - productRounded)(fractionalBits, 0)
+  val estimate = productRounded
 
   switch(cycleReg) {
     is(1.U) { // Compute Error 1 (Divisor * Estimate)
-      errorReg := calcError
+      errorReg := error
       cycleReg := 2.U
     }
     is(2.U) { // Compute Estimate 2 (Estimate * Error 1)
-      estimateReg := calcEstimate
+      estimateReg := estimate
       cycleReg := 3.U
     }
     is(3.U) { // Compute Error 2 (Divisor * Estimate 2)
-      errorReg := calcError
+      errorReg := error
       cycleReg := 4.U
     }
     is(4.U) { // Compute Final Estimate (Estimate 2 * Error 2)
-      estimateReg := calcEstimate
+      estimateReg := estimate
       cycleReg := 0.U
     }
   }

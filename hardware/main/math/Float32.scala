@@ -44,10 +44,10 @@ class Float32 extends Bundle {
 
   def fullFraction = (!this.isZero ## this.fraction)
 
-  def isNaN = (this.exponent === 0xff.U && this.fraction =/= 0.U)
-  def isInf = (this.exponent === 0xff.U && this.fraction === 0.U)
+  def isNaN = (this.exponent.andR && this.fraction =/= 0.U)
+  def isInf = (this.exponent.andR && this.fraction === 0.U)
 
-  def isZero = this.exponent === 0.U
+  def isZero = this.exponent === 0.U // also includes denormals
 
   def abs = Float32(false.B, this.exponent, this.fraction)
   def neg = Float32(!this.isNegative, this.exponent, this.fraction)
@@ -64,7 +64,7 @@ class Float32 extends Bundle {
     *       function.
     */
   private def toOrderable: UInt = {
-    !this.isNegative ## (this._bits(30, 0) ^ Fill(31, this.isNegative))
+    !this.isNegative ## (this.asUInt(30, 0) ^ Fill(31, this.isNegative))
   }
 
   def >(that: Float32): Bool = {
@@ -186,9 +186,7 @@ object Float32 {
 
   /** Create a constant Float32 */
   def apply(fval: Double): Float32 = {
-    val bits = java.lang.Float.floatToIntBits(fval.toFloat)
-    val raw = (bits.toLong & 0xFFFFFFFFL).U(32.W)
-    apply(raw)
+    java.lang.Float.floatToIntBits(fval.toFloat).S(32.W).asTypeOf(new Float32())
   }
 
   def fromFixedPoint(value: SInt, fractionalBits: Int = 0): Float32 = {
