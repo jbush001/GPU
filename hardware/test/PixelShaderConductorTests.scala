@@ -27,7 +27,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     * rasterizer/depth interpolator.
     */
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
-    lambda: Seq[Seq[Int]], depths: Seq[Float],triangleId: Int = 0,
+    lambda: Seq[Seq[Float]], depths: Seq[Float],triangleId: Int = 0,
     lastQuad: Boolean = false, lastTriangle: Boolean = false, shaderAddress: Int = 0): Unit = {
     dut.io.sourceQuad.valid.poke(true)
     dut.io.sourceQuad.bits.location.poke(x, y)
@@ -36,7 +36,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.sourceQuad.bits.shaderAddress.poke(shaderAddress)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
-        dut.io.sourceQuad.bits.lambda(i)(j)._bits.poke(lambda(i)(j))
+        dut.io.sourceQuad.bits.lambda(i)(j).poke(lambda(i)(j))
       }
     }
 
@@ -53,13 +53,13 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
   /** Validate a finished quad output from the PixelShaderConductor */
   def drainShadedQuad(dut: PixelShaderConductor, expectedX: Int,
-    expectedY: Int, expectedMask: Int, colors: Seq[Seq[Int]], depths: Seq[Float]): Unit = {
+    expectedY: Int, expectedMask: Int, colors: Seq[Seq[Float]], depths: Seq[Float]): Unit = {
     dut.io.shadedQuad.bits.location.expect(expectedX, expectedY)
     dut.io.shadedQuad.bits.mask.expect(expectedMask)
     dut.io.shadedQuad.valid.expect(true)
     for (i <- colors.indices) {
       for (j <- colors(i).indices) {
-        dut.io.shadedQuad.bits.colors(i)(j)._bits.expect(colors(i)(j))
+        dut.io.shadedQuad.bits.colors(i)(j).expect(colors(i)(j))
       }
     }
 
@@ -83,6 +83,10 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     result
   }
 
+  def readRegisterFloat(dut: PixelShaderConductor, jobId: Int, addr: Int): Seq[Float] = {
+    readRegister(dut, jobId, addr).map(java.lang.Float.intBitsToFloat)
+  }
+
   /** Simulate a shader core writing a register to the PixelShaderConductor */
   def pokeShaderReg(dut: PixelShaderConductor, jobId: Int, addr: Int, data: Seq[Int]): Unit = {
     dut.io.shaderRegWrite.valid.poke(true)
@@ -93,6 +97,10 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
     dut.clock.step()
     dut.io.shaderRegWrite.valid.poke(false)
+  }
+
+  def pokeShaderRegFloat(dut: PixelShaderConductor, jobId: Int, addr: Int, data: Seq[Float]): Unit = {
+    pokeShaderReg(dut, jobId, addr, data.map(java.lang.Float.floatToIntBits))
   }
 
   /** Simulate the triangle setup module writing a varying coefficient to the PixelShaderConductor */
@@ -115,7 +123,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.sourceQuad.ready.expect(true)
         val base = i * Consts.pixelsPerQuad
         loadSourceQuad(dut, i + 3, i + 4, masks(i),
-          Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(1000 + base + j, 2000 + base + j)),
+          Seq.tabulate(Consts.pixelsPerQuad)(j => Seq(5.0f + base + j, 10.0f + base + j)),
           Seq(1.0f, 2.0f, 3.0f, 4.0f),
           triangleId = 3,
           lastQuad = (i == (cfg.shaderVectorLanes / Consts.pixelsPerQuad - 1)),
@@ -132,15 +140,15 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.io.startJob.valid.expect(false)
 
       // Read/write registers
-      assert(readRegister(dut, jobId, 0) ==
-        Seq.tabulate(cfg.shaderVectorLanes)(i => 1000 + i)) // lambda 0
-      assert(readRegister(dut, jobId, 1) ==
-        Seq.tabulate(cfg.shaderVectorLanes)(i => 2000 + i)) // lambda 1
+      assert(readRegisterFloat(dut, jobId, 0) ==
+        Seq.tabulate(cfg.shaderVectorLanes)(i => 5.0f + i)) // lambda 0
+      assert(readRegisterFloat(dut, jobId, 1) ==
+        Seq.tabulate(cfg.shaderVectorLanes)(i => 10.0f + i)) // lambda 1
 
-      pokeShaderReg(dut, jobId, 0, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // red
-      pokeShaderReg(dut, jobId, 1, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // blue
-      pokeShaderReg(dut, jobId, 2, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300)) // green
-      pokeShaderReg(dut, jobId, 3, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 400)) // alpha
+      pokeShaderRegFloat(dut, jobId, 0, Seq.tabulate(cfg.shaderVectorLanes)(i => 15.0f + i)) // red
+      pokeShaderRegFloat(dut, jobId, 1, Seq.tabulate(cfg.shaderVectorLanes)(i => 20.0f + i)) // blue
+      pokeShaderRegFloat(dut, jobId, 2, Seq.tabulate(cfg.shaderVectorLanes)(i => 30.0f + i)) // green
+      pokeShaderRegFloat(dut, jobId, 3, Seq.tabulate(cfg.shaderVectorLanes)(i => 40.0f + i)) // alpha
 
       dut.io.jobFinished.valid.poke(true)
       dut.io.jobFinished.bits.poke(jobId)
@@ -158,7 +166,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         }
 
         drainShadedQuad(dut, i + 3, i + 4, masks(i), Seq.tabulate(Consts.pixelsPerQuad)(j =>
-          Seq(i * 4 + j + 100, i * 4 + j + 200, i * 4 + j + 300, i * 4 + j + 400)),
+          Seq(i * 4 + j + 15.0f, i * 4 + j + 20.0f, i * 4 + j + 30.0f, i * 4 + j + 40.0f)),
           Seq(1.0f, 2.0f, 3.0f, 4.0f))
       }
 
@@ -174,7 +182,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
       // Set last triangle bit on an incomplete job.
       loadSourceQuad(dut, 3, 4, 15,
-        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(i * 2 + 1, i * 2 + 2)),
+        Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(1.0f + i * 2, 2.0f + i * 2)),
         Seq.fill(Consts.pixelsPerQuad)(0.0f),
         lastQuad = true, lastTriangle = true)
       dut.io.startJob.valid.expect(true)
@@ -371,8 +379,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.io.textureFetchRequest.valid.expect(false)
 
       // Initiate a texture fetch by writing coordinates
-      pokeShaderReg(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
-      pokeShaderReg(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      pokeShaderRegFloat(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => 1.0f + i)) // s
+      pokeShaderRegFloat(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => 2.0f + i)) // t
       dut.clock.step()
 
       // Ensure the texel requests are delivered to the interface
@@ -385,8 +393,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         }
 
         for (i <- 0 until 4) {
-          dut.io.textureFetchRequest.bits.coord(0)(i)._bits.expect((j * 4 + i) + 100)
-          dut.io.textureFetchRequest.bits.coord(1)(i)._bits.expect((j * 4 + i) + 200)
+          dut.io.textureFetchRequest.bits.coord(0)(i).expect(1.0f + (j * 4 + i))
+          dut.io.textureFetchRequest.bits.coord(1)(i).expect(2.0f + (j * 4 + i))
         }
 
         dut.clock.step()
@@ -398,7 +406,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.textureFetchResponse.bits.requestId.poke(requestId + (j << 4))
         for (i <- 0 until 4) {
           for (colorChannel <- 0 until Color.numChannels) {
-            dut.io.textureFetchResponse.bits.texels(colorChannel)(i)._bits.poke((j * 4 + i) + 300 + 10 * colorChannel)
+            dut.io.textureFetchResponse.bits.texels(colorChannel)(i).poke(300.0f + (j * 4 + i) + 10 * colorChannel)
           }
         }
 
@@ -409,13 +417,13 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
       // Read the registers, which will be available without blocking
       for (colorChannel <- 0 until Color.numChannels) {
-        assert(readRegister(dut, jobId, 3 + colorChannel) == Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300 + 10 * colorChannel))
+        assert(readRegisterFloat(dut, jobId, 3 + colorChannel) == Seq.tabulate(cfg.shaderVectorLanes)(i => 300.0f + i + 10 * colorChannel))
       }
 
       // Case 2: the texel is read before the texture fetch response arrives. The
       // caller needs to block.
-      pokeShaderReg(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
-      pokeShaderReg(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      pokeShaderRegFloat(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => 1.0f + i)) // s
+      pokeShaderRegFloat(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => 2.0f + i)) // t
       dut.clock.step()
 
       // Initiate a register read
@@ -436,7 +444,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.textureFetchResponse.bits.requestId.poke(requestId + (j << 4))
         for (i <- 0 until 4) {
           for (colorChannel <- 0 until Color.numChannels) {
-            dut.io.textureFetchResponse.bits.texels(colorChannel)(i)._bits.poke((j * 4 + i) + 300 + 10 * colorChannel)
+            dut.io.textureFetchResponse.bits.texels(colorChannel)(i).poke(300.0f +(j * 4 + i) + 10 * colorChannel)
           }
         }
 
@@ -455,7 +463,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.io.textureFetchResponse.valid.poke(false)
 
       // The read should now succeed
-      assert(readRegister(dut, jobId, 3) == Seq.tabulate(cfg.shaderVectorLanes)(i => i + 300))
+      assert(readRegisterFloat(dut, jobId, 3) == Seq.tabulate(cfg.shaderVectorLanes)(i => 300.0f + i))
 
       // Run a few more cycles to ensure we don't get any asserts
       for (_ <- 0 until 10) {
@@ -484,8 +492,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.clock.step()
 
       // Initiate a texture fetch by writing coordinates
-      pokeShaderReg(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 100)) // s
-      pokeShaderReg(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => i + 200)) // t
+      pokeShaderRegFloat(dut, jobId, 4, Seq.tabulate(cfg.shaderVectorLanes)(i => 1.0f + i)) // s
+      pokeShaderRegFloat(dut, jobId, 5, Seq.tabulate(cfg.shaderVectorLanes)(i => 2.0f + i )) // t
       dut.clock.step()
 
       dut.io.textureFetchRequest.ready.poke(true)
@@ -498,7 +506,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
         dut.io.textureFetchResponse.bits.requestId.poke(requestId + (j << 4))
         for (i <- 0 until 4) {
           for (colorChannel <- 0 until Color.numChannels) {
-            dut.io.textureFetchResponse.bits.texels(colorChannel)(i)._bits.poke((j * 4 + i) + 300 + 10 * colorChannel)
+            dut.io.textureFetchResponse.bits.texels(colorChannel)(i).poke((300.0f + j * 4 + i) + 10 * colorChannel)
           }
         }
 
@@ -518,7 +526,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.io.ioWakeJob.valid.expect(false)
       dut.io.shaderRegReadData.valid.expect(true)
       for (i <- 0 until cfg.shaderVectorLanes) {
-        dut.io.shaderRegReadData.bits(i).expect(i + 300)
+        dut.io.shaderRegReadData.bits(i).expect(java.lang.Float.floatToRawIntBits(300.0f + i))
       }
     }
   }
