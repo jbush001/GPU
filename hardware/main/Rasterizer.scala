@@ -162,7 +162,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     Seq(ev, ev + dx, ev + dy, ev + dx + dy)
   }.transpose
 
-  val pixelInside = VecInit(pixelEdges.map(_.map(_ >= 0.S).reduce(_ && _))).asUInt
+  val pixelInside = VecInit(pixelEdges.map(edges => VecInit(edges.map(_ >= 0.S)).asUInt.andR)).asUInt
 
   val nextQuad = Wire(new RasterizedQuad)
   nextQuad.location := quadLocReg - activeParams.offset

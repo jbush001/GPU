@@ -166,13 +166,8 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     def gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
 
     def findFreeJob(): Int = {
-      for (i <- 0 until cfg.shaderThreads) {
-        if (!jobs(i).active) {
-          return i
-        }
-      }
-
-      fail("No free job found")
+      val idx = (0 until cfg.shaderThreads).indexWhere(i => !jobs(i).active)
+      if (idx >= 0) idx else fail("No free job found")
     }
 
     val primes = Array(3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47)

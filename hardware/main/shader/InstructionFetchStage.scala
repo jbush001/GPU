@@ -77,12 +77,13 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     tagValidRegs.foreach(_ := false.B)
   }
 
-  val stage1 = new {
+  class Stage1 {
     val validUpdated = io.updateCache.valid && io.updateCache.bits.last && (io.updateCache.bits.address.index === io.fetchRequest.bits.pc.index)
     val tag = tagMemory.read(io.fetchRequest.bits.pc.index)
     val validReg = RegNext(tagValidRegs(io.fetchRequest.bits.pc.index) || validUpdated, init = false.B)
     val fetchRequestReg = RegNext(io.fetchRequest, init = 0.U.asTypeOf(Valid(new FetchRequest)))
   }
+  val stage1 = new Stage1()
 
   ///////////////////////////////////////////////////////////
   // Stage 2: check for cache hit
@@ -91,7 +92,7 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     UInt(cfg.busDataBits.W))
   val squashThisThread = io.squash.valid && io.squash.bits === stage1.fetchRequestReg.bits.thread
 
-  val stage2 = new {
+  class Stage2 {
     // A near miss occurs when a cache line is filled the same cycle that a thread tries
     // to read it. It is too late for the thread to pick up the value, but if we
     // suspended the thread as normal, it would never receive a wakeup  (and thus would
@@ -121,6 +122,8 @@ class InstructionFetchStage(implicit cfg: GpuConfig) extends Module {
     io.fetchedInstruction.bits.thread := RegNext(stage1.fetchRequestReg.bits.thread)
     io.fetchedInstruction.bits.jobId := RegNext(stage1.fetchRequestReg.bits.jobId)
   }
+
+  val stage2 = new Stage2()
 
   // Cache memory is 64 bits, but instructions are 32, so need to select correct
   // half of returned data

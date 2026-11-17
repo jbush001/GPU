@@ -101,7 +101,7 @@ class FetchSelectStage(implicit val cfg: GpuConfig) extends Module {
   // thread per cycle.
   val haltedThreads = VecInit(threadRegs.map(!_.running))
   val nextFreeThread = PriorityEncoder(haltedThreads)
-  io.startJob.ready := haltedThreads.reduce(_ || _)
+  io.startJob.ready := haltedThreads.asUInt.orR
   io.resetThread.valid := io.startJob.fire
   io.resetThread.bits := nextFreeThread
 

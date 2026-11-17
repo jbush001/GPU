@@ -116,7 +116,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val varyingStage4ValidReg = RegInit(false.B)
 
   io.rasterizerParams.valid := false.B
-  io.startTriangle.ready := stateReg === 0.U && triangleIdFreeReg.reduce(_ || _)
+  io.startTriangle.ready := stateReg === 0.U && triangleIdFreeReg.asUInt.orR
   io.writeVaryingCoeff.valid := false.B
   io.writeVaryingCoeff.bits := DontCare
   io.writeVaryingCoeff.bits.triangleId := rasterizerParamsReg.triangleId

@@ -148,7 +148,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
       for (cycle <- 0 until testVectors.length + execLatency) {
         if (cycle < testVectors.length) {
-          val (opcode, op1, op2, expected) = testVectors(cycle)
+          val (opcode, op1, op2, _) = testVectors(cycle)
           dut.io.decodedInstruction.valid.poke(true.B)
           dut.io.decodedInstruction.bits.meta.thread.poke(1)
           dut.io.decodedInstruction.bits.meta.destReg.poke(7)
@@ -163,7 +163,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
         }
 
         if (cycle >= execLatency) {
-          val (opcode, op1, op2, expected) = testVectors(cycle - execLatency)
+          val (opcode, _, _, expected) = testVectors(cycle - execLatency)
           dut.io.writeback.valid.expect(true.B)
           for (lane <- 0 until dut.cfg.shaderVectorLanes) {
             val result = dut.io.writeback.bits.value(lane).peek().litValue
@@ -226,7 +226,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
       for (cycle <- 0 until testVectors.length + execLatency) {
         if (cycle < testVectors.length) {
-          val (opcode, op1, op2, expected) = testVectors(cycle)
+          val (opcode, op1, op2, _) = testVectors(cycle)
           dut.io.decodedInstruction.valid.poke(true.B)
           dut.io.decodedInstruction.bits.meta.opcode.poke(opcode)
           dut.io.decodedInstruction.bits.meta.hasWriteback.poke(true.B)
@@ -241,7 +241,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
         }
 
         if (cycle >= execLatency) {
-          val (opcode, op1, op2, expected) = testVectors(cycle - execLatency)
+          val (opcode, _, _, expected) = testVectors(cycle - execLatency)
           dut.io.writeback.valid.expect(true.B)
           val result = dut.io.writeback.bits.value(0).peek().litValue
           val expectedVector = if (expected) (1 << dut.cfg.shaderVectorLanes) - 1 else 0

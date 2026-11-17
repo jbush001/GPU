@@ -23,17 +23,19 @@ import java.io.File
   * This writes out System Verilog files that are used by downstream synthesis
   * tools.
   */
-object Synthesis extends App {
-  val targetDir = "build/generated"
-  new File(targetDir).mkdirs()
+object Synthesis {
+  def main(args: Array[String]): Unit = {
+    val targetDir = "build/generated"
+    new File(targetDir).mkdirs()
 
-  ChiselStage.emitSystemVerilogFile(
-    new Gpu()(GpuConfig()),
-    args = Array("--target-dir", targetDir),
-    firtoolOpts = Array(
-      "-disable-all-randomization",
-      "-strip-debug-info",
-      "--lowering-options=disallowLocalVariables,disallowPackedArrays,locationInfoStyle=none"
+    ChiselStage.emitSystemVerilogFile(
+      new Gpu()(using GpuConfig()),
+      args = Array("--target-dir", targetDir),
+      firtoolOpts = Array(
+        "-disable-all-randomization",
+        "-strip-debug-info",
+        "--lowering-options=disallowLocalVariables,disallowPackedArrays,locationInfoStyle=none"
+      )
     )
-  )
+  }
 }

@@ -51,7 +51,7 @@ trait TestHelpers { this: ChiselSim =>
     def peek(): Float = java.lang.Float.intBitsToFloat(f._bits.peek().litValue.toInt)
     def expect(value: Float, epsilon: Float = 1e-6f)(implicit sourceInfo: SourceInfo): Unit = {
       val actual = f.peek()
-      chisel3.assert(
+      assert(
         (actual - value).abs <= epsilon,
         s"Expected $value, got $actual (line ${sourceInfo.makeMessage(x => x)})"
       )

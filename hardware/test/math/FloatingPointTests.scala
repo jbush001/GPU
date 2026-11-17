@@ -25,21 +25,22 @@ class FloatingPointTests extends AnyFunSuite with ChiselSim with TestHelpers {
   def fpTruncate(value: Float): Float =
     java.lang.Float.intBitsToFloat(java.lang.Float.floatToIntBits(value) & 0xfffe0000)
 
-def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Boolean = {
-  if (expected.isNaN) {
-    actualFloat.isNaN
-  } else if (actualFloat.isNaN) {
-    false
-  } else {
-    def toLexicographical(bits: Int): Long =
-      if (bits < 0) (~bits) & 0xffffffffL else (bits ^ 0x80000000) & 0xffffffffL
+  def floatBitsMatch(expected: Float, actualFloat: Float, maxUlps: Long = 1): Boolean = {
+    if (expected.isNaN) {
+      actualFloat.isNaN
+    } else if (actualFloat.isNaN) {
+      false
+    } else {
+      def toLexicographical(bits: Int): Long =
+        if (bits < 0) (~bits) & 0xffffffffL else (bits ^ 0x80000000) & 0xffffffffL
 
-    val expOrd = toLexicographical(java.lang.Float.floatToRawIntBits(expected))
-    val actOrd = toLexicographical(java.lang.Float.floatToRawIntBits(actualFloat))
+      val expOrd = toLexicographical(java.lang.Float.floatToRawIntBits(expected))
+      val actOrd = toLexicographical(java.lang.Float.floatToRawIntBits(actualFloat))
 
-    math.abs(expOrd - actOrd) <= maxUlps
+      math.abs(expOrd - actOrd) <= maxUlps
+    }
   }
-}
+
   /** This manages pipelining test operations, inserting the appropriate delay
     * between issueing requests and checking their results.
     */
