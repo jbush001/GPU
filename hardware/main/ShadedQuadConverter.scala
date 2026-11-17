@@ -26,28 +26,21 @@ import chisel3.util._
 class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     /** From [[PixelShaderConductor]] */
-    val shadedQuad = Valid(new ShadedQuad)
+    val shadedQuad = Flipped(Valid(new ShadedQuad))
 
     /** To [[TileBuffer]] */
-    val floatQuad = Flipped(Valid(new Bundle {
-      val location = Point2D()
-      val mask = Bits(Consts.pixelsPerQuad.W)
-      val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
-      val depths = Vec(Consts.pixelsPerQuad, Float32())
-    }))
+    val colorQuad = Valid(new ColorQuad)
   })
 
-  io.shadedQuad.bits.location := io.floatQuad.bits.location
-  io.shadedQuad.bits.mask := io.floatQuad.bits.mask
+  io.colorQuad.bits.location := io.shadedQuad.bits.location
+  io.colorQuad.bits.mask := io.shadedQuad.bits.mask
   for (pixel <- 0 until Consts.pixelsPerQuad) {
     for (channel <- 0 until Color.numChannels) {
-      io.shadedQuad.bits.colors(pixel).channels(channel) :=
-        io.floatQuad.bits.colors(pixel)(channel).toUnorm(Color.channelBits)
+      io.colorQuad.bits.colors(pixel).channels(channel) :=
+        io.shadedQuad.bits.colors(pixel)(channel).toUnorm(Color.channelBits)
     }
   }
 
-  io.shadedQuad.bits.depths := io.floatQuad.bits.depths
-  io.shadedQuad.valid := io.floatQuad.valid
+  io.colorQuad.bits.depths := io.shadedQuad.bits.depths
+  io.colorQuad.valid := io.shadedQuad.valid
 }
-
-

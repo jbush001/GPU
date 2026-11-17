@@ -134,17 +134,17 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   def writeQuad(dut: TileBuffer, x: Int, y: Int, mask: Int, colors: Seq[ColorRef],
     depths: Seq[Float]) = {
 
-    dut.io.shadedQuad.bits.location.poke(x, y)
+    dut.io.colorQuad.bits.location.poke(x, y)
     for (pixel <- 0 until 4) {
-      dut.io.shadedQuad.bits.colors(pixel).poke(r = colors(pixel).r, g = colors(pixel).g, b = colors(pixel).b, a = colors(pixel).a)
-      dut.io.shadedQuad.bits.depths(pixel).poke(depths(pixel))
+      dut.io.colorQuad.bits.colors(pixel).poke(r = colors(pixel).r, g = colors(pixel).g, b = colors(pixel).b, a = colors(pixel).a)
+      dut.io.colorQuad.bits.depths(pixel).poke(depths(pixel))
     }
 
-    dut.io.shadedQuad.bits.mask.poke(mask)
-    dut.io.shadedQuad.valid.poke(true)
+    dut.io.colorQuad.bits.mask.poke(mask)
+    dut.io.colorQuad.valid.poke(true)
     dut.clock.step()
-    dut.io.shadedQuad.valid.poke(false)
-    dut.io.shadedQuad.bits.mask.poke(0)
+    dut.io.colorQuad.valid.poke(false)
+    dut.io.colorQuad.bits.mask.poke(0)
   }
 
   def convertChannel(value: Int): Int = {
@@ -205,8 +205,8 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   test("TileBuffer alpha blend") {
    simulate(new TileBuffer()) { dut =>
-      dut.io.shadedQuad.valid.poke(false)
-      dut.io.shadedQuad.bits.mask.poke(0)
+      dut.io.colorQuad.valid.poke(false)
+      dut.io.colorQuad.bits.mask.poke(0)
 
       this.clearBuffers(dut)
       setWriteFlags(dut, depthWrite = true, depthCheck = true, blend = true)
@@ -242,7 +242,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   test("TileBuffer depth check disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
-      dut.io.shadedQuad.valid.poke(false)
+      dut.io.colorQuad.valid.poke(false)
       setWriteFlags(dut, depthWrite = true, depthCheck = false, blend = true)
       dut.clock.step() // Ensure we are out of reset.
 
@@ -288,7 +288,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
 
-      dut.io.shadedQuad.valid.poke(false)
+      dut.io.colorQuad.valid.poke(false)
       setWriteFlags(dut, depthWrite = false, depthCheck = true, blend = true)
       dut.clock.step() // Ensure we are out of reset.
 
@@ -324,7 +324,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   test("TileBuffer alpha blend disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
-      dut.io.shadedQuad.valid.poke(false)
+      dut.io.colorQuad.valid.poke(false)
       setWriteFlags(dut, depthWrite = true, depthCheck = true, blend = false)
       dut.clock.step() // Ensure we are out of reset.
 
@@ -353,7 +353,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
       this.clearBuffers(dut)
 
-      dut.io.shadedQuad.valid.poke(false)
+      dut.io.colorQuad.valid.poke(false)
       setWriteFlags(dut, depthWrite = true, depthCheck = true, blend = true)
       dut.clock.step() // Ensure we are out of reset.
 

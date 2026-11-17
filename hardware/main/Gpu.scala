@@ -78,8 +78,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   pixelShaderConductor.io.shaderRegReadData <> shaderCore.io.regReadData
   shaderCore.io.regWrite <> pixelShaderConductor.io.shaderRegWrite
   shaderCore.io.ioWakeJob <> pixelShaderConductor.io.ioWakeJob
-  pixelShaderConductor.io.shadedQuad <> floatArrayToColor.io.floatQuad
-  floatArrayToColor.io.shadedQuad <> tileBuffer.io.shadedQuad
+  pixelShaderConductor.io.shadedQuad <> floatArrayToColor.io.shadedQuad
+  floatArrayToColor.io.colorQuad <> tileBuffer.io.colorQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
   memoryArbiter.io.axiBus <> io.axiBus
   shaderCore.io.invalidateICache := false.B

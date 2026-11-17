@@ -35,18 +35,8 @@ class RasterizerParams(implicit cfg: GpuConfig) extends Bundle {
   val shaderAddress = UInt(cfg.busAddressBits.W)
 }
 
-/** Coverage and interpolation data for a single 2x2 pixel quad. */
-class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
-  val triangleId = UInt(cfg.triangleIdBits.W)
-
-  /** Set for the last quad of the triangle */
-  val lastQuad = Bool()
-
-  /** This is asserted for the last quad when the `lastTriangle` is set
-    * in [[RasterizerCoeffs]]. `lastQuad` is always asserted at the same
-    * time as this signal.
-    */
-  val lastTriangle = Bool()
+trait Quad extends Bundle {
+  implicit val cfg: GpuConfig
 
   /** Coordinates of the upper left corner, relative to the left/top
     * of tile bounding box.
@@ -60,6 +50,20 @@ class RasterizedQuad(implicit cfg: GpuConfig) extends Bundle {
     *     2 3
     */
   val mask = Bits(Consts.pixelsPerQuad.W)
+}
+
+/** Coverage and interpolation data for a single 2x2 pixel quad. */
+class RasterizedQuad(implicit val cfg: GpuConfig) extends Quad {
+  val triangleId = UInt(cfg.triangleIdBits.W)
+
+  /** Set for the last quad of the triangle */
+  val lastQuad = Bool()
+
+  /** This is asserted for the last quad when the `lastTriangle` is set
+    * in [[RasterizerCoeffs]]. `lastQuad` is always asserted at the same
+    * time as this signal.
+    */
+  val lastTriangle = Bool()
 
   /** Normalized barycentric coordindates of the pixels relative to the
     * triangle vertices. The third coordinate is omitted (and we can

@@ -27,8 +27,13 @@ class DepthInterpolatorCoeffs extends Bundle {
   val invdW2 = Float32()
 }
 
-class InterpolatedQuad(implicit cfg: GpuConfig) extends RasterizedQuad {
+class InterpolatedQuad(implicit val cfg: GpuConfig) extends Quad {
+  val triangleId = UInt(cfg.triangleIdBits.W)
+  val lastQuad = Bool()
+  val lastTriangle = Bool()
+  val lambda = Vec(Consts.pixelsPerQuad, Vec(2, Float32()))
   val depths = Vec(Consts.pixelsPerQuad, Float32())
+  val shaderAddress = UInt(cfg.busAddressBits.W)
 }
 
 /** Sits between [[Rasterizer]] and [[PixelShaderConductor]] and computes

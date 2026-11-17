@@ -29,6 +29,11 @@ class TextureFetchResponse(implicit cfg: GpuConfig) extends Bundle {
   val texels = Vec(Color.numChannels, Vec(Consts.pixelsPerQuad, Float32()))
 }
 
+class ShadedQuad(implicit val cfg: GpuConfig) extends Quad {
+  val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
+  val depths = Vec(Consts.pixelsPerQuad, Float32())
+}
+
 /** PixelShaderConductor handles dispatching requests to [[ShaderCore]],
   *
   * Quads arrive from the [[DepthInterpolator]]. This collects them until
@@ -100,13 +105,8 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
-    /** To [[TileBuffer]], fully shaded quad to write back */
-    val shadedQuad = Valid(new Bundle {
-      val location = Point2D()
-      val mask = Bits(Consts.pixelsPerQuad.W)
-      val colors = Vec(Consts.pixelsPerQuad, Vec(Color.numChannels, Float32()))
-      val depths = Vec(Consts.pixelsPerQuad, Float32())
-    })
+    /** To [[ShadedQuadConverter]], fully shaded quad to write back */
+    val shadedQuad = Valid(new ShadedQuad)
 
     /** From triangle setup. Writes one varying coefficient (used to interpolate
       * per-vertex attributes across the triangle) at `index` for `triangleId`.
