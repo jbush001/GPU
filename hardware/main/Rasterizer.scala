@@ -99,14 +99,12 @@ class RasterizedQuad(implicit val cfg: GpuConfig) extends Quad {
   */
 class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    /** From triangle setup. When ready/valid are high, the values have been accepted
-      * and the next value can be asserted.
-      */
+    // From triangle setup. When ready/valid are high, the values have been accepted
+    // and the next value can be asserted.
     val params = Flipped(Decoupled(new RasterizerParams))
 
-    /** To the tile buffer. Outputs a rasterized 2x2 pixel quad with coverage
-      * and interpolation data.
-      */
+    // To the tile buffer. Outputs a rasterized 2x2 pixel quad with coverage
+    // and interpolation data.
     val quad = Decoupled(new RasterizedQuad)
   })
 

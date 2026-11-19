@@ -43,10 +43,9 @@ import gpu._
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
 
-    /** Identifies this job to the [[PixelShaderConductor]]. Chosen by the
-      * conductor and unique among jobs in flight. The core attaches it to
-      * shaderRegRead and shaderRegWrite requests.
-      */
+      // Identifies this job to the [[PixelShaderConductor]]. Chosen by the
+      // conductor and unique among jobs in flight. The core attaches it to
+      // shaderRegRead and shaderRegWrite requests.
       val jobId = UInt(cfg.shaderJobIdBits.W)
     }))
 
@@ -57,10 +56,10 @@ import gpu._
       val addr = UInt(3.W)
     })
 
-    /** This returns data one cycle after a regRead request. */
+    // This returns data one cycle after a regRead request.
     val regReadData = Flipped(Valid(Vec(cfg.shaderVectorLanes, UInt(32.W))))
 
-    /** If regReadData caused a wait, this will signal when it should wake up */
+    // If regReadData caused a wait, this will signal when it should wake up
     val ioWakeJob = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
     val regWrite = Valid(new Bundle {

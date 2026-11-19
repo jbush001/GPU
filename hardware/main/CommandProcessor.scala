@@ -181,7 +181,7 @@ class DecoupledDownsizer(implicit cfg: GpuConfig) extends Module {
   val selectUpperReg = RegInit(false.B)
 
   io.narrow.valid := io.wide.valid
-  io.wide.ready  := io.narrow.ready && selectUpperReg
+  io.wide.ready := io.narrow.ready && selectUpperReg
   io.narrow.bits := Mux(selectUpperReg, io.wide.bits(63, 32), io.wide.bits(31, 0))
   when(io.narrow.fire) {
     selectUpperReg := !selectUpperReg

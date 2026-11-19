@@ -25,10 +25,10 @@ import chisel3.util._
   */
 class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    /** From [[PixelShaderConductor]] */
+    // From PixelShaderConductor
     val shadedQuad = Flipped(Valid(new ShadedQuad))
 
-    /** To [[TileBuffer]] */
+    // To TileBuffer
     val colorQuad = Valid(new ColorQuad)
   })
 

@@ -52,77 +52,69 @@ class ShadedQuad(implicit val cfg: GpuConfig) extends Quad {
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    /** From [[DepthInterpolator]]. Incoming quad to be shaded. */
+    // From [[DepthInterpolator]]. Incoming quad to be shaded.
     val sourceQuad = Flipped(Decoupled(new InterpolatedQuad))
 
-    /** Asserted for one cycle when all triangles have been processed. */
+    // Asserted for one cycle when all triangles have been processed.
     val lastTriangle = Output(Bool())
 
-    /** Asserted for one cycle when a single triangle has been fully processed. */
+    // Asserted for one cycle when a single triangle has been fully processed.
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
 
-    /** To [[ShaderCore]], requests starting a new thread to process pixels
-      * The jobId will be used for subsequent register accesses to uniquely identify
-      * this job.
-      */
+    // To [[ShaderCore]], requests starting a new thread to process pixels
+    // The jobId will be used for subsequent register accesses to uniquely identify
+    // this job.
     val startJob = Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
       val jobId = UInt(cfg.shaderJobIdBits.W)
     })
 
-    /** From [[ShaderCore]], Signals that the job has completed and its outputs
-      * have been written via shaderRegWrite.
-      */
+    // From [[ShaderCore]], Signals that the job has completed and its outputs
+    // have been written via shaderRegWrite.
     val jobFinished = Flipped(Valid(UInt(cfg.shaderJobIdBits.W)))
 
-    /** From [[ShaderCore]],  Requests a read of register `addr` for job `jobId`.
-      * The response arrives one cycle later on shaderRegReadData.
-      */
+    // From [[ShaderCore]],  Requests a read of register `addr` for job `jobId`.
+    // The response arrives one cycle later on shaderRegReadData.
     val shaderRegRead = Flipped(Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(4.W)
     }))
 
-    /** This is the response to shaderRegRead.
-      * If valid is low in the cycle after a request, the data is not yet
-      * available and the requesting thread must stall until ioWakeJob is
-      * asserted for its jobId
-      */
+    // This is the response to shaderRegRead.
+    // If valid is low in the cycle after a request, the data is not yet
+    // available and the requesting thread must stall until ioWakeJob is
+    // asserted for its jobId
     val shaderRegReadData = Valid(Vec(cfg.shaderVectorLanes, UInt(32.W)))
 
-    /** From [[ShaderCore]], Asserted when a read that returned invalid on
-      * shaderRegReadData can now proceed. Only used if shaderRegReadData.valid
-      * was low in the cycle after the request.
-      */
+    // From [[ShaderCore]], Asserted when a read that returned invalid on
+    // shaderRegReadData can now proceed. Only used if shaderRegReadData.valid
+    // was low in the cycle after the request.
     val ioWakeJob = Valid(UInt(cfg.shaderJobIdBits.W))
 
-    /** From [[ShaderCore]], Writes `data` (one 32-bit value per lane) to
-      * register `addr` of job `jobId`.
-      */
+    // From [[ShaderCore]], Writes `data` (one 32-bit value per lane) to
+    // register `addr` of job `jobId`.
     val shaderRegWrite = Flipped(Valid(new Bundle {
       val jobId = UInt(cfg.shaderJobIdBits.W)
       val addr = UInt(4.W)
       val data = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
-    /** To [[ShadedQuadConverter]], fully shaded quad to write back */
+    // To [[ShadedQuadConverter]], fully shaded quad to write back
     val shadedQuad = Valid(new ShadedQuad)
 
-    /** From triangle setup. Writes one varying coefficient (used to interpolate
-      * per-vertex attributes across the triangle) at `index` for `triangleId`.
-      */
+    // From triangle setup. Writes one varying coefficient (used to interpolate
+    // per-vertex attributes across the triangle) at `index` for `triangleId`.
     val writeVaryingCoeff = Flipped(Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(cfg.varyingCoeffIndexBits.W)
       val value = Float32()
     }))
 
-    /** To [[TextureCache]]. Requests a texture sample. */
+    // To [[TextureCache]]. Requests a texture sample.
     val textureFetchRequest = Decoupled(new TextureFetchRequest())
 
-    /** From [[TextureCache]]. Returns the sampled texture data. Must be
-      * matched with a previous textureFetchRequest.
-      */
+    // From [[TextureCache]]. Returns the sampled texture data. Must be
+    // matched with a previous textureFetchRequest.
     val textureFetchResponse = Flipped(Valid(new TextureFetchResponse()))
   })
 
