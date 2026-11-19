@@ -95,8 +95,8 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val dma = Module(new CpDma)
   dma.io.memReadPort <> io.memReadPort
 
-  val dmaStartAddress = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
-  dma.io.startTransfer.bits.startAddress := dmaStartAddress.asUInt
+  val dmaStartAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
+  dma.io.startTransfer.bits.startAddress := dmaStartAddressReg.asUInt
 
   // Since the length write kicks off the transfer, we can use the payload here.
   // (note divide the length by half since the word has half the bus data width)
@@ -116,10 +116,10 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     }.otherwise {
       switch (mmioAddr) {
         is(RegAddresses.DmaAddrL) {
-          dmaStartAddress(0) := pipeline.io.mmio.regWrite.bits.data
+          dmaStartAddressReg(0) := pipeline.io.mmio.regWrite.bits.data
         }
         is(RegAddresses.DmaAddrH) {
-          dmaStartAddress(1) := pipeline.io.mmio.regWrite.bits.data
+          dmaStartAddressReg(1) := pipeline.io.mmio.regWrite.bits.data
         }
         is(RegAddresses.DmaLength) {
           // A side effect of writing the DMA length is the start of a transfer.
@@ -130,22 +130,22 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     }
   }
 
-  val mmioReadResponse = Reg(UInt(32.W))
+  val mmioReadResponseReg = Reg(UInt(32.W))
   dma.io.dmaData.ready := false.B
   when (pipeline.io.mmio.regReadAddr.valid) {
     switch (pipeline.io.mmio.regReadAddr.bits) {
       is (RegAddresses.DmaStatus) {
-        mmioReadResponse := dma.io.dmaData.valid.asUInt
+        mmioReadResponseReg := dma.io.dmaData.valid.asUInt
       }
 
       is (RegAddresses.DmaData) {
-        mmioReadResponse := dma.io.dmaData.bits
+        mmioReadResponseReg := dma.io.dmaData.bits
         dma.io.dmaData.ready := true.B
       }
     }
   }
 
-  pipeline.io.mmio.regReadData := mmioReadResponse
+  pipeline.io.mmio.regReadData := mmioReadResponseReg
 }
 
 /** Reads data from system memory and provides a Decoupled interface. */
@@ -178,13 +178,13 @@ class DecoupledDownsizer(implicit cfg: GpuConfig) extends Module {
     val narrow = Decoupled(UInt(32.W))
   })
 
-  val selectUpper = RegInit(false.B)
+  val selectUpperReg = RegInit(false.B)
 
   io.narrow.valid := io.wide.valid
-  io.wide.ready  := io.narrow.ready && selectUpper
-  io.narrow.bits := Mux(selectUpper, io.wide.bits(63, 32), io.wide.bits(31, 0))
+  io.wide.ready  := io.narrow.ready && selectUpperReg
+  io.narrow.bits := Mux(selectUpperReg, io.wide.bits(63, 32), io.wide.bits(31, 0))
   when(io.narrow.fire) {
-    selectUpper := !selectUpper
+    selectUpperReg := !selectUpperReg
   }
 }
 
@@ -250,20 +250,20 @@ class CpPipeline extends Module {
 
   val instructionMem = SyncReadMem(instructionMemSize, new Instruction)
   val dataMem = SyncReadMem(dataMemSize, UInt(dataWidth.W))
-  val registerFile = RegInit(VecInit(Seq.fill(numRegisters)(0.U(dataWidth.W))))
+  val registerFileReg = RegInit(VecInit(Seq.fill(numRegisters)(0.U(dataWidth.W))))
   val pcReg = RegInit(0.U(log2Up(instructionMemSize).W))
 
   // Load code into instruction memory
-  val imLoadAddress = RegInit(0.U(log2Up(instructionMemSize).W))
+  val imLoadAddressReg = RegInit(0.U(log2Up(instructionMemSize).W))
   when (io.halt) {
     when (io.loadProgram.valid) {
-      instructionMem.write(imLoadAddress, io.loadProgram.bits.asTypeOf(new Instruction))
-      imLoadAddress := imLoadAddress + 1.U
+      instructionMem.write(imLoadAddressReg, io.loadProgram.bits.asTypeOf(new Instruction))
+      imLoadAddressReg := imLoadAddressReg + 1.U
     }
 
     pcReg := 0.U // When this exits halt, program will restart
   }.otherwise {
-    imLoadAddress := 0.U
+    imLoadAddressReg := 0.U
   }
 
   val branchTaken = WireInit(false.B)
@@ -286,37 +286,37 @@ class CpPipeline extends Module {
     ifNextPc := branchPc
   }
 
-  val ifValid = RegNext(!io.halt, init = false.B)
+  val ifValidReg = RegNext(!io.halt, init = false.B)
   val ifInstruction = instructionMem.read(ifNextPc)
   pcReg := ifNextPc
 
   ///////////////////////////////////////////////////////////////////
   // Stage 2: Instruction decode/register fetch
   ///////////////////////////////////////////////////////////////////
-  val idValid = RegNext(ifValid && !branchTaken, init = false.B)
-  val idPc = RegNext(pcReg)
-  val idInstruction = RegNext(ifInstruction)
-  val idOperand1Reg = RegNext(bypassOperand(ifInstruction.rs1, registerFile(ifInstruction.rs1)))
-  val idOperand2Reg = RegNext(bypassOperand(ifInstruction.rs2, registerFile(ifInstruction.rs2)))
+  val idValidReg = RegNext(ifValidReg && !branchTaken, init = false.B)
+  val idPcReg = RegNext(pcReg)
+  val idInstructionReg = RegNext(ifInstruction)
+  val idOperand1Reg = RegNext(bypassOperand(ifInstruction.rs1, registerFileReg(ifInstruction.rs1)))
+  val idOperand2Reg = RegNext(bypassOperand(ifInstruction.rs2, registerFileReg(ifInstruction.rs2)))
   when (writebackValid) {
-    registerFile(writebackIndex) := writebackData
+    registerFileReg(writebackIndex) := writebackData
   }
 
   ///////////////////////////////////////////////////////////////////
   // Stage 3: Execute/data memory access
   ///////////////////////////////////////////////////////////////////
-  branchPc := (idPc + idInstruction.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
-  val exAluOp1 = bypassOperand(idInstruction.rs1, idOperand1Reg)
-  val exOp2IsImm = (idInstruction.opcode === CpOpcode.ADDI
-    || idInstruction.opcode === CpOpcode.SRLI
-    || idInstruction.opcode === CpOpcode.SLLI
-    || idInstruction.opcode === CpOpcode.SLTUI)
+  branchPc := (idPcReg + idInstructionReg.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
+  val exAluOp1 = bypassOperand(idInstructionReg.rs1, idOperand1Reg)
+  val exOp2IsImm = (idInstructionReg.opcode === CpOpcode.ADDI
+    || idInstructionReg.opcode === CpOpcode.SRLI
+    || idInstructionReg.opcode === CpOpcode.SLLI
+    || idInstructionReg.opcode === CpOpcode.SLTUI)
   val exAluOp2 = Mux(exOp2IsImm,
-    idInstruction.imm.pad(dataWidth).asUInt,
-    bypassOperand(idInstruction.rs2, idOperand2Reg)
+    idInstructionReg.imm.pad(dataWidth).asUInt,
+    bypassOperand(idInstructionReg.rs2, idOperand2Reg)
   )
 
-  val exMemoryAddress = exAluOp1 + idInstruction.imm.pad(dataWidth).asUInt
+  val exMemoryAddress = exAluOp1 + idInstructionReg.imm.pad(dataWidth).asUInt
   val addrIsMmio = exMemoryAddress(31, log2Up(dataMemSize)).orR
   io.mmio.regWrite.bits.address := exMemoryAddress
   io.mmio.regWrite.bits.data := exAluOp2
@@ -326,8 +326,8 @@ class CpPipeline extends Module {
 
   val exAluResult = WireInit(0.U(dataWidth.W))
   val exWritebackMmio = WireInit(false.B)
-  when (idValid) {
-    switch (idInstruction.opcode) {
+  when (idValidReg) {
+    switch (idInstructionReg.opcode) {
       is (CpOpcode.AND, CpOpcode.ANDI) { exAluResult := exAluOp1 & exAluOp2 }
       is (CpOpcode.OR, CpOpcode.ORI) { exAluResult := exAluOp1 | exAluOp2 }
       is (CpOpcode.XOR, CpOpcode.XORI) { exAluResult := exAluOp1 ^ exAluOp2 }
@@ -359,8 +359,8 @@ class CpPipeline extends Module {
           dataMem.write(exMemoryAddress, exAluOp2)
         }
       }
-      is (CpOpcode.MOVEHI) { exAluResult := idInstruction.imm.asUInt ## exAluOp1(13, 0) }
-      is (CpOpcode.MOVEI) { exAluResult := idInstruction.imm.pad(dataWidth).asUInt  }
+      is (CpOpcode.MOVEHI) { exAluResult := idInstructionReg.imm.asUInt ## exAluOp1(13, 0) }
+      is (CpOpcode.MOVEI) { exAluResult := idInstructionReg.imm.pad(dataWidth).asUInt  }
       is (CpOpcode.JAL) {
         branchTaken := true.B
       }
@@ -371,9 +371,9 @@ class CpPipeline extends Module {
     }
   }
 
-  val exValid = RegNext(idValid, init = false.B)
-  val exPc = RegNext(idPc)
-  val exInstruction = RegNext(idInstruction)
+  val exValidReg = RegNext(idValidReg, init = false.B)
+  val exPcReg = RegNext(idPcReg)
+  val exInstructionReg = RegNext(idInstructionReg)
   val exMemoryResult = dataMem.read(exMemoryAddress)
   val exAluResultReg = RegNext(exAluResult)
   val exWritebackMmioReg = RegNext(exWritebackMmio)
@@ -381,9 +381,9 @@ class CpPipeline extends Module {
   ///////////////////////////////////////////////////////////////////
   // Stage 4: Writeback
   ///////////////////////////////////////////////////////////////////
-  when (exValid) {
-    writebackIndex := exInstruction.rd
-    switch(exInstruction.opcode) {
+  when (exValidReg) {
+    writebackIndex := exInstructionReg.rd
+    switch(exInstructionReg.opcode) {
       is(CpOpcode.ADD, CpOpcode.ADDI, CpOpcode.SUB, CpOpcode.AND,
         CpOpcode.OR, CpOpcode.SRL, CpOpcode.SRLI, CpOpcode.MOVEHI,
         CpOpcode.MOVEI, CpOpcode.XOR, CpOpcode.SLTU, CpOpcode.SLTUI,
@@ -400,7 +400,7 @@ class CpPipeline extends Module {
         }
       }
       is(CpOpcode.JAL, CpOpcode.JALR) {
-        writebackData := exPc + 1.U
+        writebackData := exPcReg + 1.U
         writebackValid := true.B
       }
     }

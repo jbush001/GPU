@@ -153,19 +153,19 @@ class DecoupledUpsizer(implicit val cfg: GpuConfig) extends Module {
   })
 
   val lowReg = Reg(UInt(32.W))
-  val hasLow = RegInit(false.B)
+  val hasLowReg = RegInit(false.B)
 
-  io.narrow.ready := !hasLow || io.wide.ready
+  io.narrow.ready := !hasLowReg || io.wide.ready
 
-  io.wide.valid := hasLow && io.narrow.valid
+  io.wide.valid := hasLowReg && io.narrow.valid
   io.wide.bits := io.narrow.bits ## lowReg
 
   when(io.narrow.fire) {
-    when(hasLow) {
-      hasLow := false.B
+    when(hasLowReg) {
+      hasLowReg := false.B
     }.otherwise {
       lowReg := io.narrow.bits
-      hasLow := true.B
+      hasLowReg := true.B
     }
   }
 }

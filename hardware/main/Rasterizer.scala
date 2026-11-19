@@ -116,7 +116,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
 
   val stepCommand = Wire(StepCommand())
 
-  val activeParams = RegEnable(io.params.bits, io.params.fire)
+  val activeParamsReg = RegEnable(io.params.bits, io.params.fire)
   val startRasterizeReg = RegNext(io.params.fire)
 
   val quadLocReg = Reg(Point2D())
@@ -128,16 +128,16 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   for (edge <- 0 until Consts.triangleEdges) {
     switch(stepCommand) {
       is(StepCommand.Reset) {
-        edgeValueReg(edge) := activeParams.edges(edge).initialValue
+        edgeValueReg(edge) := activeParamsReg.edges(edge).initialValue
       }
       is(StepCommand.Right) {
-        edgeValueReg(edge) := edgeValueReg(edge) + doubled(activeParams.edges(edge).xStep)
+        edgeValueReg(edge) := edgeValueReg(edge) + doubled(activeParamsReg.edges(edge).xStep)
       }
       is(StepCommand.Down) {
-        edgeValueReg(edge) := edgeValueReg(edge) + doubled(activeParams.edges(edge).yStep)
+        edgeValueReg(edge) := edgeValueReg(edge) + doubled(activeParamsReg.edges(edge).yStep)
       }
       is(StepCommand.Left) {
-        edgeValueReg(edge) := edgeValueReg(edge) - doubled(activeParams.edges(edge).xStep)
+        edgeValueReg(edge) := edgeValueReg(edge) - doubled(activeParamsReg.edges(edge).xStep)
       }
     }
   }
@@ -157,18 +157,18 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // Derive the other pixels values from the current one.
   val pixelEdges = Seq.tabulate(Consts.triangleEdges) { e =>
     val ev = edgeValueReg(e)
-    val dx = activeParams.edges(e).xStep
-    val dy = activeParams.edges(e).yStep
+    val dx = activeParamsReg.edges(e).xStep
+    val dy = activeParamsReg.edges(e).yStep
     Seq(ev, ev + dx, ev + dy, ev + dx + dy)
   }.transpose
 
   val pixelInside = VecInit(pixelEdges.map(edges => VecInit(edges.map(_ >= 0.S)).asUInt.andR)).asUInt
 
   val nextQuad = Wire(new RasterizedQuad)
-  nextQuad.location := quadLocReg - activeParams.offset
-  nextQuad.triangleId := activeParams.triangleId
-  nextQuad.depthCoeffs := activeParams.depthCoeffs
-  nextQuad.shaderAddress := activeParams.shaderAddress
+  nextQuad.location := quadLocReg - activeParamsReg.offset
+  nextQuad.triangleId := activeParamsReg.triangleId
+  nextQuad.depthCoeffs := activeParamsReg.depthCoeffs
+  nextQuad.shaderAddress := activeParamsReg.shaderAddress
   nextQuad.mask := pixelInside
   nextQuad.lastQuad := false.B
   nextQuad.lastTriangle := false.B
@@ -212,12 +212,12 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // a dummy quad with the flags set to zero.
   io.quad.valid := (outputQuadValidReg && nextQuadValid) || scanStateReg === State.SendLast
   io.quad.bits.lastQuad := scanStateReg === State.SendLast
-  io.quad.bits.lastTriangle := scanStateReg === State.SendLast && activeParams.lastTriangle
+  io.quad.bits.lastTriangle := scanStateReg === State.SendLast && activeParamsReg.lastTriangle
 
   // Explictly assign so it is correct for the dummy quad.
-  io.quad.bits.triangleId := activeParams.triangleId
-  io.quad.bits.depthCoeffs := activeParams.depthCoeffs
-  io.quad.bits.shaderAddress := activeParams.shaderAddress
+  io.quad.bits.triangleId := activeParamsReg.triangleId
+  io.quad.bits.depthCoeffs := activeParamsReg.depthCoeffs
+  io.quad.bits.shaderAddress := activeParamsReg.shaderAddress
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.
@@ -229,7 +229,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
       io.params.ready := true.B
       when (startRasterizeReg) {
         stepCommand := StepCommand.Reset
-        quadLocReg := activeParams.boundingBox.topLeft
+        quadLocReg := activeParamsReg.boundingBox.topLeft
         scanStateReg := State.StepRight
       } otherwise {
         stepCommand := StepCommand.Wait
@@ -239,8 +239,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepRight) {
       nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
-        when (quadLocReg.x === activeParams.boundingBox.right) {
-          when (quadLocReg.y === activeParams.boundingBox.bottom) {
+        when (quadLocReg.x === activeParamsReg.boundingBox.right) {
+          when (quadLocReg.y === activeParamsReg.boundingBox.bottom) {
             scanStateReg := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down
@@ -255,8 +255,8 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
     is (State.StepLeft) {
       nextQuadValid := pixelInside =/= 0.U
       when (io.quad.ready) {
-        when(quadLocReg.x === activeParams.boundingBox.left) {
-          when (quadLocReg.y === activeParams.boundingBox.bottom) {
+        when(quadLocReg.x === activeParamsReg.boundingBox.left) {
+          when (quadLocReg.y === activeParamsReg.boundingBox.bottom) {
             scanStateReg := State.SendLast
           }.otherwise {
             stepCommand := StepCommand.Down

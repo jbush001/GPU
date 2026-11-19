@@ -71,26 +71,26 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     val controlBus = Flipped(new ControlBus)
   })
 
-  val numVaryings = RegInit(0.U(5.W))
-  val tileOffset = RegInit(0.U.asTypeOf(Point2D()))
-  val shaderAddress = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
+  val numVaryingsReg = RegInit(0.U(5.W))
+  val tileOffsetReg = RegInit(0.U.asTypeOf(Point2D()))
+  val shaderAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
 
   when (io.controlBus.regWrite.valid) {
     switch (io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.ShaderAddressL) {
-        shaderAddress(0) := io.controlBus.regWrite.bits.data
+        shaderAddressReg(0) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.ShaderAddressH) {
-        shaderAddress(1) := io.controlBus.regWrite.bits.data
+        shaderAddressReg(1) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.NumVaryings) {
-        numVaryings := io.controlBus.regWrite.bits.data
+        numVaryingsReg := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.TileOffsetX) {
-        tileOffset.x := io.controlBus.regWrite.bits.data(15, 0).asSInt
+        tileOffsetReg.x := io.controlBus.regWrite.bits.data(15, 0).asSInt
       }
       is (ControlRegisterIndex.TileOffsetY) {
-        tileOffset.y := io.controlBus.regWrite.bits.data(15, 0).asSInt
+        tileOffsetReg.y := io.controlBus.regWrite.bits.data(15, 0).asSInt
       }
     }
   }
@@ -138,11 +138,11 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   val recip = Module(new FixedReciprocal) // 5 cycles of latency
 
-  val a = tileOffset.y
+  val a = tileOffsetReg.y
   val b = WireInit(0.S(16.W))
   val c = WireInit(0.S(16.W))
   val d = WireInit(0.S(16.W))
-  val e = tileOffset.x
+  val e = tileOffsetReg.x
   val f = WireInit(0.S(16.W))
   val h = WireInit(0.S(16.W))
   val g = WireInit(0.S(16.W))
@@ -185,13 +185,13 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         assert(triangleIdFreeReg(nextTriangleId))
         triangleIdFreeReg(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
-        rasterizerParamsReg.offset := tileOffset
-        rasterizerParamsReg.boundingBox.left := tileOffset.x
-        rasterizerParamsReg.boundingBox.top := tileOffset.y
-        rasterizerParamsReg.boundingBox.right := tileOffset.x + (cfg.tileSizePixels - 2).S
-        rasterizerParamsReg.boundingBox.bottom := tileOffset.y + (cfg.tileSizePixels - 2).S
+        rasterizerParamsReg.offset := tileOffsetReg
+        rasterizerParamsReg.boundingBox.left := tileOffsetReg.x
+        rasterizerParamsReg.boundingBox.top := tileOffsetReg.y
+        rasterizerParamsReg.boundingBox.right := tileOffsetReg.x + (cfg.tileSizePixels - 2).S
+        rasterizerParamsReg.boundingBox.bottom := tileOffsetReg.y + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
-        rasterizerParamsReg.shaderAddress := shaderAddress.asUInt
+        rasterizerParamsReg.shaderAddress := shaderAddressReg.asUInt
         setupParamsReg := io.startTriangle.bits
         readParameterMem(0.U, 0.U) // read X0/Y0
         stateReg := 1.U
@@ -291,7 +291,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       rasterizerParamsReg.depthCoeffs.invW2 := Float32(io.readValue)
       fpAdd.io.addend1 := Float32(io.readValue)
       fpAdd.io.addend2 := rasterizerParamsReg.depthCoeffs.invW0.neg
-      when (numVaryings =/= 0.U) {
+      when (numVaryingsReg =/= 0.U) {
         varyingSetupActiveReg := true.B
         varyingVertexReg := 0.U
         varyingIndexReg := 0.U
@@ -352,7 +352,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
     when (varyingVertexReg === 2.U) {
       varyingVertexReg := 0.U
-      when (varyingIndexReg === numVaryings - 1.U) {
+      when (varyingIndexReg === numVaryingsReg - 1.U) {
         varyingSetupActiveReg := false.B // Disable fetch engine, let pipeline drain
       } .otherwise {
         varyingIndexReg := varyingIndexReg + 1.U

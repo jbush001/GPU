@@ -67,30 +67,30 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
 
   // Configuration registers
   val startFlush = WireInit(false.B)
-  val flushBufferSel = RegInit(RenderBufferId.Color) // depth or color buffer
-  val clearColor = RegInit(Color(Seq.fill(Color.numChannels)(0.U(Color.channelBits.W))))
-  val clearDepth = RegInit(Float32(1.0f))
-  val enableDepthWrite = RegInit(true.B)
-  val enableDepthCheck = RegInit(true.B)
-  val enableBlend = RegInit(false.B)
+  val flushBufferSelReg = RegInit(RenderBufferId.Color) // depth or color buffer
+  val clearColorReg = RegInit(Color(Seq.fill(Color.numChannels)(0.U(Color.channelBits.W))))
+  val clearDepthReg = RegInit(Float32(1.0f))
+  val enableDepthWriteReg = RegInit(true.B)
+  val enableDepthCheckReg = RegInit(true.B)
+  val enableBlendReg = RegInit(false.B)
 
   // Handle configuration register writes from [[CommandProcessor]]
   when (io.controlBus.regWrite.valid) {
     switch (io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.ClearColor) {
-        clearColor := Color.fromArgb32(io.controlBus.regWrite.bits.data)
+        clearColorReg := Color.fromArgb32(io.controlBus.regWrite.bits.data)
       }
       is (ControlRegisterIndex.ClearDepth) {
-        clearDepth := Float32(io.controlBus.regWrite.bits.data)
+        clearDepthReg := Float32(io.controlBus.regWrite.bits.data)
       }
       is (ControlRegisterIndex.TileWriteFlags) {
-        enableDepthWrite := io.controlBus.regWrite.bits.data(0)
-        enableDepthCheck := io.controlBus.regWrite.bits.data(1)
-        enableBlend := io.controlBus.regWrite.bits.data(2)
+        enableDepthWriteReg := io.controlBus.regWrite.bits.data(0)
+        enableDepthCheckReg := io.controlBus.regWrite.bits.data(1)
+        enableBlendReg := io.controlBus.regWrite.bits.data(2)
       }
       is (ControlRegisterIndex.TileWriteStart, ControlRegisterIndex.TileClearStart) {
         startFlush := true.B
-        flushBufferSel := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
+        flushBufferSelReg := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
       }
     }
   }
@@ -191,30 +191,30 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
       val newColorReg = RegNext(stage1.newColorReg)
       val newDepthReg = RegNext(stage1.newDepthReg)
       val maskReg = RegNext(stage1.maskReg &&
-        (!enableDepthCheck || depthReadVal(pixel) > stage1.newDepthReg), false.B)
+        (!enableDepthCheckReg || depthReadVal(pixel) > stage1.newDepthReg), false.B)
     }
     val stage2 = new Stage2()
 
     // Stage 3: Blend, writeback
-    val blended = Mux(enableBlend,
+    val blended = Mux(enableBlendReg,
       stage2.oldWeightedColorReg +| stage2.newColorReg,
       stage2.newColorReg)
 
     val isClearLane = (flushBankReg === pixel.U)
 
     val colorClearEnable = isClearLane &&
-      (flushBufferSel === RenderBufferId.Color) &&
+      (flushBufferSelReg === RenderBufferId.Color) &&
       io.flushData.fire
     colorWriteMask(pixel) := Mux(flushActiveReg, colorClearEnable, stage2.maskReg)
-    colorWriteVal(pixel) := Mux(flushActiveReg, clearColor, blended)
+    colorWriteVal(pixel) := Mux(flushActiveReg, clearColorReg, blended)
 
     val depthClearEnable = isClearLane &&
-      (flushBufferSel === RenderBufferId.Depth) &&
+      (flushBufferSelReg === RenderBufferId.Depth) &&
       io.flushData.fire
     depthWriteMask(pixel) := Mux(flushActiveReg,
       depthClearEnable,
-      stage2.maskReg && enableDepthWrite)
-    depthWriteVal(pixel) := Mux(flushActiveReg, clearDepth, stage2.newDepthReg)
+      stage2.maskReg && enableDepthWriteReg)
+    depthWriteVal(pixel) := Mux(flushActiveReg, clearDepthReg, stage2.newDepthReg)
   }
 
   colorMemory.write(writeAddress, colorWriteVal, colorWriteMask)
