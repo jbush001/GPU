@@ -119,11 +119,11 @@ Set up depth interpolation coefficients
 
 ```math
 \begin{aligned}
-& invW0 = \frac{1.0}{z_0} \\
-& invW1 = \frac{1.0}{z_1} \\
-& invW2 = \frac{1.0}{z_2} \\
+& invW0 = \frac{1.0}{w_0} \\
+& invW1 = \frac{1.0}{w_1} \\
+& invW2 = \frac{1.0}{w_2} \\
 & invdW1 = invW1 - invW0 \\
-& invdW2 = invW2 - invW1 \\
+& invdW2 = invW2 - invW0 \\
 \end{aligned}
 ```
 
@@ -133,13 +133,13 @@ Set up rasterizer coefficients
 \begin{aligned}
 & dx_0 = x_1 - x_0 \\
 & dy_0 = y_1 - y_0 \\
-& edge_0 = (x_{start} - x_0) * dx_0 +  (y_{start} - y_0) * dy_0 \\
+& edge_0 = (x_{start} - x_0) * dy_0 +  (y_{start} - y_0) * dx_0 \\
 & dx_1 = x_2 - x_1 \\
 & dy_1 = y_2 - y_1 \\
-& edge_1 = (x_{start} - x_1) * dx_1+  (y_{start} - y_1) * dy_1 \\
+& edge_1 = (x_{start} - x_1) * dy_1+  (y_{start} - y_1) * dx_1 \\
 & dx_2 = x_0 - x_2 \\
 & dy_2 = y_0 - y_2 \\
-& edge_2 = (x_{start} - x_2) * dx_2 +  (y_{start} - y_2) * dy_2
+& edge_2 = (x_{start} - x_2) * dy_2 +  (y_{start} - y_2) * dx_2
 \end{aligned}
 ```
 
@@ -166,11 +166,11 @@ For each parameter
 
 **Per pixel**
 
-First, we compute the inverse depth and depth at each pixel
+First, we compute the inverse w and w at each pixel
 
 ```math
 \begin{aligned}
-& invW_{pixel} = invW_0 + invW_1 * \lambda_1 + invW_2 * \lambda_2 \\
+& invW_{pixel} = invW_0 + invdW_1 * \lambda_1 + invdW_2 * \lambda_2 \\
 & w_{pixel} = \frac{1.0}{invW_{pixel}}
 \end{aligned}
 ```
