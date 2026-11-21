@@ -17,6 +17,7 @@
 package gpu
 
 import chisel3._
+import chisel3.util._
 import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 import scala.util.Random
@@ -68,21 +69,13 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     val baseColumns = Array(0, 10, 20)
 
     var waitCount = 0
-    while (!dut.io.startTriangle.ready.peek().litToBoolean) {
+    while (!dut.io.ready.peek().litToBoolean) {
       dut.clock.step()
       waitCount += 1
       if (waitCount > 1000) {
         fail("Timeout waiting for startTriangle to be ready")
       }
     }
-
-    dut.io.startTriangle.bits.vertexBaseAddr(0).row.poke(baseRows(0))
-    dut.io.startTriangle.bits.vertexBaseAddr(0).column.poke(baseColumns(0))
-    dut.io.startTriangle.bits.vertexBaseAddr(1).row.poke(baseRows(1))
-    dut.io.startTriangle.bits.vertexBaseAddr(1).column.poke(baseColumns(1))
-    dut.io.startTriangle.bits.vertexBaseAddr(2).row.poke(baseRows(2))
-    dut.io.startTriangle.bits.vertexBaseAddr(2).column.poke(baseColumns(2))
-    dut.io.startTriangle.bits.lastTriangle.poke(true)
 
     // Vertex memory layout
     //  0 - x, y (12.4 fixed point each)
@@ -97,7 +90,14 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       }
     }
 
-    dut.io.startTriangle.valid.poke(true.B)
+    def getVpmAddr(vertexI: Int): Int = {
+      (baseColumns(vertexI) << log2Up(cfg.shaderVectorLanes)) | baseRows(vertexI)
+    }
+
+    writeControlReg(dut, ControlRegisterIndex.LastTriangle, 1)
+    writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, getVpmAddr(0))
+    writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, getVpmAddr(1))
+    writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, getVpmAddr(2))
 
     var triangleId = Option.empty[Int]
 
@@ -126,10 +126,6 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       } else {
         dut.clock.step()
         dut.io.readValue.poke(0xffffffff)
-      }
-
-      if (cycleCount == 0) {
-        dut.io.startTriangle.valid.poke(false.B)
       }
 
       cycleCount += 1
@@ -257,7 +253,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       // Run this multiple times to ensure the triangle ID is freed when
       // the triangle is culled.
       for (_ <- 0 until cfg.maxConcurrentTriangles + 1) {
-        dut.io.startTriangle.ready.expect(true)
+        dut.io.ready.expect(true)
         assert(!submitParams(dut,
           InputParams(Seq((27, 13, 0.5f), (123, 25, 0.7f), (65, 110, 0.6f)),
           0, 0,

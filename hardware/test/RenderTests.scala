@@ -28,7 +28,7 @@ import shader._
 class SimTop(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val dap = new DirectAccessPort
-    val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
+    val triangleSetupReady = Output(Bool())
     val writeVertexParam = Flipped(Valid(new Bundle{
       val column = UInt(cfg.vpmColumnIndexBits.W)
       val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
@@ -48,6 +48,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   io.lastTriangle := gpu.io.lastTriangle
   io.tileWriterDone := gpu.io.tileWriterDone
   io.triangleFinished <> gpu.io.triangleFinished
+  io.triangleSetupReady := gpu.io.triangleSetupReady
 
   val completeReg = RegInit(false.B)
   io.complete := completeReg
@@ -62,7 +63,6 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     completeReg := false.B
   }
 
-  gpu.io.startTriangle <> io.startTriangle
   gpu.io.writeVertexParam <> io.writeVertexParam
   gpu.io.controlBus <> io.controlBus
 
@@ -278,20 +278,19 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     dut.io.writeVertexParam.valid.poke(false.B)
 
-    dut.io.startTriangle.bits.lastTriangle.poke(lastTriangle.B)
+    while (!dut.io.triangleSetupReady.peek().litToBoolean) {
+      dut.clock.step()
+    }
+
+    if (lastTriangle) {
+      writeControlReg(dut, ControlRegisterIndex.LastTriangle, 1)
+    }
     for (vertex <- 0 until 3) {
-      dut.io.startTriangle.bits.vertexBaseAddr(vertex).row.poke(nextVertexRow + vertex)
-      dut.io.startTriangle.bits.vertexBaseAddr(vertex).column.poke(0)
+      writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, nextVertexRow + vertex)
     }
 
     nextVertexRow += 3
 
-    dut.io.startTriangle.valid.poke(true.B)
-    while (!dut.io.startTriangle.ready.peek().litToBoolean) {
-      dut.clock.step()
-    }
-    dut.clock.step()
-    dut.io.startTriangle.valid.poke(false.B)
   }
 
   def waitForTileWriter(dut: SimTop): Unit = {

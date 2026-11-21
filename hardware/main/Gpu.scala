@@ -28,7 +28,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     val axiBus = new AxiBus
 
-    val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
+    val triangleSetupReady = Output(Bool())
     val writeVertexParam = Flipped(Valid(new Bundle{
       val column = UInt(cfg.vpmColumnIndexBits.W)
       val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
@@ -56,7 +56,6 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   io.triangleFinished <> pixelShaderConductor.io.triangleFinished
   io.lastTriangle := pixelShaderConductor.io.lastTriangle
 
-  triangleSetup.io.startTriangle <> io.startTriangle
   triangleSetup.io.controlBus <> io.controlBus
   vertexParameterMem.io.write0 <> io.writeVertexParam
   triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr1
@@ -88,6 +87,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   tileWriter.io.writePort <> memoryArbiter.io.writePorts(0)
   io.tileWriterDone := tileWriter.io.done
   rasterizer.io.params <> triangleSetup.io.rasterizerParams
+  io.triangleSetupReady := triangleSetup.io.ready
   tileBuffer.io.controlBus <> io.controlBus
   tileWriter.io.controlBus <> io.controlBus
   pixelShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff

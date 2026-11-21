@@ -19,11 +19,6 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
-  val lastTriangle = Bool()
-  val vertexBaseAddr = Vec(Consts.triangleVertices, new VpmAddress())
-}
-
 /** Computes edge functions and varying interpolation coefficients for
   * each triangle, culling back-facing and colinear triangles.
   *
@@ -49,7 +44,7 @@ class TriangleSetupParams(implicit cfg: GpuConfig) extends Bundle {
   */
 class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val startTriangle = Flipped(Decoupled(new TriangleSetupParams))
+    val ready = Output(Bool())
 
     // To VertexParameterMem
     val paramReadAddr = Valid(new VpmAddress())
@@ -75,6 +70,13 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val tileOffsetReg = RegInit(0.U.asTypeOf(Point2D()))
   val shaderAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
 
+  // XXX could use a set of staging registers so the next one can be setup
+  // while the current one is processing.
+  val lastTriangleReg = RegInit(false.B)
+  val vertexBaseAddrReg = RegInit(VecInit(Seq.fill(Consts.triangleVertices)(0.U.asTypeOf(new VpmAddress()))))
+  val nextVertexIndexReg = RegInit(0.U(2.W))
+  val startTriangleReg = RegInit(false.B)
+
   when (io.controlBus.regWrite.valid) {
     switch (io.controlBus.regWrite.bits.address) {
       is (ControlRegisterIndex.ShaderAddressL) {
@@ -92,6 +94,17 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       is (ControlRegisterIndex.TileOffsetY) {
         tileOffsetReg.y := io.controlBus.regWrite.bits.data(15, 0).asSInt
       }
+      is (ControlRegisterIndex.LastTriangle) {
+        lastTriangleReg := io.controlBus.regWrite.bits.data(0)
+      }
+      is (ControlRegisterIndex.VertexVpmAddr) {
+        vertexBaseAddrReg(nextVertexIndexReg) := io.controlBus.regWrite.bits.data.asTypeOf(new VpmAddress())
+        nextVertexIndexReg := nextVertexIndexReg + 1.U
+        when (nextVertexIndexReg === (Consts.triangleVertices - 1).U) {
+          nextVertexIndexReg := 0.U
+          startTriangleReg := true.B
+        }
+      }
     }
   }
 
@@ -107,7 +120,6 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   io.rasterizerParams.bits := rasterizerParamsReg
 
   val stateReg = RegInit(0.U(5.W))
-  val setupParamsReg = Reg(new TriangleSetupParams)
 
   // Varying Pipeline Valid Signals
   val varyingStage1ValidReg = RegInit(false.B)
@@ -116,7 +128,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   val varyingStage4ValidReg = RegInit(false.B)
 
   io.rasterizerParams.valid := false.B
-  io.startTriangle.ready := stateReg === 0.U && triangleIdFreeReg.asUInt.orR
+  io.ready := stateReg === 0.U && triangleIdFreeReg.asUInt.orR
   io.writeVaryingCoeff.valid := false.B
   io.writeVaryingCoeff.bits := DontCare
   io.writeVaryingCoeff.bits.triangleId := rasterizerParamsReg.triangleId
@@ -159,11 +171,12 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   /** Initiate read for e value from the parameter memory.
     * Has one cycle of latency.
+    * @note There is a hazard where this would return the wrong value
+    * for vertex 2 on cycle 0, but the state machine never does that.
     */
   def readParameterMem(vertex: UInt, index: UInt) = {
     io.paramReadAddr.valid := true.B
-    val params = Mux(stateReg === 0.U, io.startTriangle.bits, setupParamsReg)
-    io.paramReadAddr.bits := params.vertexBaseAddr(vertex).columnOffset(index)
+    io.paramReadAddr.bits := vertexBaseAddrReg(vertex).columnOffset(index)
   }
 
   // XXX This is not technically correct. I'm not exactly sure why the
@@ -181,7 +194,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   switch (stateReg) {
     is (0.U) {
       // Waiting for the next triangle
-      when (io.startTriangle.fire) {
+      when (startTriangleReg) {
         assert(triangleIdFreeReg(nextTriangleId))
         triangleIdFreeReg(nextTriangleId) := false.B
         rasterizerParamsReg.triangleId := nextTriangleId
@@ -190,9 +203,10 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         rasterizerParamsReg.boundingBox.top := tileOffsetReg.y
         rasterizerParamsReg.boundingBox.right := tileOffsetReg.x + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.boundingBox.bottom := tileOffsetReg.y + (cfg.tileSizePixels - 2).S
-        rasterizerParamsReg.lastTriangle := io.startTriangle.bits.lastTriangle
+        rasterizerParamsReg.lastTriangle := lastTriangleReg
         rasterizerParamsReg.shaderAddress := shaderAddressReg.asUInt
-        setupParamsReg := io.startTriangle.bits
+        lastTriangleReg := false.B
+        startTriangleReg := false.B
         readParameterMem(0.U, 0.U) // read X0/Y0
         stateReg := 1.U
       }
