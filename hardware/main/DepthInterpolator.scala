@@ -30,7 +30,7 @@ class DepthInterpolatorCoeffs extends Bundle {
 class InterpolatedQuad(implicit val cfg: GpuConfig) extends Quad {
   val triangleId = UInt(cfg.triangleIdBits.W)
   val lastQuad = Bool()
-  val lastTriangle = Bool()
+  val fence = Bool()
   val lambda = Vec(Consts.pixelsPerQuad, Vec(2, Float32()))
   val depths = Vec(Consts.pixelsPerQuad, Float32())
   val shaderAddress = UInt(cfg.busAddressBits.W)

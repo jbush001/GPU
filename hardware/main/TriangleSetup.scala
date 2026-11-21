@@ -72,7 +72,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   // XXX could use a set of staging registers so the next one can be setup
   // while the current one is processing.
-  val lastTriangleReg = RegInit(false.B)
+  val fenceReg = RegInit(false.B)
   val vertexBaseAddrReg = RegInit(VecInit(Seq.fill(Consts.triangleVertices)(0.U.asTypeOf(new VpmAddress()))))
   val nextVertexIndexReg = RegInit(0.U(2.W))
   val startTriangleReg = RegInit(false.B)
@@ -94,8 +94,8 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
       is (ControlRegisterIndex.TileOffsetY) {
         tileOffsetReg.y := io.controlBus.regWrite.bits.data(15, 0).asSInt
       }
-      is (ControlRegisterIndex.LastTriangle) {
-        lastTriangleReg := io.controlBus.regWrite.bits.data(0)
+      is (ControlRegisterIndex.Fence) {
+        fenceReg := io.controlBus.regWrite.bits.data(0)
       }
       is (ControlRegisterIndex.VertexVpmAddr) {
         vertexBaseAddrReg(nextVertexIndexReg) := io.controlBus.regWrite.bits.data.asTypeOf(new VpmAddress())
@@ -203,9 +203,9 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         rasterizerParamsReg.boundingBox.top := tileOffsetReg.y
         rasterizerParamsReg.boundingBox.right := tileOffsetReg.x + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.boundingBox.bottom := tileOffsetReg.y + (cfg.tileSizePixels - 2).S
-        rasterizerParamsReg.lastTriangle := lastTriangleReg
+        rasterizerParamsReg.fence := fenceReg
         rasterizerParamsReg.shaderAddress := shaderAddressReg.asUInt
-        lastTriangleReg := false.B
+        fenceReg := false.B
         startTriangleReg := false.B
         readParameterMem(0.U, 0.U) // read X0/Y0
         stateReg := 1.U

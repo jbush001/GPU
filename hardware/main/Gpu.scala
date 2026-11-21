@@ -35,7 +35,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     }))
 
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
-    val lastTriangle = Output(Bool())
+    val fence = Output(Bool())
 
     val controlBus = Flipped(new ControlBus)
     val tileWriterDone = Output(Bool())
@@ -54,7 +54,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val texturePatternGenerator = Module(new TexturePatternGenerator)
 
   io.triangleFinished <> pixelShaderConductor.io.triangleFinished
-  io.lastTriangle := pixelShaderConductor.io.lastTriangle
+  io.fence := pixelShaderConductor.io.fence
 
   triangleSetup.io.controlBus <> io.controlBus
   vertexParameterMem.io.write0 <> io.writeVertexParam

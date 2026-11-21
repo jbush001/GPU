@@ -40,7 +40,7 @@ object ControlRegisterIndex {
   val IndexCount        = 16.U
   val IndexFormat       = 17.U
   val VertexVpmAddr     = 18.U
-  val LastTriangle      = 19.U
+  val Fence             = 19.U
   val AttrBase          = 32.U // Each entry is 16 bytes, up to 16 entries (32-96)
 }
 

@@ -39,20 +39,20 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
     val complete = Output(Bool())
     val tileWriterDone = Output(Bool())
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
-    val lastTriangle = Output(Bool())
+    val fence = Output(Bool())
   })
 
   val gpu = Module(new Gpu)
   val memory = Module(new SimAxiMemory(16384))
 
-  io.lastTriangle := gpu.io.lastTriangle
+  io.fence := gpu.io.fence
   io.tileWriterDone := gpu.io.tileWriterDone
   io.triangleFinished <> gpu.io.triangleFinished
   io.triangleSetupReady := gpu.io.triangleSetupReady
 
   val completeReg = RegInit(false.B)
   io.complete := completeReg
-  when (gpu.io.lastTriangle) {
+  when (gpu.io.fence) {
     completeReg := true.B
   }.elsewhen (io.controlBus.regWrite.valid
     && (io.controlBus.regWrite.bits.address === ControlRegisterIndex.TileWriteStart
@@ -243,7 +243,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   def setUpTriangle(dut: SimTop, vertices: Seq[(Float, Float, Float)],
     fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
-    lastTriangle: Boolean): Unit = {
+    fence: Boolean): Unit = {
 
     val paramValues = Array.fill(cfg.shaderVectorLanes, cfg.vpmColumns)(0)
 
@@ -282,8 +282,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
       dut.clock.step()
     }
 
-    if (lastTriangle) {
-      writeControlReg(dut, ControlRegisterIndex.LastTriangle, 1)
+    if (fence) {
+      writeControlReg(dut, ControlRegisterIndex.Fence, 1)
     }
     for (vertex <- 0 until 3) {
       writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, nextVertexRow + vertex)

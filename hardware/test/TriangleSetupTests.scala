@@ -94,7 +94,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
       (baseColumns(vertexI) << log2Up(cfg.shaderVectorLanes)) | baseRows(vertexI)
     }
 
-    writeControlReg(dut, ControlRegisterIndex.LastTriangle, 1)
+    writeControlReg(dut, ControlRegisterIndex.Fence, 1)
     writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, getVpmAddr(0))
     writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, getVpmAddr(1))
     writeControlReg(dut, ControlRegisterIndex.VertexVpmAddr, getVpmAddr(2))
@@ -158,7 +158,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     result.boundingBox.right.expect(params.tileLeft + (cfg.tileSizePixels - 2))
     result.boundingBox.bottom.expect(params.tileTop + (cfg.tileSizePixels - 2))
     result.shaderAddress.expect(0x200000100L.U)
-    result.lastTriangle.expect(true.B)
+    result.fence.expect(true.B)
 
     val rawParams = new Array[(Long, Long, Long)](3)
     var area2 = 0.0f

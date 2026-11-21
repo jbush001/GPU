@@ -28,7 +28,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     */
   def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
     lambda: Seq[Seq[Float]], depths: Seq[Float],triangleId: Int = 0,
-    lastQuad: Boolean = false, lastTriangle: Boolean = false, shaderAddress: Int = 0): Unit = {
+    lastQuad: Boolean = false, fence: Boolean = false, shaderAddress: Int = 0): Unit = {
     dut.io.sourceQuad.valid.poke(true)
     dut.io.sourceQuad.bits.location.poke(x, y)
     dut.io.sourceQuad.bits.mask.poke(mask)
@@ -44,8 +44,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.io.sourceQuad.bits.depths(i).poke(depths(i))
     }
 
-    dut.io.sourceQuad.bits.lastQuad.poke(lastQuad || lastTriangle)
-    dut.io.sourceQuad.bits.lastTriangle.poke(lastTriangle)
+    dut.io.sourceQuad.bits.lastQuad.poke(lastQuad || fence)
+    dut.io.sourceQuad.bits.fence.poke(fence)
 
     dut.clock.step()
     dut.io.sourceQuad.valid.poke(false)
@@ -184,7 +184,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       loadSourceQuad(dut, 3, 4, 15,
         Seq.tabulate(Consts.pixelsPerQuad)(i => Seq(1.0f + i * 2, 2.0f + i * 2)),
         Seq.fill(Consts.pixelsPerQuad)(0.0f),
-        lastQuad = true, lastTriangle = true)
+        lastQuad = true, fence = true)
       dut.io.startJob.valid.expect(true)
       dut.io.startJob.ready.poke(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
@@ -288,7 +288,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
       val maxCycles = 1000
       val finalizeCycles = 100
-      var sentLastTriangle = false
+      var sentFence = false
       for (cycle <- 0 until maxCycles) {
         // Check on loading new rasterized quads
         if (cycle <= maxCycles - finalizeCycles &&
@@ -302,12 +302,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
           dut.io.sourceQuad.valid.poke(true)
           dut.io.sourceQuad.bits.location.poke(tilex, tiley)
           dut.io.sourceQuad.bits.mask.poke(15)
-          if (cycle >= maxCycles - finalizeCycles && !sentLastTriangle) {
-            dut.io.sourceQuad.bits.lastTriangle.poke(true)
+          if (cycle >= maxCycles - finalizeCycles && !sentFence) {
+            dut.io.sourceQuad.bits.fence.poke(true)
             dut.io.sourceQuad.bits.lastQuad.poke(true)
-            sentLastTriangle = true
+            sentFence = true
           } else {
-            dut.io.sourceQuad.bits.lastTriangle.poke(false)
+            dut.io.sourceQuad.bits.fence.poke(false)
             dut.io.sourceQuad.bits.lastQuad.poke(false)
           }
 

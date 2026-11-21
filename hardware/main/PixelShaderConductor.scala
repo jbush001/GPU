@@ -47,7 +47,7 @@ class ShadedQuad(implicit val cfg: GpuConfig) extends Quad {
   *
   * Quads always retire to the tile buffer in the same order they are received,
   * even though the shaders themselves may finish in arbitrary order. The
-  * `lastQuad` and `lastTriangle` signals are passed through in order as well,
+  * `lastQuad` and `fence` signals are passed through in order as well,
   * and can be used to indicate when a batch is fully processed.
   */
 class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
@@ -56,7 +56,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val sourceQuad = Flipped(Decoupled(new InterpolatedQuad))
 
     // Asserted for one cycle when all triangles have been processed.
-    val lastTriangle = Output(Bool())
+    val fence = Output(Bool())
 
     // Asserted for one cycle when a single triangle has been fully processed.
     val triangleFinished = Valid(UInt(cfg.triangleIdBits.W))
@@ -225,7 +225,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
   io.triangleFinished.valid := drainQuad.lastQuad && io.shadedQuad.fire
   io.triangleFinished.bits := drainQuad.triangleId
-  io.lastTriangle := drainQuad.lastTriangle && io.shadedQuad.fire
+  io.fence := drainQuad.fence && io.shadedQuad.fire
 
   val textureResponseId = io.textureFetchResponse.bits.requestId
   val textureResponseJobId = textureResponseId(cfg.shaderJobIdBits - 1, 0)

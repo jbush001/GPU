@@ -21,7 +21,7 @@ import chisel3.util._
 
 class RasterizerParams(implicit cfg: GpuConfig) extends Bundle {
   val triangleId = UInt(cfg.triangleIdBits.W)
-  val lastTriangle = Bool()
+  val fence = Bool()
   val offset = Point2D()
   val boundingBox = BoundingBox()
   val edges = Vec(Consts.triangleEdges, new Bundle {
@@ -59,11 +59,11 @@ class RasterizedQuad(implicit val cfg: GpuConfig) extends Quad {
   /** Set for the last quad of the triangle */
   val lastQuad = Bool()
 
-  /** This is asserted for the last quad when the `lastTriangle` is set
+  /** This is asserted for the last quad when the `fence` is set
     * in [[RasterizerCoeffs]]. `lastQuad` is always asserted at the same
     * time as this signal.
     */
-  val lastTriangle = Bool()
+  val fence = Bool()
 
   /** Normalized barycentric coordindates of the pixels relative to the
     * triangle vertices. The third coordinate is omitted (and we can
@@ -169,7 +169,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   nextQuad.shaderAddress := activeParamsReg.shaderAddress
   nextQuad.mask := pixelInside
   nextQuad.lastQuad := false.B
-  nextQuad.lastTriangle := false.B
+  nextQuad.fence := false.B
   for ((edges, pixel) <- pixelEdges.zipWithIndex) {
     // Note:inside the triangle, the edge function values will always fit
     // within 32 bits, we truncate here to fit within the floating point
@@ -210,7 +210,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // a dummy quad with the flags set to zero.
   io.quad.valid := (outputQuadValidReg && nextQuadValid) || scanStateReg === State.SendLast
   io.quad.bits.lastQuad := scanStateReg === State.SendLast
-  io.quad.bits.lastTriangle := scanStateReg === State.SendLast && activeParamsReg.lastTriangle
+  io.quad.bits.fence := scanStateReg === State.SendLast && activeParamsReg.fence
 
   // Explictly assign so it is correct for the dummy quad.
   io.quad.bits.triangleId := activeParamsReg.triangleId
