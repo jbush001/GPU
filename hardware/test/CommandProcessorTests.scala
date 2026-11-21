@@ -263,5 +263,60 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
       assert(runProgram(dut, (1000 to 2000).toSeq) == (1123 until 1131).map(x => ControlWrite(0, BigInt(x))))
     }
   }
+
+  test("CommandProcessor fence") {
+    simulate(new CommandProcessor) { dut =>
+      loadProgram(dut, assembleProgram(
+        """
+          |           clear r0 ; this is always 0
+          |           lw r1, -506(r0)   ; Fence register
+          |           nop
+          |           sw r1, -256(r0)   ; Write to output
+          |           sw r1, -1(r0)     ; Halt
+          |           nop
+          |           lw r1, -506(r0)   ; Fence register
+          |           nop
+          |           sw r1, -256(r0)   ; Write to output
+          |           sw r1, -1(r0)     ; Halt
+          |""".stripMargin
+      ))
+
+      dut.io.fenceEvent.poke(true)
+      dut.clock.step()
+      dut.io.fenceEvent.poke(false)
+      assert(runProgram(dut) == Seq(ControlWrite(0, 1)))
+      dut.io.fenceEvent.poke(true)
+      dut.clock.step()
+      dut.io.fenceEvent.poke(false)
+      assert(runProgram(dut) == Seq(ControlWrite(0, 2)))
+    }
+  }
+
+  test("CommandProcessor pipeline flags") {
+    simulate(new CommandProcessor) { dut =>
+      loadProgram(dut, assembleProgram(
+        """
+          |           clear r0 ; this is always 0
+          |           lw r1, -507(r0)   ; Flags register
+          |           nop
+          |           sw r1, -256(r0)   ; Write to output
+          |           sw r1, -1(r0)     ; Halt
+          |           nop
+          |           lw r1, -507(r0)   ; Flags register
+          |           nop
+          |           sw r1, -256(r0)   ; Write to output
+          |           sw r1, -1(r0)     ; Halt
+          |""".stripMargin
+      ))
+
+      dut.io.tileWriterDone.poke(true)
+      dut.io.triangleSetupReady.poke(false)
+      assert(runProgram(dut) == Seq(ControlWrite(0, 2)))
+      dut.clock.step()
+      dut.io.tileWriterDone.poke(false)
+      dut.io.triangleSetupReady.poke(true)
+      assert(runProgram(dut) == Seq(ControlWrite(0, 1)))
+    }
+  }
 }
 

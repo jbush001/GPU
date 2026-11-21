@@ -79,6 +79,9 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val controlBus = new ControlBus
     val halt = Input(Bool())
     val loadProgram = Flipped(Valid(UInt(32.W)))
+    val tileWriterDone = Input(Bool())
+    val triangleSetupReady = Input(Bool())
+    val fenceEvent = Input(Bool())
   })
 
   object RegAddresses {
@@ -87,6 +90,8 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val DmaLength = 0xfffffe02L.U
     val DmaStatus = 0xfffffe03L.U
     val DmaData = 0xfffffe04L.U
+    val PipelineFlags = 0xfffffe05L.U
+    val FenceCounter = 0xfffffe06L.U
   }
 
   val pipeline = Module(new CpPipeline)
@@ -128,6 +133,11 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     }
   }
 
+  val fenceCounter = RegInit(0.U(32.W))
+  when (io.fenceEvent) {
+    fenceCounter := fenceCounter + 1.U
+  }
+
   val mmioReadResponseReg = Reg(UInt(32.W))
   dma.io.dmaData.ready := false.B
   when (pipeline.io.mmio.regReadAddr.valid) {
@@ -135,10 +145,18 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       is (RegAddresses.DmaStatus) {
         mmioReadResponseReg := dma.io.dmaData.valid.asUInt
       }
-
       is (RegAddresses.DmaData) {
         mmioReadResponseReg := dma.io.dmaData.bits
         dma.io.dmaData.ready := true.B
+      }
+      is (RegAddresses.PipelineFlags) {
+        mmioReadResponseReg := Cat(
+          io.tileWriterDone,
+          io.triangleSetupReady
+        )
+      }
+      is (RegAddresses.FenceCounter) {
+        mmioReadResponseReg := fenceCounter
       }
     }
   }
@@ -401,6 +419,13 @@ class CpPipeline extends Module {
         writebackData := exPcReg + 1.U
         writebackValid := true.B
       }
+    }
+  }
+
+  if (false) {
+    // Debug tracing
+    when (writebackValid) {
+      printf(cf"${exPcReg}%x: r${writebackIndex} = ${writebackData}\n")
     }
   }
 }
