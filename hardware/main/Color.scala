@@ -34,7 +34,7 @@ class Color extends Bundle {
     * introduce bias. Instead, we can approximate this division by:
     * result = (product + (product >> W)) + (1 << (W - 1))) >> W
     */
-  def scale(factor: UInt) = Color(channels.map { ch =>
+  def scale(factor: UInt) = Color.fromUnorms(channels.map { ch =>
     require(factor.getWidth == Color.channelBits)
     val product = ch * factor
     ((product +% (product >> Color.channelBits)) +% (1.U << (Color.channelBits - 1))) >> Color.channelBits
@@ -43,7 +43,7 @@ class Color extends Bundle {
   /** Adds each component of the given color to this color, clamping the
     * results to the maximum value (2^N - 1).
     */
-  def +|(that: Color) = Color(channels.zip(that.channels).map { case (a, b) =>
+  def +|(that: Color) = Color.fromUnorms(channels.zip(that.channels).map { case (a, b) =>
     val sum = a +& b
     Mux(sum(Color.channelBits), Color.maxChannelValue.U, sum(Color.channelBits - 1, 0))
   })
@@ -72,15 +72,14 @@ object Color {
 
   def apply() = new Color
 
-  def apply(channels: Seq[UInt]): Color = {
+  def fromUnorms(unorms: Seq[UInt]): Color = {
     val result = Wire(new Color)
-    for ((ch, i) <- channels.zipWithIndex) {
-      require(ch.getWidth == Color.channelBits)
-      result.channels(i) := ch
-    }
-
+    result.channels := VecInit(unorms)
     result
   }
+
+  def fromFloats(channels: Seq[Float32]): Color =
+    fromUnorms(channels.map(_.toUnorm(Color.channelBits)))
 
   def fromArgb32(bits: Bits): Color = {
     require(bits.getWidth == 32)

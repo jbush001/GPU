@@ -34,12 +34,9 @@ class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
 
   io.colorQuad.bits.location := io.shadedQuad.bits.location
   io.colorQuad.bits.mask := io.shadedQuad.bits.mask
-  for (pixel <- 0 until Consts.pixelsPerQuad) {
-    for (channel <- 0 until Color.numChannels) {
-      io.colorQuad.bits.colors(pixel).channels(channel) :=
-        io.shadedQuad.bits.colors(pixel)(channel).toUnorm(Color.channelBits)
-    }
-  }
+  io.colorQuad.bits.colors := VecInit(
+    io.shadedQuad.bits.colors.map { Color.fromFloats(_) }
+  )
 
   io.colorQuad.bits.depths := io.shadedQuad.bits.depths
   io.colorQuad.valid := io.shadedQuad.valid

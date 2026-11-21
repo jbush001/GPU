@@ -68,7 +68,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   // Configuration registers
   val startFlush = WireInit(false.B)
   val flushBufferSelReg = RegInit(RenderBufferId.Color) // depth or color buffer
-  val clearColorReg = RegInit(Color(Seq.fill(Color.numChannels)(0.U(Color.channelBits.W))))
+  val clearColorReg = RegInit(0.U.asTypeOf(new Color))
   val clearDepthReg = RegInit(Float32(1.0f))
   val enableDepthWriteReg = RegInit(true.B)
   val enableDepthCheckReg = RegInit(true.B)
