@@ -175,6 +175,8 @@ First, we compute the inverse w and w at each pixel
 \end{aligned}
 ```
 
+Note that we use the inverse w as the depth for z buffering.
+
 Then compute the perspective correct barycentric coordinates:
 
 ```math

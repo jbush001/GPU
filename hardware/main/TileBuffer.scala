@@ -69,7 +69,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
   val startFlush = WireInit(false.B)
   val flushBufferSelReg = RegInit(RenderBufferId.Color) // depth or color buffer
   val clearColorReg = RegInit(0.U.asTypeOf(new Color))
-  val clearDepthReg = RegInit(Float32(1.0f))
+  val clearDepthReg = RegInit(Float32.Zero)
   val enableDepthWriteReg = RegInit(true.B)
   val enableDepthCheckReg = RegInit(true.B)
   val enableBlendReg = RegInit(false.B)
@@ -191,7 +191,7 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
       val newColorReg = RegNext(stage1.newColorReg)
       val newDepthReg = RegNext(stage1.newDepthReg)
       val maskReg = RegNext(stage1.maskReg &&
-        (!enableDepthCheckReg || depthReadVal(pixel) > stage1.newDepthReg), false.B)
+        (!enableDepthCheckReg || stage1.newDepthReg > depthReadVal(pixel)), false.B)
     }
     val stage2 = new Stage2()
 

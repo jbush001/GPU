@@ -63,7 +63,7 @@ case class ColorRef(r: Int, g: Int, b: Int, a: Int) {
   */
 class TileBufferReference(implicit cfg: GpuConfig) {
   val colors = Array.fill(cfg.totalTilePixels)(ColorRef(0, 0, 0, 0))
-  val depths = Array.fill(cfg.totalTilePixels)(1.0f)
+  val depths = Array.fill(cfg.totalTilePixels)(0.0f)
 
   private def rasterIndex(quadX: Int, quadY: Int, pixel: Int): Int = {
     val offset = quadY * cfg.tileSizePixels + quadX
@@ -80,7 +80,7 @@ class TileBufferReference(implicit cfg: GpuConfig) {
     for (pixel <- 0 until 4) {
       if ((mask & (1 << pixel)) != 0) {
         val idx = rasterIndex(quadX, quadY, pixel)
-        if (newDepths(pixel) < depths(idx)) {
+        if (newDepths(pixel) > depths(idx)) {
           colors(idx) = colors(idx).blend(newColors(pixel))
           depths(idx) = newDepths(pixel)
         }
@@ -223,7 +223,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       writeQuad(dut, 0, 0, 0xf,
         Seq(ColorRef(0, 0, 0, 0), ColorRef(0x1ff, 0x3ff, 0x3ff, 0x3ff),
         ColorRef(0x2ac, 0x334, 0x39c, 0x3ff), ColorRef(0x1ff, 0x1ff, 0x1ff, 0x1ff)),
-        Seq(0.25f, 0.25f, 0.25f, 0.25f))
+        Seq(0.75f, 0.75f, 0.75f, 0.75f))
 
       // Flush pipeline
       dut.clock.step(4)
@@ -249,7 +249,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       writeQuad(dut, 0, 0, 0xf,
         Seq(ColorRef(0, 0x1ff, 0x3ff, 0x3ff), ColorRef(0x3ff, 0x3ff, 0x3ff, 0x3ff),
         ColorRef(0x2ac, 0x334, 0x39c, 0x3ff), ColorRef(0, 0x1ff, 0x3ff, 0x3ff)),
-        Seq(0.5f, 0.5f, 0.5f, 0.5f))
+        Seq(0.75f, 0.75f, 0.75f, 0.75f))
 
       // Flush pixels
       dut.clock.step(4)
@@ -258,17 +258,17 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       // not so they do.
       writeQuad(dut, 0, 0, 0xf,
         Seq(ColorRef(0, 0, 0, 0), ColorRef(0x3ff, 0x3ff, 0x3ff, 0x3ff), ColorRef(0x156, 0x19a, 0x1ce, 0x3ff), ColorRef(0x1ff, 0x1ff, 0x1ff, 0x1ff)),
-        Seq(0.75f, 0.75f, 0.75f, 0.75f))
+        Seq(0.5f, 0.5f, 0.5f, 0.5f))
 
       // Flush pipeline
       dut.clock.step(4)
 
       this.flush(dut, RenderBufferId.Depth) match {
         case Right(depth) =>
-          assert(depth(0) == 0.75f)
-          assert(depth(1) == 0.75f)
-          assert(depth(cfg.tileSizePixels) == 0.75f)
-          assert(depth(cfg.tileSizePixels + 1) == 0.75f)
+          assert(depth(0) == 0.5f)
+          assert(depth(1) == 0.5f)
+          assert(depth(cfg.tileSizePixels) == 0.5f)
+          assert(depth(cfg.tileSizePixels + 1) == 0.5f)
         case Left(_) => fail("Unexpected color data")
       }
 
@@ -302,10 +302,10 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       // Depth is not written
       this.flush(dut, RenderBufferId.Depth) match {
         case Right(depth) =>
-          assert(depth(0) == 1.0f)
-          assert(depth(1) == 1.0f)
-          assert(depth(cfg.tileSizePixels) == 1.0f)
-          assert(depth(cfg.tileSizePixels + 1) == 1.0f)
+          assert(depth(0) == 0.0f)
+          assert(depth(1) == 0.0f)
+          assert(depth(cfg.tileSizePixels) == 0.0f)
+          assert(depth(cfg.tileSizePixels + 1) == 0.0f)
         case Left(_) => fail("Unexpected color data")
       }
 

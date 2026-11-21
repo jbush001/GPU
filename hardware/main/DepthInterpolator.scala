@@ -93,7 +93,7 @@ class DepthInterpolator(implicit cfg: GpuConfig) extends Module {
     // Replace the lambda values in the interpolated quad with perspective corrected ones.
     io.interpolatedQuad.bits.lambda(pixel)(0) := FloatMul(e0, invW1_15, !stall) // Cycle 15
     io.interpolatedQuad.bits.lambda(pixel)(1) := FloatMul(e1, invW2_15, !stall)
-    io.interpolatedQuad.bits.depths(pixel) := ShiftRegister(w, 4, !stall)
+    io.interpolatedQuad.bits.depths(pixel) := ShiftRegister(invW, 9, !stall)
   }
 
   val validStagesReg = RegInit(0.U(totalLatency.W))

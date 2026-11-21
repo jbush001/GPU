@@ -40,7 +40,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     val lambda2 = 1.0 - lambda._1 - lambda._2
     val weightedInverseW = lambda2 / vertexW._1 +
       lambda._1 / vertexW._2 + lambda._2 / vertexW._3
-    1.0 / weightedInverseW
+    weightedInverseW
   }
 
   def pokeCoefficients(
