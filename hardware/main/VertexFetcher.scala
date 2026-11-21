@@ -55,9 +55,6 @@ class VertexFetcher(implicit cfg: GpuConfig) extends Module {
   }
 
   val attrArraysReg = RegInit(0.U.asTypeOf(Vec(cfg.maxVertexAttribs, new AttrArray)))
-  val indexBaseReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
-  val indexCountReg = RegInit(0.U(32.W))
-  val indexFormatReg = RegInit(0.U(2.W))
 
   when(io.controlBus.regWrite.valid) {
     val data = io.controlBus.regWrite.bits.data
@@ -86,20 +83,7 @@ class VertexFetcher(implicit cfg: GpuConfig) extends Module {
         }
       }
     }.otherwise {
-      switch (addr) {
-        is(ControlRegisterIndex.IndexBaseL) {
-          indexBaseReg(0) := data
-        }
-        is(ControlRegisterIndex.IndexBaseH) {
-          indexBaseReg(1) := data
-        }
-        is(ControlRegisterIndex.IndexCount) {
-          indexCountReg := data
-        }
-        is(ControlRegisterIndex.IndexFormat) {
-          indexFormatReg := data
-        }
-      }
+      // ...
     }
   }
   io.readPort.burst.valid := false.B

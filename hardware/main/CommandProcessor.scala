@@ -35,12 +35,8 @@ object ControlRegisterIndex {
   val TileWriteStride   = 11.U // bytes between the start of two adjacent rows
   val TileWriteStart    = 12.U
   val TileClearStart    = 13.U
-  val IndexBaseL        = 14.U
-  val IndexBaseH        = 15.U
-  val IndexCount        = 16.U
-  val IndexFormat       = 17.U
-  val VertexVpmAddr     = 18.U
-  val Fence             = 19.U
+  val VertexVpmAddr     = 14.U
+  val Fence             = 15.U
   val AttrBase          = 32.U // Each entry is 16 bytes, up to 16 entries (32-96)
 }
 
