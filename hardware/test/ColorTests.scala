@@ -22,7 +22,7 @@ import org.scalatest.funsuite.AnyFunSuite
 
 
 class ColorTests extends AnyFunSuite with ChiselSim with TestHelpers {
-  test("Color scale") {
+  test("scale") {
     simulate(new Module {
       val io = IO(new Bundle {
         val inColor = Input(new Color)
@@ -52,7 +52,7 @@ class ColorTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("Color satAdd") {
+  test("satAdd") {
     simulate(new Module {
       val io = IO(new Bundle {
         val inColor1 = Input(new Color)
@@ -68,7 +68,7 @@ class ColorTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("Color toArgb32") {
+  test("toArgb32") {
     simulate(new Module {
       val io = IO(new Bundle {
         val inColor = Input(new Color)
@@ -82,7 +82,7 @@ class ColorTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("Color fromArgb32"){
+  test("fromArgb32"){
     simulate(new Module {
       val io = IO(new Bundle {
         val inColor = Input(UInt(32.W))

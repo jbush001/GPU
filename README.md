@@ -25,11 +25,12 @@ https://www.chisel-lang.org/docs/installation
 
 **To run a specific test:**
 
-    ./run-test "my test name"
+    ./run-test MyTestSuite
+    ./run-test MyTestSuite test name
 
 **To run a test and dumping waveform files:**
 
-    ./run-test --wave "my test name"
+    ./run-test MyTestSuite test name --wave
 
 The output waveform will be written to build/chiselsim/.../workdir-verilator/trace.vcd
 

@@ -27,7 +27,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
   // Single read burst
-  test("MemoryArbiter read burst") {
+  test("read burst") {
     simulate(new MemoryArbiter(1, 1)) { dut =>
       dut.io.readPorts(0).burst.valid.poke(true.B)
 
@@ -68,7 +68,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("MemoryArbiter write burst") {
+  test("write burst") {
     simulate(new MemoryArbiter(1, 1)) { dut =>
       // Initialize inputs
       dut.io.writePorts(0).burst.valid.poke(true.B)
@@ -120,7 +120,7 @@ class MemoryArbiterTests extends AnyFunSuite with ChiselSim {
   // TODO: this does not exercise queuing the next address before the previous
   // transaction has completed.
   //
-  test("MemoryArbiter stress") {
+  test("stress") {
     val numReaders = 4
     val numWriters = 4
     val memorySize = 1024

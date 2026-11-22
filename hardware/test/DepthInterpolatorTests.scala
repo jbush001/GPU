@@ -146,7 +146,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     expectCorrectedLambdas(dut, expected.vertexW, expected.lambdas)
   }
 
-  test("DepthInterpolator boundary values") {
+  test("boundary values") {
     simulate(new DepthInterpolator) { dut =>
       dut.io.interpolatedQuad.ready.poke(true)
       val coefficients = (0.25f, 0.5f, 1.0f)
@@ -166,7 +166,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     }
   }
 
-  test("DepthInterpolator stall") {
+  test("stall") {
     simulate(new DepthInterpolator) { dut =>
       dut.io.interpolatedQuad.ready.poke(true)
       pokeQuad(
@@ -199,7 +199,7 @@ class DepthInterpolatorTests extends AnyFunSuite with ChiselSim with TestHelpers
     }
   }
 
-  test("DepthInterpolator stress") {
+  test("stress") {
     simulate(new DepthInterpolator) { dut =>
       val rng = new Random(42)
       val vertexW = Seq(

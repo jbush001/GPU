@@ -209,7 +209,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("Rasterizer rasterize") {
+  test("rasterize") {
     simulate(new Rasterizer()) { dut =>
       val params = computeEdgeCoefficient(8, 1, 1, 15, 15, 15, 0, 0)
       val output = rasterizeTriangle(dut, params, 0, 0, 14, 14, None);
@@ -237,7 +237,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   // Fill entire framebuffer
-  test("Rasterizer fill") {
+  test("fill") {
     simulate(new Rasterizer()) { dut =>
       val params = computeEdgeCoefficient(-1, -1, -1, 40, 40, -1, 0, 0)
       val output = rasterizeTriangle(dut, params, 0, 0, 14, 14, None);
@@ -245,7 +245,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("Rasterizer stress") {
+  test("stress") {
     simulate(new Rasterizer()) { dut =>
       val rng = new Random(42)
       val blockSize = 32
@@ -279,7 +279,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   // Won't display anything
-  test("Rasterizer reverse winding") {
+  test("reverse winding") {
     simulate(new Rasterizer()) { dut =>
       val params = computeEdgeCoefficient(8, 1, 15, 15, 1, 15, 0, 0)
       val output = rasterizeTriangle(dut, params, 0, 0, 14, 14, None);

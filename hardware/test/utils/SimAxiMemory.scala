@@ -236,7 +236,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
     dut.clock.step()
   }
 
-  test("SimAxiMemory read") {
+  test("read") {
     val memorySize = 256
     simulate(new SimAxiMemory(memorySize)) { dut =>
       dut.io.writeRequest.valid.poke(false.B)
@@ -259,7 +259,7 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("SimAxiMemory write") {
+  test("write") {
     val memorySize = 0x1000
     simulate(new SimAxiMemory(memorySize)) { dut =>
       dut.io.writeRequest.valid.poke(false.B)

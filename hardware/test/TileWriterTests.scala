@@ -41,7 +41,7 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.flushData.bits.depth.poke(0.0f)
   }
 
-  test("TileWriter flush") {
+  test("flush") {
     simulate(new TileWriter) { dut =>
       dut.io.controlBus.regWrite.valid.poke(false.B)
       dut.io.flushData.valid.poke(false.B)
@@ -87,7 +87,7 @@ class TileWriterTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TileWriter clear") {
+  test("clear") {
     simulate(new TileWriter) { dut =>
       dut.io.controlBus.regWrite.valid.poke(false.B)
       dut.io.flushData.valid.poke(false.B)

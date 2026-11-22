@@ -44,7 +44,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
   // Should equal rawLatency in FetchSelectStage.scala.
   val backToBackLatency = 4
 
-  test("FetchSelectStage single thread") {
+  test("single thread") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThread = startJob(dut, 0x1000.U)
       // Issue a few more fetch requests
@@ -65,7 +65,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
   }
 
   // Ensure everything works properly when the unit is entirely idle.
-  test("FetchSelectStage no threads ready") {
+  test("no threads ready") {
     simulate(new FetchSelectStage()) { dut =>
       dut.io.startJob.valid.poke(false.B)
       for (_ <- 0 until 5) {
@@ -75,7 +75,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage rollback") {
+  test("rollback") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThread = startJob(dut, 0x2000.U)
 
@@ -116,7 +116,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage icache miss") {
+  test("icache miss") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThread = startJob(dut, 0x1000.U)
 
@@ -164,7 +164,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage near miss") {
+  test("near miss") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThread = startJob(dut, 0x1000.U)
 
@@ -208,7 +208,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage io wait") {
+  test("io wait") {
     // Similar to icache miss, except uses ioWait
     simulate(new FetchSelectStage()) { dut =>
       var pc2 = 0x1000
@@ -284,7 +284,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage halt") {
+  test("halt") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThread = startJob(dut, 0x1000.U)
 
@@ -315,7 +315,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage multiple thread") {
+  test("multiple thread") {
     simulate(new FetchSelectStage()) { dut =>
       // Start jobs on 4 threads
       val numThreads = 8
@@ -344,7 +344,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage halt does not affect other threads") {
+  test("halt does not affect other threads") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThreads = (0 until 8).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
 
@@ -371,7 +371,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("FetchSelectStage one thread stalled does not block others") {
+  test("one thread stalled does not block others") {
     simulate(new FetchSelectStage()) { dut =>
       val allocatedThreads = (0 until 8).map(i => startJob(dut, (0x1000 + i * 0x1000).U))
 
@@ -415,7 +415,7 @@ class FetchSelectTests extends AnyFunSuite with ChiselSim {
     }
    }
 
-  test("FetchSelectStage startJob deasserts ready when no threads are free") {
+  test("startJob deasserts ready when no threads are free") {
     simulate(new FetchSelectStage()) { dut =>
       // Start jobs on all available threads
       val numThreads = 8

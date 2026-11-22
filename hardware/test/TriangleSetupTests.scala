@@ -222,7 +222,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     InputParams(vertices, tileLeft, tileTop, varyings)
   }
 
-  test("TriangleSetup basic operation") {
+  test("basic operation") {
     simulate(new TriangleSetup) { dut =>
       runSetup(dut,
         InputParams(
@@ -234,7 +234,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TriangleSetup with varying parameters") {
+  test("with varying parameters") {
     simulate(new TriangleSetup) { dut =>
       runSetup(dut,
         InputParams(
@@ -246,7 +246,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TriangleSetup backface culling") {
+  test("backface culling") {
     simulate(new TriangleSetup) { dut =>
       val varyingCoeffs = Array.fill(3)(Float.NaN)
 
@@ -264,7 +264,7 @@ class TriangleSetupTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TriangleSetup stress") {
+  test("stress") {
     simulate(new TriangleSetup) { dut =>
       val varyingCoeffs = Array.fill(64)(Float.NaN)
       val activeTriangleIds = scala.collection.mutable.Set[Int]()

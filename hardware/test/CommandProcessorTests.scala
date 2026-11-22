@@ -117,7 +117,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
   }
 
   // Exercises conditional branches, local memory loads/stores, forwarding, compares.
-  test("CommandProcessor bubble sort") {
+  test("bubble sort") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
@@ -173,7 +173,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
   }
 
   // Exercises subroutine calls, memory access, arithmetic
-  test("CommandProcessor fibonacci") {
+  test("fibonacci") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
@@ -214,7 +214,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     }
   }
 
-  test("CommandProcessor bit reverse") {
+  test("bit reverse") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
@@ -239,7 +239,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     }
   }
 
-  test("CommandProcessor DMA transfer") {
+  test("DMA transfer") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
@@ -264,7 +264,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     }
   }
 
-  test("CommandProcessor fence") {
+  test("fence") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
@@ -292,7 +292,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     }
   }
 
-  test("CommandProcessor pipeline flags") {
+  test("pipeline flags") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """

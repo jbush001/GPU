@@ -58,7 +58,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     dut.io.writeback.valid.poke(false.B)
   }
 
-  test("InstructionDecodeStage r_instruction vector") {
+  test("r_instruction vector") {
       simulate(new InstructionDecodeStage()) { dut =>
 
       // Write a few GPRs
@@ -94,7 +94,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage masked vector write") {
+  test("masked vector write") {
     simulate(new InstructionDecodeStage()) { dut =>
       // Write default vector value
       writeVector(dut, 1, VECTOR_GPR_BASE, Seq.fill(cfg.shaderVectorLanes)(0xffff))
@@ -122,7 +122,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage thread reset") {
+  test("thread reset") {
     simulate(new InstructionDecodeStage()) { dut =>
       // Write a default vector value
       writeVector(dut, 1, VECTOR_GPR_BASE, Seq.fill(cfg.shaderVectorLanes)(0xffff))
@@ -152,7 +152,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage exec mask register read back") {
+  test("exec mask register read back") {
     simulate(new InstructionDecodeStage()) { dut =>
       // Write exec mask
       writeScalar(dut, 1, EXEC_MASK, "b0101010101010101".U.litValue.toInt)
@@ -172,7 +172,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage scalar") {
+  test("scalar") {
     simulate(new InstructionDecodeStage()) { dut =>
 
       writeScalar(dut, 1, 2, 1234)
@@ -200,7 +200,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
   }
 
   // The destination is also operand1 for constant instructions
-  test("InstructionDecodeStage loadConstant") {
+  test("loadConstant") {
     simulate(new InstructionDecodeStage()) { dut =>
 
       writeScalar(dut, 1, 5, 1234)
@@ -223,7 +223,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage constants") {
+  test("constants") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1)
@@ -273,7 +273,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage read vector lane id") {
+  test("read vector lane id") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1)
@@ -291,7 +291,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage writeback multi-thread") {
+  test("writeback multi-thread") {
     simulate(new InstructionDecodeStage()) { dut =>
       writeScalar(dut, 0, 2, 111)
       writeScalar(dut, 1, 2, 222)
@@ -315,7 +315,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage exec mask multi-thread") {
+  test("exec mask multi-thread") {
     simulate(new InstructionDecodeStage()) { dut =>
       writeScalar(dut, 0, EXEC_MASK, "b01010101".U.litValue.toInt)
       writeScalar(dut, 1, EXEC_MASK, "b10101010".U.litValue.toInt)
@@ -335,7 +335,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage hasWriteback") {
+  test("hasWriteback") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1)
@@ -351,7 +351,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage read shader reg ready") {
+  test("read shader reg ready") {
     simulate(new InstructionDecodeStage()) { dut =>
 
       dut.io.fetchedInstruction.valid.poke(true.B)
@@ -379,7 +379,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage read shader reg not ready") {
+  test("read shader reg not ready") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.fetchedInstruction.valid.poke(true.B)
       dut.io.fetchedInstruction.bits.thread.poke(1)
@@ -403,7 +403,7 @@ class InstructionDecodeTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionDecodeStage write shader reg") {
+  test("write shader reg") {
     simulate(new InstructionDecodeStage()) { dut =>
       dut.io.writeback.valid.poke(true.B)
       dut.io.writeback.bits.thread.poke(1)

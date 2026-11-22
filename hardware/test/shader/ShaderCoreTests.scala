@@ -93,7 +93,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ShaderCore basic arithmetic") {
+  test("basic arithmetic") {
     val program = new ShaderAssembler()
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .kInst(OpCode.LoadLo, 1, 0x5678)
@@ -123,7 +123,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   }
 
   // Stress test, tests multiple threads, branching, exec mask.
-  test("ShaderCore gcd") {
+  test("gcd") {
     val DEBUG = false
 
     // Euclidean algorithm to compute GCD of two numbers. This has
@@ -269,7 +269,7 @@ class ShaderCoreTests extends AnyFunSuite with ChiselSim {
   }
 
   // Simulate texture fetch
-  test("ShaderCore register read wait") {
+  test("register read wait") {
     val program = new ShaderAssembler()
       .kInst(OpCode.LoadHi, 1, 0x1234)
       .move(128, SpecialReg.TexelR)

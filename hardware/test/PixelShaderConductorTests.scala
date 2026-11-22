@@ -113,7 +113,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.writeVaryingCoeff.valid.poke(false)
   }
 
-  test("PixelShaderConductor basic operation") {
+  test("basic operation") {
     simulate(new PixelShaderConductor) { dut =>
       // Fill
       val shaderAddress = 0x1234567
@@ -174,7 +174,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
   }
 
-  test("PixelShaderConductor drain") {
+  test("drain") {
     simulate(new PixelShaderConductor) { dut =>
       dut.io.startJob.ready.poke(true)
 
@@ -207,7 +207,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
   }
 
-  test("PixelShaderConductor drains jobs in source order") {
+  test("drains jobs in source order") {
     simulate(new PixelShaderConductor) { dut =>
       dut.io.startJob.ready.poke(true)
 
@@ -271,7 +271,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   // Checks that job states are handled properly.
   // TODO: need to perform register accesses to ensure writes
   // and reads are propagaged.
-  test("PixelShaderConductor stress") {
+  test("stress") {
     simulate(new PixelShaderConductor) { dut =>
       val rng = new Random(42)
 
@@ -359,7 +359,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
   }
 
-  test("PixelShaderConductor texture fetch") {
+  test("texture fetch") {
     simulate(new PixelShaderConductor) { dut =>
       // Start a job
       for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
@@ -474,7 +474,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
 
   // Edge case: a read finishes the same cycle a read is attempted. Ensure
   // we send the result.
-  test("PixelShaderConductor texture fetch read bypass") {
+  test("texture fetch read bypass") {
     simulate(new PixelShaderConductor) { dut =>
       // Start a job
       for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
@@ -531,7 +531,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     }
   }
 
-  test("PixelShaderConductor read varying") {
+  test("read varying") {
     simulate(new PixelShaderConductor) { dut =>
       // Write varyings (triangles/varying coefficients)
       val coeffs = Seq(

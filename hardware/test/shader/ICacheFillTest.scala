@@ -26,7 +26,7 @@ import scala.util.Random
 class ICacheFillTests extends AnyFunSuite with ChiselSim {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("ICacheFillUnit single miss") {
+  test("single miss") {
     simulate(new ICacheFillUnit()) { dut =>
       val baseAddress = 0x1000
       dut.io.fillRequest.valid.poke(true.B)
@@ -81,7 +81,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
   }
 
   // Miss on a cache line while there is already a burst in progress.
-  test("ICacheFillUnit duplicate miss") {
+  test("duplicate miss") {
     simulate(new ICacheFillUnit()) { dut =>
       val baseAddress = 0x1000
       dut.io.fillRequest.valid.poke(true.B)
@@ -139,7 +139,7 @@ class ICacheFillTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ICacheFillUnit stress") {
+  test("stress") {
     // 32 cache lines. We use 8 threads, so there is a 25% change of a collision each miss.
     val memorySize = 2048
 

@@ -203,7 +203,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     this.flush(dut, RenderBufferId.Depth)
   }
 
-  test("TileBuffer alpha blend") {
+  test("alpha blend") {
    simulate(new TileBuffer()) { dut =>
       dut.io.colorQuad.valid.poke(false)
       dut.io.colorQuad.bits.mask.poke(0)
@@ -239,7 +239,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TileBuffer depth check disable") {
+  test("depth check disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
       dut.io.colorQuad.valid.poke(false)
@@ -284,7 +284,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TileBuffer depth write disable") {
+  test("depth write disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
 
@@ -321,7 +321,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TileBuffer alpha blend disable") {
+  test("alpha blend disable") {
     simulate(new TileBuffer()) { dut =>
       this.clearBuffers(dut)
       dut.io.colorQuad.valid.poke(false)
@@ -347,7 +347,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("TileBuffer stress") {
+  test("stress") {
     simulate(new TileBuffer()) { dut =>
       val reference = new TileBufferReference
 

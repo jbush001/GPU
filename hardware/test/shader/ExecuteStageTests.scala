@@ -31,7 +31,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
 
   // This also validates that the latency of the pipeline is correct, that the
   // result only shows up in the proper cycle.
-  test("ExecuteStage fp multiply") {
+  test("fp multiply") {
     simulate(new ExecuteStage) { dut =>
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Mulf)
@@ -57,7 +57,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage fp add") {
+  test("fp add") {
     simulate(new ExecuteStage) { dut =>
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Addf)
@@ -84,7 +84,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
   }
 
   // Subtract just sets a flag on the add pipeline. Ensure this is handled properly.
-  test("ExecuteStage fp subtract") {
+  test("fp subtract") {
     simulate(new ExecuteStage) { dut =>
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Subf)
@@ -101,7 +101,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage reciprocal") {
+  test("reciprocal") {
     simulate(new ExecuteStage) { dut =>
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Recip)
@@ -119,7 +119,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage single cycle ops") {
+  test("single cycle ops") {
     simulate(new ExecuteStage) { dut =>
       type TestVector = (OpCode.Type, Long, Long, Long)
       val testVectors: Seq[TestVector] = Seq(
@@ -183,7 +183,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage loadconst") {
+  test("loadconst") {
     simulate(new ExecuteStage) { dut =>
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.LoadLo)
@@ -205,7 +205,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage setxxx") {
+  test("setxxx") {
     simulate(new ExecuteStage) { dut =>
       // opcode, operand1, operand2, expected result
       type TestVector = (OpCode.Type, Long, Long, Boolean)
@@ -260,7 +260,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage halt") {
+  test("halt") {
     simulate(new ExecuteStage) { dut =>
       dut.io.decodedInstruction.valid.poke(true.B)
       dut.io.decodedInstruction.bits.meta.opcode.poke(OpCode.Halt)
@@ -301,7 +301,7 @@ class ExecuteStageTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("ExecuteStage branch") {
+  test("branch") {
     simulate(new ExecuteStage) { dut =>
       testBranch(dut, OpCode.Bnz, 1, 0x20, true)
       testBranch(dut, OpCode.Bnz, 0, 0x20, false)

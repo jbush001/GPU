@@ -22,7 +22,7 @@ import org.scalatest.funsuite.AnyFunSuite
 class VertexFetcherTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("VertexFetcher basic operation") {
+  test("basic operation") {
     simulate(new VertexFetcher) { dut =>
       dut.clock.step()
     }

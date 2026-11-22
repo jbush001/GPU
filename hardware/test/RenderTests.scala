@@ -73,7 +73,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("render texture") {
+  test("texture") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
       asm
@@ -119,7 +119,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     }
   }
 
-  test("render intersecting triangles") {
+  test("intersecting triangles") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
       asm

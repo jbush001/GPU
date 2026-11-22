@@ -5,7 +5,9 @@ set -e
 # from the test harness are properly sequenced.
 export VERILATOR_FLAGS="${VERILATOR_FLAGS} --autoflush"
 
+cli_args=()
 scala_args=()
+filters=()
 
 for arg in "$@"; do
   case "$arg" in
@@ -13,13 +15,20 @@ for arg in "$@"; do
       scala_args+=("-DemitVcd=1" "-DfirtoolOpts=-g")
       ;;
     *)
-      scala_args+=("-z" "$arg")
+      filters+=("$arg")
       ;;
   esac
 done
 
+if [[ ${#filters[@]} -gt 0 ]]; then
+  cli_args+=("--test-only" "*${filters[0]}*")
+  for f in "${filters[@]:1}"; do
+    scala_args+=("-z" "$f")
+  done
+fi
+
 if [[ ${#scala_args[@]} -gt 0 ]]; then
-  scala-cli test hardware -- "${scala_args[@]}"
+  scala-cli test hardware "${cli_args[@]}" -- "${scala_args[@]}"
 else
-  scala-cli test hardware
+  scala-cli test hardware "${cli_args[@]}"
 fi

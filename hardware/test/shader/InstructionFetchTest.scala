@@ -53,7 +53,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     dut.clock.step(2)
   }
 
-  test("InstructionFetchStage basic operation") {
+  test("basic operation") {
     simulate(new InstructionFetchStage()) { dut =>
       val address = 0x1000
       simulateCacheMiss(dut, address)
@@ -89,7 +89,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionFetchStage near miss") {
+  test("near miss") {
     simulate(new InstructionFetchStage()) { dut =>
       val address = 0x1000
 
@@ -122,7 +122,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionFetchStage fill complete on first fetch cycle") {
+  test("fill complete on first fetch cycle") {
     simulate(new InstructionFetchStage()) { dut =>
       val address = 0x1000
 
@@ -157,7 +157,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionFetchStage miss tag mismatch") {
+  test("miss tag mismatch") {
     simulate(new InstructionFetchStage()) { dut =>
       val address = 0x1000
 
@@ -176,7 +176,7 @@ class InstructionFetchTests extends AnyFunSuite with ChiselSim {
     }
   }
 
-  test("InstructionFetchStage invalidate ICache") {
+  test("invalidate ICache") {
     simulate(new InstructionFetchStage()) { dut =>
       val address = 0x1000
 
