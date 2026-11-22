@@ -175,8 +175,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
           fail("Rendered image does not match reference image")
         }
       case None =>
-        println(s"No reference image available ${getReferenceImageName()}, writing output image.")
         writeOutputImage("output.png", 128, imageData)
+        fail(s"No reference image available ${getReferenceImageName()}, writing output image.")
     }
   }
 
