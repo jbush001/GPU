@@ -77,6 +77,9 @@ that are memory-mapped into the command processor address space.
 | fffffe02 |  w  | Length of DMA transfer (words). Limited to 16                    |
 | fffffe03 |  r  | DMA Status                                                       |
 | fffffe04 |  r  | DMA data                                                         |
+| fffffe05 |  r  | Pipeline status flags                                            |
+| fffffe06 |  r  | Fence counter                                                    |
+| fffffe07 |  w  | Send interrupt to host                                           |
 | ffffff00 |  w  | Clear color value (ARGB)                                         |
 | ffffff01 |  w  | Clear depth value (Float32)                                      |
 | ffffff02 |  w  | Configuration flags for tile writing                             |
@@ -90,6 +93,10 @@ that are memory-mapped into the command processor address space.
 | ffffff0b |  w  | Tile output stride: bytes between the start of two adjacent rows |
 | ffffff0c |  w  | Trigger register to begin writing tile                           |
 | ffffff0d |  w  | Trigger register to begin clearing tile                          |
+| ffffff0e |  w  | Push vertex parameter memory address to triangle setup           |
+| ffffff0f |  w  | Set fence flag on next triangle                                  |
+| ffffff20 |  w  | Start of attribute arrays...                                     |
+
 
 Direct memory access (DMA) allows the Command Processor to fetch command
 packets and other data from host memory without stalling the CPU. To
