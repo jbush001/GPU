@@ -19,13 +19,14 @@ package gpu
 import chisel3._
 import chisel3.util._
 
-/** AXI bus interface, through which the GPU reads and writes system memory.
-  * This is used to transfer commands, texture data, and rendered pixels.
+/** AXI 4 high speed bus interface. The GPU is a manager that reads and writes
+  * system memory. This is used to transfer commands, texture data, and
+  * rendered pixels.
   *
   * @see AMBA AXI Protocol Specification, Issue L
   * [[https://developer.arm.com/documentation/ihi0022/latest]]
   */
-class AxiBus(implicit cfg: GpuConfig) extends Bundle {
+class Axi4IO(implicit cfg: GpuConfig) extends Bundle {
   // Write request channel (B1.1.1)
   val writeRequest = Irrevocable(new Bundle {
     val address = UInt(cfg.busAddressBits.W) // AWADDR Address to write to
@@ -52,3 +53,27 @@ class AxiBus(implicit cfg: GpuConfig) extends Bundle {
     val data = UInt(cfg.busDataBits.W) // RDATA Data read
   }))
 }
+
+/** The GPU is a subordinate on this bus, which allows the host to read and
+  * write memory mapped control registers.
+  */
+class Axi4LiteIO extends Bundle {
+  val writeRequest = Irrevocable(new Bundle {
+    val address = UInt(32.W) // AWADDR (e.g., 12 bits)
+  })
+
+  val writeData = Irrevocable(new Bundle {
+    val data = UInt(32.W) // WDATA (32-bit CSRs)
+  })
+
+  val writeResponse = Flipped(Irrevocable(new Bundle {})) // BVALID
+
+  val readRequest = Irrevocable(new Bundle {
+    val address = UInt(32.W) // ARADDR
+  })
+
+  val readData = Flipped(Irrevocable(new Bundle {
+    val data = UInt(32.W) // RDATA
+  }))
+}
+

@@ -79,7 +79,10 @@ that are memory-mapped into the command processor address space.
 | fffffe04 |  r  | DMA data                                                         |
 | fffffe05 |  r  | Pipeline status flags                                            |
 | fffffe06 |  r  | Fence counter                                                    |
-| fffffe07 |  w  | Send interrupt to host                                           |
+| fffffff0 | rw  | Scratchpad 0                                                     |
+| fffffff1 | rw  | Scratchpad 1                                                     |
+| fffffff2 | rw  | Scratchpad 2                                                     |
+| fffffff3 | rw  | Scratchpad 3                                                     |
 | ffffff00 |  w  | Clear color value (ARGB)                                         |
 | ffffff01 |  w  | Clear depth value (Float32)                                      |
 | ffffff02 |  w  | Configuration flags for tile writing                             |

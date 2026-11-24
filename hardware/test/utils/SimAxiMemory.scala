@@ -35,7 +35,7 @@ class DirectAccessPort(implicit cfg: GpuConfig) extends Bundle {
   * memorySize is in busDataWidth words (expected to be 64-bits)
   */
 class SimAxiMemory(memorySize: Int)(implicit cfg: GpuConfig) extends Module {
-  val io = IO(Flipped(new AxiBus))
+  val io = IO(Flipped(new Axi4IO))
 
   val dap = IO(new DirectAccessPort)
 

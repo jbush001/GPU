@@ -82,6 +82,14 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val tileWriterDone = Input(Bool())
     val triangleSetupReady = Input(Bool())
     val fenceEvent = Input(Bool())
+
+    // To HostInterface
+    val readScratchpadAddr = Output(UInt(2.W))
+    val readScratchpadData = Input(UInt(32.W))
+    val writeScratchpad = Valid(new Bundle {
+      val addr = UInt(2.W)
+      val data = UInt(32.W)
+    })
   })
 
   object RegAddresses {
@@ -92,6 +100,10 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val DmaData = 0xfffffe04L.U
     val PipelineFlags = 0xfffffe05L.U
     val FenceCounter = 0xfffffe06L.U
+    val Scratchpad0 = 0xfffffff0L.U
+    val Scratchpad1 = 0xfffffff4L.U
+    val Scratchpad2 = 0xfffffff8L.U
+    val Scratchpad3 = 0xfffffffcL.U
   }
 
   val pipeline = Module(new CpPipeline)
@@ -112,6 +124,10 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   io.controlBus.regWrite.bits.data := pipeline.io.mmio.regWrite.bits.data
   io.controlBus.regWrite.valid := false.B
   dma.io.startTransfer.valid := false.B
+  io.writeScratchpad.valid := false.B
+  io.writeScratchpad.bits.addr := (mmioAddr(1, 0))
+  io.writeScratchpad.bits.data := pipeline.io.mmio.regWrite.bits.data
+
   when (pipeline.io.mmio.regWrite.valid) {
     // MMIO writes
     when (mmioAddr(31, 8) === 0xffffff.U) {
@@ -129,6 +145,9 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
           // The length is hardwired above.
           dma.io.startTransfer.valid := true.B
         }
+        is(RegAddresses.Scratchpad0, RegAddresses.Scratchpad1, RegAddresses.Scratchpad2, RegAddresses.Scratchpad3) {
+          io.writeScratchpad.valid := true.B
+        }
       }
     }
   }
@@ -138,6 +157,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     fenceCounter := fenceCounter + 1.U
   }
 
+  io.readScratchpadAddr := mmioAddr(1, 0)
   val mmioReadResponseReg = Reg(UInt(32.W))
   dma.io.dmaData.ready := false.B
   when (pipeline.io.mmio.regReadAddr.valid) {
@@ -157,6 +177,9 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
       }
       is (RegAddresses.FenceCounter) {
         mmioReadResponseReg := fenceCounter
+      }
+      is (RegAddresses.Scratchpad0, RegAddresses.Scratchpad1, RegAddresses.Scratchpad2, RegAddresses.Scratchpad3) {
+        mmioReadResponseReg := io.readScratchpadData
       }
     }
   }

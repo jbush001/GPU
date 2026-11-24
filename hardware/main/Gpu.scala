@@ -26,7 +26,8 @@ import gpu.shader._
   */
 class Gpu(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    val axiBus = new AxiBus
+    val axiManager = new Axi4IO
+    val axiSubordinate = Flipped(new Axi4LiteIO)
 
     val triangleSetupReady = Output(Bool())
     val writeVertexParam = Flipped(Valid(new Bundle{
@@ -52,6 +53,10 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val tileWriter              = Module(new TileWriter)
   val floatArrayToColor       = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
+  val hostInterface           = Module(new HostInterface)
+
+  // Placeholder
+  hostInterface.io.readScratchpadAddr := 0.U
 
   io.triangleFinished <> pixelShaderConductor.io.triangleFinished
   io.fence := pixelShaderConductor.io.fence
@@ -62,11 +67,13 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   triangleSetup.io.readValue := vertexParameterMem.io.readValue1
   triangleSetup.io.triangleFinished <> pixelShaderConductor.io.triangleFinished
 
-  // XXX placeholder
+  // XXX placeholder. This will be used by the vertex shader.
   vertexParameterMem.io.readAddr0.valid := false.B
   vertexParameterMem.io.readAddr0.bits := DontCare
   vertexParameterMem.io.write1.valid := false.B
   vertexParameterMem.io.write1.bits := DontCare
+
+  hostInterface.io.axiSubordinate <> io.axiSubordinate
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
@@ -80,7 +87,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   pixelShaderConductor.io.shadedQuad <> floatArrayToColor.io.shadedQuad
   floatArrayToColor.io.colorQuad <> tileBuffer.io.colorQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
-  memoryArbiter.io.axiBus <> io.axiBus
+  memoryArbiter.io.axiBus <> io.axiManager
   shaderCore.io.invalidateICache := false.B
 
   tileBuffer.io.flushData <> tileWriter.io.flushData

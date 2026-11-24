@@ -72,7 +72,7 @@ class MemoryArbiter(
   val io = IO(new Bundle {
     val readPorts = Vec(numReadPorts, Flipped(new MemReadPort))
     val writePorts = Vec(numWritePorts, Flipped(new MemWritePort))
-    val axiBus = new AxiBus()(cfg)
+    val axiBus = new Axi4IO()(cfg)
   })
 
   //

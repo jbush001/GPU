@@ -34,6 +34,8 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
       val value = Vec(cfg.shaderVectorLanes, UInt(32.W))
     }))
 
+    val axiSubordinate = Flipped(new Axi4LiteIO)
+
     val controlBus = Flipped(new ControlBus)
 
     val complete = Output(Bool())
@@ -45,6 +47,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   val gpu = Module(new Gpu)
   val memory = Module(new SimAxiMemory(16384))
 
+  io.axiSubordinate <> gpu.io.axiSubordinate
   io.fence := gpu.io.fence
   io.tileWriterDone := gpu.io.tileWriterDone
   io.triangleFinished <> gpu.io.triangleFinished
@@ -66,7 +69,7 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   gpu.io.writeVertexParam <> io.writeVertexParam
   gpu.io.controlBus <> io.controlBus
 
-  gpu.io.axiBus <> memory.io
+  gpu.io.axiManager <> memory.io
   memory.dap <> io.dap
 }
 
