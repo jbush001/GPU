@@ -74,6 +74,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   vertexParameterMem.io.write1.bits := DontCare
 
   hostInterface.io.axiSubordinate <> io.axiSubordinate
+  hostInterface.io.writeScratchpad.valid := false.B
+  hostInterface.io.writeScratchpad.bits := DontCare
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
   depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
