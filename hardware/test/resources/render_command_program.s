@@ -25,6 +25,8 @@
 ;   0  NOP
 ;   2  FLUSH_TILE: word0[31:8] = destination stride in bytes
 ;                  word1 = destination address (low 32 bits)
+;   3  LOAD_SHADER_STATE: word0[31:8] = number of varyings
+;                         word1 = fragment shader address (low 32 bits)
 ;
 ; Unknown packet types are skipped.
 ;
@@ -68,10 +70,15 @@ wait_dma:       lw r5, 3(r1)                ; DMA status
                 ; Dispatch on packet type (low byte of word 0)
                 andi r4, r5, 255
                 movei r7, 2                 ; FLUSH_TILE
-                bne r4, r7, not_flush
+                bne r4, r7, check_load_shader
                 jal r7, flush_tile
                 b next_packet
-not_flush:
+check_load_shader:
+                movei r7, 3                 ; LOAD_SHADER_STATE
+                bne r4, r7, not_load_shader
+                jal r7, load_shader_state
+                b next_packet
+not_load_shader:
 
 next_packet:    addi r3, r3, 8
                 sw r3, 8(r1)                ; Scratchpad0: advance begin
@@ -89,4 +96,14 @@ wait_flush:     lw r5, 5(r1)                ; Pipeline flags
                 nop
                 andi r5, r5, 2              ; Bit 1 is tile writer done
                 bz r5, wait_flush
+                jalr r4, r7
+
+; Load fragment shader address and varying count.
+;   r5 = packet word 0, r6 = packet word 1
+load_shader_state:
+                loadi r4, 0xffffff00        ; Control registers
+                sw r6, 4(r4)                ; FragmentShaderAddrL
+                sw r0, 5(r4)                ; FragmentShaderAddrH
+                srli r5, r5, 8
+                sw r5, 6(r4)                ; NumVaryings
                 jalr r4, r7

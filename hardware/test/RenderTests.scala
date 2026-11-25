@@ -78,6 +78,11 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   val commandProgram = assembleCommandProgram()
 
+  object CommandId {
+    val Flush = 2
+    val LoadShaderState = 3
+  }
+
   test("texture") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
@@ -120,7 +125,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         Seq(1.0f, 0.0f)
       )
 
-      loadCommandProgram(dut, commandProgram)
       runRenderTest(dut, fragmentShaderBin, vertices, varyings, Seq(0, 1, 2, 0, 2, 3))
     }
   }
@@ -157,7 +161,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         Seq(0.9f, 0.0f),
       )
 
-      loadCommandProgram(dut, commandProgram)
       runRenderTest(dut, fragmentShaderBin, vertices, varyings, Seq(0, 1, 2, 3, 4, 5))
     }
   }
@@ -194,9 +197,10 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     // Copy shader into memory
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
-    writeControlReg(dut, ControlRegisterIndex.NumVaryings, varyings.head.length)
-    writeControlReg(dut, ControlRegisterIndex.FragmentShaderAddrL, 0) // XXX hardcoded for this test.
-    writeControlReg(dut, ControlRegisterIndex.FragmentShaderAddrH, 0) // XXX hardcoded for this test.
+    loadCommandProgram(dut, commandProgram)
+
+    sendCommand(dut, CommandId.LoadShaderState, varyings.head.length, 0) // Shader address is 0 for this test.
+    waitForCommandsComplete(dut)
 
     val fbSize = 128
     val framebufferAddress = 0x1000
@@ -232,7 +236,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         val tileAddress = framebufferAddress +
           ((fbSize * cfg.tileSizePixels * tileRow) +
             (cfg.tileSizePixels * tileColumn)) * 4
-        sendCommand(dut, 2, fbSize * 4, tileAddress)
+        sendCommand(dut, CommandId.Flush, fbSize * 4, tileAddress)
         waitForCommandsComplete(dut)
       }
     }
