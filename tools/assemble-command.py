@@ -33,7 +33,7 @@ FMT_LOAD = 2 # <mnenomic> r0, offset(r1)
 FMT_STORE = 3 # <mnenomic> r0, offset(r1)
 FMT_RI = 4  # <mnenomic> r0, num
 FMT_COND_BRANCH = 5  # <mnenomic> r0, r1, label
-FMT_COND_BRANCHI = 6  # <mnenomic> r0, imm, label
+FMT_ZERO_BRANCH = 6  # <mnemonic> r0, label
 FMT_JAL = 7  # <mnenomic> r0, label
 FMT_JALR = 8  # <mnenomic> r0, r1
 
@@ -49,6 +49,8 @@ INSTRS = {
     'srl': (7, FMT_RRR),
     'beq': (8, FMT_COND_BRANCH),
     'bne': (9, FMT_COND_BRANCH),
+    'bz': (10, FMT_ZERO_BRANCH),
+    'bnz': (11, FMT_ZERO_BRANCH),
     'andi': (16, FMT_RRI),
     'ori': (17, FMT_RRI),
     'xori': (18, FMT_RRI),
@@ -57,8 +59,6 @@ INSTRS = {
     'sltui': (21, FMT_RRI),
     'slli': (22, FMT_RRI),
     'srli': (23, FMT_RRI),
-    'beqi': (24, FMT_COND_BRANCHI),
-    'bnei': (25, FMT_COND_BRANCHI),
     'lw': (26, FMT_LOAD),
     'sw': (27, FMT_STORE),
     'movehi': (28, FMT_RRI),
@@ -203,20 +203,6 @@ class Assembler:
             target = next_token()
             self.add_branch_fixup(target, lineno)
             self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0)
-        elif lookahead == 'bz':
-            # Branch if zero. This is a pseudo-instruction that expands to beq rs, r0, target
-            rs = parse_reg_operand(lineno, next_token())
-            match(',')
-            target = next_token()
-            self.add_branch_fixup(target, lineno)
-            self.emit_inst(lineno, INSTRS['beqi'][0], 0, rs, 0, 0)
-        elif lookahead == 'bnz':
-            # Branch if not zero. This is a pseudo-instruction that expands to bne rs, r0, target
-            rs = parse_reg_operand(lineno, next_token())
-            match(',')
-            target = next_token()
-            self.add_branch_fixup(target, lineno)
-            self.emit_inst(lineno, INSTRS['bnei'][0], 0, rs, 0, 0)
         else:
             if lookahead in INSTRS:
                 opcode, format = INSTRS[lookahead]
@@ -272,14 +258,12 @@ class Assembler:
                 target = next_token()
                 self.add_branch_fixup(target, lineno)
                 self.emit_inst(lineno, opcode, 0, rs1, rs2)
-            elif format == FMT_COND_BRANCHI:
+            elif format == FMT_ZERO_BRANCH:
                 rs1 = parse_reg_operand(lineno, next_token())
-                match(',')
-                imm = parse_imm_operand(lineno, next_token())
                 match(',')
                 target = next_token()
                 self.add_branch_fixup(target, lineno)
-                self.emit_inst(lineno, opcode, 0, rs1, 0, imm)
+                self.emit_inst(lineno, opcode, 0, rs1, 0)
             elif format == FMT_JAL:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')

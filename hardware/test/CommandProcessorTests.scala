@@ -99,7 +99,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
         dut.io.memReadPort.data.valid.poke(true)
 
         if (dut.io.memReadPort.data.ready.peek().litToBoolean) {
-          readBurstCount -= 2
+          readBurstCount -= 1
           readBurstAddress += 2
           if (readBurstCount == 0) {
             readBurstActive = false
@@ -246,8 +246,9 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |             clear r0 ; this is always 0
           |             loadi r1, 123
           |             sw r1, -512(r0)   ; DMA base address low
-          |             movei r2, 8
-          |             sw r2, -510(r0)   ; DMA length
+          |             movei r2, 3
+          |             sw r2, -510(r0)   ; Four 8-byte transfers minus one
+          |             movei r2, 8       ; Number of 32-bit words to read
           |read_loop:
           |wait_ready:  lw r1, -509(r0)   ; DMA status
           |             bz r1, wait_ready
@@ -319,4 +320,3 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     }
   }
 }
-

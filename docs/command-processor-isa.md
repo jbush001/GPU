@@ -33,6 +33,8 @@ containing an 18-bit signed immediate, three 3-bit register identifiers
 |    7   |   SRL rd, rs0, rs1    | Shift Right Logical                                      |
 |    8   |   BEQ rs1, rs2, offs  | Branch if Equal: `if (rs1 == rs2) PC = PC + imm`         |
 |    9   |   BNE rs1, rs2, offs  | Branch if Not Equal: `if (rs1 != rs2) PC = PC + imm`     |
+|   10   |   BZ rs1, offs        | Branch if `rs1` equals zero                              |
+|   11   |   BNZ rs1, offs       | Branch if `rs1` is nonzero                               |
 |   16   |   ANDI rd, rs0, rs1   | Bitwise AND immediate                                    |
 |   17   |   ORI rd, rs0, rs1    | Bitwise OR immediate                                     |
 |   18   |   XORI rd, rs0, rs1   | Bitwise XOR immediate                                    |
@@ -41,8 +43,6 @@ containing an 18-bit signed immediate, three 3-bit register identifiers
 |   21   |   SLTUI rd, rs0, rs1  | Set Less Than Unsigned immediate                         |
 |   22   |   SLLI rd, rs0, rs1   | Shift Left Logical immediate                             |
 |   23   |   SRLI rd, rs0, rs1   | Shift Right Logical immediate                            |
-|   24   |   BEQI rs1, rs2, offs | Branch if Equal immediate                                |
-|   25   |   BNEI rs1, rs2, offs | Branch if Not Equal immediate                            |
 |   26   |   LW rd, imm(rs0)     | Load Word.<sup>1</sup>                                   |
 |   27   |   SW rs1, imm(rs0)    | Store Word                                               |
 |   28   |   MOVEHI rd, rs1, imm | Move High Immediate `rd = (imm << 14) + (rs1 & 0x3fff)`  |
@@ -51,7 +51,6 @@ containing an 18-bit signed immediate, three 3-bit register identifiers
 |   31   |   JALR rd, rs1, offs  | Jump and Link Register: `rd = PC + 4; PC = rs1 + imm`    |
 
 1. Loads require a one-cycle delay slot before the loaded value can be safely used by a subsequent instruction.
-
 
 Pseudo operations are instruction forms supported by the assembler, but
 actually encoded as other instruction types.
@@ -62,8 +61,6 @@ actually encoded as other instruction types.
 | move rd, rs            | addi rd, rs, 0                |
 | clear rd               | xor rd, rd, rd                |
 | b target               | beq r0, r0, target            |
-| bz rs, target          | beqi r0, 0, target            |
-| bnz rs, target         | bnei r0, 0, target            |
 
 ## Memory-Mapped Control Registers
 
@@ -75,15 +72,15 @@ indices, not bytes.
 | -------- | --- | ---------------------------------------------------------------- |
 | fffffe00 |  w  | DMA Source Address (Lower 32-bits)                               |
 | fffffe01 |  w  | DMA Source Address (Upper 32-bits)                               |
-| fffffe02 |  w  | Length of DMA transfer (words). Limited to 16                    |
+| fffffe02 |  w  | DMA length in 8-byte transfers minus one (0-7)                  |
 | fffffe03 |  r  | DMA Status                                                       |
 | fffffe04 |  r  | DMA data                                                         |
 | fffffe05 |  r  | Pipeline status flags                                            |
 | fffffe06 |  r  | Fence counter                                                    |
-| fffffff0 | rw  | Scratchpad 0                                                     |
-| fffffff1 | rw  | Scratchpad 1                                                     |
-| fffffff2 | rw  | Scratchpad 2                                                     |
-| fffffff3 | rw  | Scratchpad 3                                                     |
+| fffffe08 | rw  | Scratchpad 0                                                     |
+| fffffe09 | rw  | Scratchpad 1                                                     |
+| fffffe0a | rw  | Scratchpad 2                                                     |
+| fffffe0b | rw  | Scratchpad 3                                                     |
 | ffffff00 |  w  | Clear color value (ARGB)                                         |
 | ffffff01 |  w  | Clear depth value (Float32)                                      |
 | ffffff02 |  w  | Configuration flags for tile writing                             |
@@ -105,9 +102,12 @@ Direct memory access (DMA) allows the Command Processor to fetch command
 packets and other data from host memory without stalling the CPU. To
 initiate a DMA transfer, the firmware writes the 64-bit host memory
 source address into the DmaAddrL and DmaAddrH registers, followed by
-the transfer size in 32-bit words. Writing the DMA length starts the
-transfer. Bit 0 of the DmaStatus register will be zero until the data is
-available. Once they are, the processor can read them a word at a time.
+the transfer length in 8-byte bus transfers minus one. For example, write 0
+for 8 bytes, or 15 for 128 bytes. The source address must be 8-byte aligned.
+Writing the DMA length starts the transfer. Bit 0 of the DmaStatus register
+will be zero until the next 32-bit word is available. The processor reads
+each 8-byte transfer as two 32-bit words, low word first, waiting for data
+availability before each read.
 
 It is illegal for the processor to start another transaction until it has
 fully read all words that were requested.

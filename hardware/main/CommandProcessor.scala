@@ -100,10 +100,10 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
     val DmaData = 0xfffffe04L.U
     val PipelineFlags = 0xfffffe05L.U
     val FenceCounter = 0xfffffe06L.U
-    val Scratchpad0 = 0xfffffff0L.U
-    val Scratchpad1 = 0xfffffff4L.U
-    val Scratchpad2 = 0xfffffff8L.U
-    val Scratchpad3 = 0xfffffffcL.U
+    val Scratchpad0 = 0xfffffe08L.U
+    val Scratchpad1 = 0xfffffe09L.U
+    val Scratchpad2 = 0xfffffe0aL.U
+    val Scratchpad3 = 0xfffffe0bL.U
   }
 
   val pipeline = Module(new CpPipeline)
@@ -113,9 +113,8 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val dmaStartAddressReg = RegInit(VecInit.fill(cfg.busAddressBits / 32)(0.U(32.W)))
   dma.io.startTransfer.bits.startAddress := dmaStartAddressReg.asUInt
 
-  // Since the length write kicks off the transfer, we can use the payload here.
-  // (note divide the length by half since the word has half the bus data width)
-  dma.io.startTransfer.bits.length := pipeline.io.mmio.regWrite.bits.data(4, 1)
+  // The register specifies the number of 64-bit bus transfers minus one.
+  dma.io.startTransfer.bits.length := pipeline.io.mmio.regWrite.bits.data(2, 0)
 
   pipeline.io.halt := io.halt
   pipeline.io.loadProgram := io.loadProgram
@@ -193,13 +192,13 @@ class CpDma(implicit cfg: GpuConfig) extends Module {
     val memReadPort = new MemReadPort
     val startTransfer = Flipped(Valid(new Bundle {
       val startAddress = UInt(cfg.busAddressBits.W)
-      val length = UInt(4.W)
+      val length = UInt(3.W)
     }))
 
     val dmaData = Decoupled(UInt(32.W))
   })
 
-  val readFifo = Queue(io.memReadPort.data, entries = 16)
+  val readFifo = Queue(io.memReadPort.data, entries = 8)
   val downsizer = Module(new DecoupledDownsizer)
   downsizer.io.wide <> readFifo
   io.dmaData <> downsizer.io.narrow
@@ -243,6 +242,8 @@ object CpOpcode {
   val SRL    = 7.U
   val BEQ    = 8.U
   val BNE    = 9.U
+  val BZ     = 10.U
+  val BNZ    = 11.U
   val ANDI   = 16.U
   val ORI    = 17.U
   val XORI   = 18.U
@@ -251,8 +252,6 @@ object CpOpcode {
   val SLTUI  = 21.U
   val SLLI   = 22.U
   val SRLI   = 23.U
-  val BEQI   = 24.U
-  val BNEI   = 25.U
   val LW     = 26.U
   val SW     = 27.U
   val MOVEHI = 28.U
@@ -349,7 +348,11 @@ class CpPipeline extends Module {
   val exOp2IsImm = (idInstructionReg.opcode === CpOpcode.ADDI
     || idInstructionReg.opcode === CpOpcode.SRLI
     || idInstructionReg.opcode === CpOpcode.SLLI
-    || idInstructionReg.opcode === CpOpcode.SLTUI)
+    || idInstructionReg.opcode === CpOpcode.SLTUI
+    || idInstructionReg.opcode === CpOpcode.SUBI
+    || idInstructionReg.opcode === CpOpcode.ANDI
+    || idInstructionReg.opcode === CpOpcode.ORI
+    || idInstructionReg.opcode === CpOpcode.XORI)
   val exAluOp2 = Mux(exOp2IsImm,
     idInstructionReg.imm.pad(dataWidth).asUInt,
     bypassOperand(idInstructionReg.rs2, idOperand2Reg)
@@ -375,13 +378,23 @@ class CpPipeline extends Module {
       is (CpOpcode.SLTU, CpOpcode.SLTUI) { exAluResult := (exAluOp1 < exAluOp2).asUInt }
       is (CpOpcode.SLL, CpOpcode.SLLI) { exAluResult := exAluOp1 << exAluOp2(4, 0) }
       is (CpOpcode.SRL, CpOpcode.SRLI) { exAluResult := exAluOp1 >> exAluOp2(4, 0) }
-      is (CpOpcode.BEQ, CpOpcode.BEQI) {
+      is (CpOpcode.BEQ) {
         when (exAluOp1 === exAluOp2) {
           branchTaken := true.B
         }
       }
-      is (CpOpcode.BNE, CpOpcode.BNEI) {
+      is (CpOpcode.BNE) {
         when (exAluOp1 =/= exAluOp2) {
+          branchTaken := true.B
+        }
+      }
+      is (CpOpcode.BZ) {
+        when (exAluOp1 === 0.U) {
+          branchTaken := true.B
+        }
+      }
+      is (CpOpcode.BNZ) {
+        when (exAluOp1 =/= 0.U) {
           branchTaken := true.B
         }
       }
@@ -423,9 +436,10 @@ class CpPipeline extends Module {
   when (exValidReg) {
     writebackIndex := exInstructionReg.rd
     switch(exInstructionReg.opcode) {
-      is(CpOpcode.ADD, CpOpcode.ADDI, CpOpcode.SUB, CpOpcode.AND,
-        CpOpcode.OR, CpOpcode.SRL, CpOpcode.SRLI, CpOpcode.MOVEHI,
-        CpOpcode.MOVEI, CpOpcode.XOR, CpOpcode.SLTU, CpOpcode.SLTUI,
+      is(CpOpcode.ADD, CpOpcode.ADDI, CpOpcode.SUB, CpOpcode.SUBI,
+        CpOpcode.AND, CpOpcode.ANDI, CpOpcode.OR, CpOpcode.ORI,
+        CpOpcode.SRL, CpOpcode.SRLI, CpOpcode.MOVEHI,
+        CpOpcode.MOVEI, CpOpcode.XOR, CpOpcode.XORI, CpOpcode.SLTU, CpOpcode.SLTUI,
         CpOpcode.SLL, CpOpcode.SLLI) {
         writebackData := exAluResultReg
         writebackValid := true.B
@@ -452,4 +466,3 @@ class CpPipeline extends Module {
     }
   }
 }
-

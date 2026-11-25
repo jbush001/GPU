@@ -148,7 +148,7 @@ object SimMemAccess {
   val bytesPerWord = 8
 
   def write(clock: Clock, dap: DirectAccessPort, address: Long, data: Seq[Long]): Unit = {
-    dap.writeEn.poke(true.B)
+    dap.writeEn.poke(true)
     for (i <- data.indices) {
       dap.writeAddress.poke((address + i * bytesPerWord))
 
@@ -157,19 +157,19 @@ object SimMemAccess {
       clock.step()
     }
 
-    dap.writeEn.poke(false.B)
+    dap.writeEn.poke(false)
   }
 
   def read(clock: Clock, dap: DirectAccessPort, address: Long, length: Int): Seq[Long] = {
     val result = scala.collection.mutable.ArrayBuffer[Long]()
-    dap.readEn.poke(true.B)
+    dap.readEn.poke(true)
     for (i <- 0 until length) {
       dap.readAddress.poke((address + i * bytesPerWord))
       clock.step()
       result += dap.readData.peek().litValue.toLong
     }
 
-    dap.readEn.poke(false.B)
+    dap.readEn.poke(false)
     result.toSeq
   }
 }
@@ -180,16 +180,16 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
   def readBurst(dut: SimAxiMemory, rng: scala.util.Random, address: Int, length: Int): Seq[Long] = {
     dut.io.readRequest.bits.address.poke(address)
     dut.io.readRequest.bits.length.poke((length - 1))
-    dut.io.readRequest.valid.poke(true.B)
+    dut.io.readRequest.valid.poke(true)
     var ready = rng.nextBoolean()
-    dut.io.readData.ready.poke(ready.B)
+      dut.io.readData.ready.poke(ready)
     dut.clock.step()
-    dut.io.readRequest.valid.poke(false.B)
+    dut.io.readRequest.valid.poke(false)
 
     val result = scala.collection.mutable.ArrayBuffer[Long]()
     while (result.length < length) {
       ready = rng.nextBoolean()
-      dut.io.readData.ready.poke(ready.B)
+      dut.io.readData.ready.poke(ready)
 
       if (ready && dut.io.readData.valid.peek().litToBoolean) {
         result += dut.io.readData.bits.data.peek().litValue.toLong
@@ -204,9 +204,9 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
   def writeBurst(dut: SimAxiMemory, rng: scala.util.Random, address: Int, data: Seq[Long]): Unit = {
     dut.io.writeRequest.bits.address.poke(address)
     dut.io.writeRequest.bits.length.poke((data.length - 1))
-    dut.io.writeRequest.valid.poke(true.B)
+    dut.io.writeRequest.valid.poke(true)
     dut.clock.step()
-    dut.io.writeRequest.valid.poke(false.B)
+    dut.io.writeRequest.valid.poke(false)
 
     var written = 0
     while (written < data.length) {
@@ -221,13 +221,13 @@ class SimAxiMemoryTest extends AnyFunSuite with ChiselSim {
       dut.clock.step()
     }
 
-    dut.io.writeData.valid.poke(false.B)
-    dut.io.writeResponse.ready.poke(false.B)
+    dut.io.writeData.valid.poke(false)
+    dut.io.writeResponse.ready.poke(false)
     for (_ <- 0 until rng.nextInt(3)) {
       dut.clock.step()
     }
 
-    dut.io.writeResponse.ready.poke(true.B)
+    dut.io.writeResponse.ready.poke(true)
 
     while (!dut.io.writeResponse.valid.peek().litToBoolean) {
       dut.clock.step()

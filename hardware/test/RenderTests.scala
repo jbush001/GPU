@@ -234,12 +234,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         val tileAddress = framebufferAddress +
           ((fbSize * cfg.tileSizePixels * tileRow) +
             (cfg.tileSizePixels * tileColumn)) * 4
-        writeControlReg(dut, ControlRegisterIndex.TileWriteAddressL, tileAddress)
-        writeControlReg(dut, ControlRegisterIndex.TileWriteAddressH, 0)
-        writeControlReg(dut, ControlRegisterIndex.TileWriteStride, fbSize * 4)
-        writeControlReg(dut, ControlRegisterIndex.TileWriteStart,
-          RenderBufferId.Color.litValue.toInt)
-        waitForTileWriter(dut)
+        sendCommand(dut, 2, fbSize * 4, tileAddress)
+        waitForCommandsComplete(dut)
         clearTileBuffer(dut)
       }
     }
@@ -333,15 +329,58 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     Files.readAllLines(hexPath).toArray.toSeq.map(_.toString).map(BigInt(_, 16))
   }
 
+  var commandBufferBase = 0x12000L
+  var commandBufferEnd = commandBufferBase
+
   def loadCommandProgram(dut: SimTop, program: Seq[BigInt]): Unit = {
     for (word <- program) {
       writeHostRegister(dut, GpuHostRegisters.LoadProgram, word.toLong)
     }
 
+    // Start with an empty command buffer: begin (Scratchpad0) == end (Scratchpad1)
+    commandBufferEnd = commandBufferBase
+    writeHostRegister(dut, GpuHostRegisters.Scratchpad0, commandBufferBase)
+    writeHostRegister(dut, GpuHostRegisters.Scratchpad1, commandBufferEnd)
+
     writeHostRegister(dut, GpuHostRegisters.HaltCommandProcessor, 0L)
   }
 
+  /** Append a packet to the command buffer and advance the end pointer so the
+    * command processor will consume it. 'payload' is the type-specific field
+    * in the upper 24 bits of the first word, 'argument' is the second word.
+    */
+  def sendCommand(dut: SimTop, commandType: Int, payload: Int, argument: Long): Unit = {
+    val word0 = (commandType & 0xff).toLong | ((payload.toLong & 0xffffff) << 8)
+    val word1 = argument & 0xffffffffL
+    SimMemAccess.write(dut.clock, dut.io.dap, commandBufferEnd, Seq(word0 | (word1 << 32)))
+    commandBufferEnd += 8
+    writeHostRegister(dut, GpuHostRegisters.Scratchpad1, commandBufferEnd)
+  }
+
+  /** The command processor advances the begin pointer (Scratchpad0) after it
+    * finishes each packet, so the buffer is drained when it reaches the end.
+    */
+  def waitForCommandsComplete(dut: SimTop): Unit = {
+    var cycles = 0
+    while (readHostRegister(dut, GpuHostRegisters.Scratchpad0) != commandBufferEnd) {
+      dut.clock.step()
+      cycles += 1
+    }
+  }
+
+  def readHostRegister(dut: SimTop, address: Long): Long = {
+    dut.io.axiSubordinate.readData.ready.poke(true)
+    dut.io.axiSubordinate.readRequest.valid.poke(true)
+    dut.io.axiSubordinate.readRequest.bits.address.poke(address)
+    dut.clock.step()
+    dut.io.axiSubordinate.readRequest.valid.poke(false)
+    val value = dut.io.axiSubordinate.readData.bits.data.peek().litValue.toLong
+    dut.clock.step()
+    value
+  }
+
   def writeHostRegister(dut: SimTop, address: Long, value: Long): Unit = {
+    dut.io.axiSubordinate.writeResponse.ready.poke(true)
     dut.io.axiSubordinate.writeRequest.valid.poke(true)
     dut.io.axiSubordinate.writeRequest.bits.address.poke(address)
     dut.io.axiSubordinate.writeData.valid.poke(true)
