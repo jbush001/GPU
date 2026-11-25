@@ -23,6 +23,8 @@ import java.awt.image.BufferedImage
 import java.io.FileInputStream
 import javax.imageio.ImageIO
 import org.scalatest.funsuite.AnyFunSuite
+import java.nio.file.{Files, Paths}
+import scala.sys.process.{Process, ProcessLogger}
 import shader._
 
 class SimTop(implicit val cfg: GpuConfig) extends Module {
@@ -76,6 +78,8 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
 class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
+  val commandProgram = assembleCommandProgram()
+
   test("texture") {
     simulate(new SimTop()) { dut =>
       val asm = new ShaderAssembler()
@@ -103,7 +107,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         .move(SpecialReg.OutputB, SpecialReg.TexelB) // blue
         .move(SpecialReg.OutputA, SpecialReg.Const1_0f) // alpha = 1.0
         .halt()
-      val programBytes = asm.finish()
+      val fragmentShaderBin = asm.finish()
 
       val vertices = Seq(
         (-0.375f, 0.921875f, 0.6f),
@@ -118,7 +122,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         Seq(1.0f, 0.0f)
       )
 
-      runRenderTest(dut, programBytes, vertices, varyings, Seq(0, 1, 2, 0, 2, 3))
+      loadCommandProgram(dut, commandProgram)
+      runRenderTest(dut, fragmentShaderBin, vertices, varyings, Seq(0, 1, 2, 0, 2, 3))
     }
   }
 
@@ -134,7 +139,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         .move(SpecialReg.OutputG, SpecialReg.Varying)
         .move(SpecialReg.OutputA, SpecialReg.Const1_0f)
         .halt()
-      val programBytes = asm.finish()
+      val fragmentShaderBin = asm.finish()
       val vertices = Seq(
         (-0.9375f, 0.625f, 0.1f),
         (0.0f, -0.9375f, 0.9f),
@@ -154,7 +159,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
         Seq(0.9f, 0.0f),
       )
 
-      runRenderTest(dut, programBytes, vertices, varyings, Seq(0, 1, 2, 3, 4, 5))
+      loadCommandProgram(dut, commandProgram)
+      runRenderTest(dut, fragmentShaderBin, vertices, varyings, Seq(0, 1, 2, 3, 4, 5))
     }
   }
 
@@ -307,6 +313,42 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
       writeControlReg(dut, ControlRegisterIndex.TileClearStart, buffer.litValue.toInt)
       waitForTileWriter(dut)
     }
+  }
+
+  def assembleCommandProgram(): Seq[BigInt] = {
+    val resourceDir = "hardware/test/resources"
+    val sourcePath = Paths.get(resourceDir, "render_command_program.s")
+    val hexPath = Paths.get(resourceDir, "render_command_program.hex")
+    val output = new StringBuilder
+    val logger = ProcessLogger(
+      line => output.append(line).append('\n'),
+      line => output.append(line).append('\n')
+    )
+
+    val exitCode = Process(Seq("python3", "tools/assemble-command.py", sourcePath.toString)).!(logger)
+    if (exitCode != 0) {
+        fail(s"Assembler failed with exit code $exitCode:\n$output")
+    }
+
+    Files.readAllLines(hexPath).toArray.toSeq.map(_.toString).map(BigInt(_, 16))
+  }
+
+  def loadCommandProgram(dut: SimTop, program: Seq[BigInt]): Unit = {
+    for (word <- program) {
+      writeHostRegister(dut, GpuHostRegisters.LoadProgram, word.toLong)
+    }
+
+    writeHostRegister(dut, GpuHostRegisters.HaltCommandProcessor, 0L)
+  }
+
+  def writeHostRegister(dut: SimTop, address: Long, value: Long): Unit = {
+    dut.io.axiSubordinate.writeRequest.valid.poke(true)
+    dut.io.axiSubordinate.writeRequest.bits.address.poke(address)
+    dut.io.axiSubordinate.writeData.valid.poke(true)
+    dut.io.axiSubordinate.writeData.bits.data.poke(value)
+    dut.clock.step()
+    dut.io.axiSubordinate.writeRequest.valid.poke(false)
+    dut.io.axiSubordinate.writeData.valid.poke(false)
   }
 
   def getReferenceImageName(): String = {

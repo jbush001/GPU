@@ -19,6 +19,14 @@ package gpu
 import chisel3._
 import chisel3.util._
 
+object GpuHostRegisters {
+  val Scratchpad0 = 0xfffffff0L
+  val Scratchpad1 = 0xfffffff4L
+  val Scratchpad2 = 0xfffffff8L
+  val Scratchpad3 = 0xfffffffcL
+  val HaltCommandProcessor = 0xffffffe0L
+  val LoadProgram = 0xffffffe4L
+}
 
 /** This exposes a register interface to the host for controlling GPU functions.
   */
@@ -32,9 +40,16 @@ class HostInterface extends Module {
       val addr = UInt(2.W)
       val data = UInt(32.W)
     }))
+
+    val haltCommandProcessor = Output(Bool())
+    val loadProgram = Valid(UInt(32.W))
   })
 
   val scratchpadRegs = RegInit(VecInit.fill(4)(0.U(32.W)))
+  val haltCommandProcessorReg = RegInit(true.B)
+  io.haltCommandProcessor := haltCommandProcessorReg
+  io.loadProgram.bits := io.axiSubordinate.writeData.bits.data
+  io.loadProgram.valid := false.B
 
   io.readScratchpadData := scratchpadRegs(io.readScratchpadAddr)
   when (io.writeScratchpad.valid) {
@@ -50,17 +65,23 @@ class HostInterface extends Module {
   io.axiSubordinate.writeData.ready := regWriteEn
   when (regWriteEn) {
     switch (io.axiSubordinate.writeRequest.bits.address) {
-      is (0xfffffff0L.U) {
+      is (GpuHostRegisters.Scratchpad0.U) {
         scratchpadRegs(0) := io.axiSubordinate.writeData.bits.data
       }
-      is (0xfffffff4L.U) {
+      is (GpuHostRegisters.Scratchpad1.U) {
         scratchpadRegs(1) := io.axiSubordinate.writeData.bits.data
       }
-      is (0xfffffff8L.U) {
+      is (GpuHostRegisters.Scratchpad2.U) {
         scratchpadRegs(2) := io.axiSubordinate.writeData.bits.data
       }
-      is (0xfffffffcL.U) {
+      is (GpuHostRegisters.Scratchpad3.U) {
         scratchpadRegs(3) := io.axiSubordinate.writeData.bits.data
+      }
+      is (GpuHostRegisters.HaltCommandProcessor.U) {
+        haltCommandProcessorReg := io.axiSubordinate.writeData.bits.data(0)
+      }
+      is (GpuHostRegisters.LoadProgram.U) {
+        io.loadProgram.valid := true.B
       }
     }
   }
@@ -82,10 +103,10 @@ class HostInterface extends Module {
   io.axiSubordinate.readData.bits.data := rDataReg
   when (io.axiSubordinate.readRequest.fire) {
     rDataReg := MuxLookup(io.axiSubordinate.readRequest.bits.address, 0.U)(Seq(
-      0xfffffff0L.U -> scratchpadRegs(0),
-      0xfffffff4L.U -> scratchpadRegs(1),
-      0xfffffff8L.U -> scratchpadRegs(2),
-      0xfffffffcL.U -> scratchpadRegs(3)
+      GpuHostRegisters.Scratchpad0.U -> scratchpadRegs(0),
+      GpuHostRegisters.Scratchpad1.U -> scratchpadRegs(1),
+      GpuHostRegisters.Scratchpad2.U -> scratchpadRegs(2),
+      GpuHostRegisters.Scratchpad3.U -> scratchpadRegs(3)
     ))
     rValidReg := true.B
   }.elsewhen(io.axiSubordinate.readData.fire) {

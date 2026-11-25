@@ -42,6 +42,9 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
     val tileWriterDone = Output(Bool())
   })
 
+  val controlBusInternal = Wire(new ControlBus)
+
+  val commandProcessor        = Module(new CommandProcessor)
   val rasterizer              = Module(new Rasterizer)
   val triangleSetup           = Module(new TriangleSetup)
   val vertexParameterMem      = Module(new VertexParameterMem)
@@ -49,19 +52,35 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val tileBuffer              = Module(new TileBuffer)
   val fragShaderConductor     = Module(new FragmentShaderConductor)
   val shaderCore              = Module(new ShaderCore)
-  val memoryArbiter           = Module(new MemoryArbiter(1, 1))
+  val memoryArbiter           = Module(new MemoryArbiter(numReadPorts = 2, numWritePorts = 1))
   val tileWriter              = Module(new TileWriter)
   val floatArrayToColor       = Module(new ShadedQuadConverter)
   val texturePatternGenerator = Module(new TexturePatternGenerator)
   val hostInterface           = Module(new HostInterface)
 
-  // Placeholder
-  hostInterface.io.readScratchpadAddr := 0.U
+  commandProcessor.io.memReadPort <> memoryArbiter.io.readPorts(1)
+  hostInterface.io.readScratchpadAddr := commandProcessor.io.readScratchpadAddr
+  commandProcessor.io.readScratchpadData := hostInterface.io.readScratchpadData
+  commandProcessor.io.writeScratchpad <> hostInterface.io.writeScratchpad
+  commandProcessor.io.halt := hostInterface.io.haltCommandProcessor
+  hostInterface.io.loadProgram <> commandProcessor.io.loadProgram
+  commandProcessor.io.tileWriterDone := tileWriter.io.done
+  commandProcessor.io.triangleSetupReady := triangleSetup.io.ready
+  commandProcessor.io.fenceEvent := fragShaderConductor.io.fence
+
+  // XXX this is a placeholder hack: allow the test harness to directly write to the
+  // control bus for now so we can migrate functions to the command processor
+  // incrementally.
+  controlBusInternal.regWrite.valid := (io.controlBus.regWrite.valid ||
+    commandProcessor.io.controlBus.regWrite.valid)
+  controlBusInternal.regWrite.bits := Mux(io.controlBus.regWrite.valid,
+    io.controlBus.regWrite.bits,
+    commandProcessor.io.controlBus.regWrite.bits)
 
   io.triangleFinished <> fragShaderConductor.io.triangleFinished
   io.fence := fragShaderConductor.io.fence
 
-  triangleSetup.io.controlBus <> io.controlBus
+  triangleSetup.io.controlBus <> controlBusInternal
   vertexParameterMem.io.write0 <> io.writeVertexParam
   triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr1
   triangleSetup.io.readValue := vertexParameterMem.io.readValue1
@@ -97,8 +116,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   io.tileWriterDone := tileWriter.io.done
   rasterizer.io.params <> triangleSetup.io.rasterizerParams
   io.triangleSetupReady := triangleSetup.io.ready
-  tileBuffer.io.controlBus <> io.controlBus
-  tileWriter.io.controlBus <> io.controlBus
+  tileBuffer.io.controlBus <> controlBusInternal
+  tileWriter.io.controlBus <> controlBusInternal
   fragShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff
 
   fragShaderConductor.io.textureFetchRequest <> texturePatternGenerator.io.textureFetchRequest
