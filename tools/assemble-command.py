@@ -18,6 +18,7 @@
 
 import sys
 from pathlib import Path
+import re
 
 #
 # Instructions have a single format:
@@ -299,13 +300,40 @@ class Assembler:
         self.line_map.setdefault(lineno, []).append(len(self.code))
         self.code.append(value)
 
+def preprocess(source: str) -> str:
+    macros = {}
+    result = ''
+
+    define_re = re.compile(r'^\s*\.define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$')
+
+    for line in source.splitlines():
+        line = line.split(';', 1)[0].strip() # Remove comments
+        if not line:
+            result += '\n'
+            continue
+
+        match = define_re.match(line)
+        if match:
+            name, value = match.group(1), match.group(2).strip()
+            macros[name] = value
+
+            # Emit blank line to preserve line numbers
+            result += '\n'
+            continue
+
+        for name in sorted(macros, key=len, reverse=True):
+            line = re.sub(rf'\b{re.escape(name)}\b', macros[name], line)
+
+        result += line + '\n'
+
+    return result
 
 if __name__ == "__main__":
     asm = Assembler()
 
     try:
         source = open(sys.argv[1], 'r').read()
-        asm.assemble(source)
+        asm.assemble(preprocess(source))
         path = Path(sys.argv[1])
         asm.write_list_file(source, path.with_suffix('.lst'))
         asm.write_hex_file(path.with_suffix('.hex'))
