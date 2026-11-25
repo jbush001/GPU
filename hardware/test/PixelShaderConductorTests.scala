@@ -20,20 +20,20 @@ import chisel3.simulator.scalatest.ChiselSim
 import org.scalatest.funsuite.AnyFunSuite
 import scala.util.Random
 
-class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelpers {
+class FragmentShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
   /** Simulate a source quad arriving at the pixel shader conductor from the
     * rasterizer/depth interpolator.
     */
-  def loadSourceQuad(dut: PixelShaderConductor, x: Int, y: Int, mask: Int,
+  def loadSourceQuad(dut: FragmentShaderConductor, x: Int, y: Int, mask: Int,
     lambda: Seq[Seq[Float]], depths: Seq[Float],triangleId: Int = 0,
-    lastQuad: Boolean = false, fence: Boolean = false, shaderAddress: Int = 0): Unit = {
+    lastQuad: Boolean = false, fence: Boolean = false, fragShaderAddr: Int = 0): Unit = {
     dut.io.sourceQuad.valid.poke(true)
     dut.io.sourceQuad.bits.location.poke(x, y)
     dut.io.sourceQuad.bits.mask.poke(mask)
     dut.io.sourceQuad.bits.triangleId.poke(triangleId)
-    dut.io.sourceQuad.bits.shaderAddress.poke(shaderAddress)
+    dut.io.sourceQuad.bits.fragShaderAddr.poke(fragShaderAddr)
     for (i <- lambda.indices) {
       for (j <- lambda(i).indices) {
         dut.io.sourceQuad.bits.lambda(i)(j).poke(lambda(i)(j))
@@ -51,8 +51,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.sourceQuad.valid.poke(false)
   }
 
-  /** Validate a finished quad output from the PixelShaderConductor */
-  def drainShadedQuad(dut: PixelShaderConductor, expectedX: Int,
+  /** Validate a finished quad output from the FragmentShaderConductor */
+  def drainShadedQuad(dut: FragmentShaderConductor, expectedX: Int,
     expectedY: Int, expectedMask: Int, colors: Seq[Seq[Float]], depths: Seq[Float]): Unit = {
     dut.io.shadedQuad.bits.location.expect(expectedX, expectedY)
     dut.io.shadedQuad.bits.mask.expect(expectedMask)
@@ -70,8 +70,8 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.clock.step()
   }
 
-  /** Simulate a shader core reading a register from the PixelShaderConductor */
-  def readRegister(dut: PixelShaderConductor, jobId: Int, addr: Int): Seq[Int] = {
+  /** Simulate a shader core reading a register from the FragmentShaderConductor */
+  def readRegister(dut: FragmentShaderConductor, jobId: Int, addr: Int): Seq[Int] = {
     dut.io.shaderRegRead.valid.poke(true)
     dut.io.shaderRegRead.bits.jobId.poke(jobId)
     dut.io.shaderRegRead.bits.addr.poke(addr)
@@ -83,12 +83,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     result
   }
 
-  def readRegisterFloat(dut: PixelShaderConductor, jobId: Int, addr: Int): Seq[Float] = {
+  def readRegisterFloat(dut: FragmentShaderConductor, jobId: Int, addr: Int): Seq[Float] = {
     readRegister(dut, jobId, addr).map(java.lang.Float.intBitsToFloat)
   }
 
-  /** Simulate a shader core writing a register to the PixelShaderConductor */
-  def pokeShaderReg(dut: PixelShaderConductor, jobId: Int, addr: Int, data: Seq[Int]): Unit = {
+  /** Simulate a shader core writing a register to the FragmentShaderConductor */
+  def pokeShaderReg(dut: FragmentShaderConductor, jobId: Int, addr: Int, data: Seq[Int]): Unit = {
     dut.io.shaderRegWrite.valid.poke(true)
     dut.io.shaderRegWrite.bits.jobId.poke(jobId)
     dut.io.shaderRegWrite.bits.addr.poke(addr)
@@ -99,12 +99,12 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
     dut.io.shaderRegWrite.valid.poke(false)
   }
 
-  def pokeShaderRegFloat(dut: PixelShaderConductor, jobId: Int, addr: Int, data: Seq[Float]): Unit = {
+  def pokeShaderRegFloat(dut: FragmentShaderConductor, jobId: Int, addr: Int, data: Seq[Float]): Unit = {
     pokeShaderReg(dut, jobId, addr, data.map(java.lang.Float.floatToIntBits))
   }
 
-  /** Simulate the triangle setup module writing a varying coefficient to the PixelShaderConductor */
-  def writeVaryingCoeff(dut: PixelShaderConductor, triangleId: Int, index: Int, data: Float): Unit = {
+  /** Simulate the triangle setup module writing a varying coefficient to the FragmentShaderConductor */
+  def writeVaryingCoeff(dut: FragmentShaderConductor, triangleId: Int, index: Int, data: Float): Unit = {
     dut.io.writeVaryingCoeff.valid.poke(true)
     dut.io.writeVaryingCoeff.bits.triangleId.poke(triangleId)
     dut.io.writeVaryingCoeff.bits.index.poke(index)
@@ -114,9 +114,9 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   }
 
   test("basic operation") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       // Fill
-      val shaderAddress = 0x1234567
+      val fragShaderAddr = 0x1234567
       val masks = Seq.tabulate(cfg.shaderVectorLanes / Consts.pixelsPerQuad)(i => 10 + i)
       for (i <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.startJob.valid.expect(false)
@@ -127,7 +127,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
           Seq(1.0f, 2.0f, 3.0f, 4.0f),
           triangleId = 3,
           lastQuad = (i == (cfg.shaderVectorLanes / Consts.pixelsPerQuad - 1)),
-          shaderAddress = shaderAddress)
+          fragShaderAddr = fragShaderAddr)
       }
 
       // Process
@@ -135,7 +135,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
       dut.io.startJob.ready.poke(true)
       dut.io.sourceQuad.ready.expect(true)
       val jobId = dut.io.startJob.bits.jobId.peek().litValue.toInt
-      dut.io.startJob.bits.startPc.expect(shaderAddress)
+      dut.io.startJob.bits.startPc.expect(fragShaderAddr)
       dut.clock.step()
       dut.io.startJob.valid.expect(false)
 
@@ -175,7 +175,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   }
 
   test("drain") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       dut.io.startJob.ready.poke(true)
 
       dut.io.startJob.valid.expect(false)
@@ -208,7 +208,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   }
 
   test("drains jobs in source order") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       dut.io.startJob.ready.poke(true)
 
       for (x <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
@@ -272,7 +272,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   // TODO: need to perform register accesses to ensure writes
   // and reads are propagaged.
   test("stress") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       val rng = new Random(42)
 
       var tilex = 1
@@ -360,7 +360,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   }
 
   test("texture fetch") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       // Start a job
       for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.sourceQuad.ready.expect(true)
@@ -475,7 +475,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   // Edge case: a read finishes the same cycle a read is attempted. Ensure
   // we send the result.
   test("texture fetch read bypass") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       // Start a job
       for (_ <- 0 until cfg.shaderVectorLanes / Consts.pixelsPerQuad) {
         dut.io.sourceQuad.ready.expect(true)
@@ -532,7 +532,7 @@ class PixelShaderConductorTests extends AnyFunSuite with ChiselSim with TestHelp
   }
 
   test("read varying") {
-    simulate(new PixelShaderConductor) { dut =>
+    simulate(new FragmentShaderConductor) { dut =>
       // Write varyings (triangles/varying coefficients)
       val coeffs = Seq(
         Seq(1.0f, 2.0f),

@@ -31,7 +31,7 @@ class ColorQuad(implicit val cfg: GpuConfig) extends Quad {
 /** Working storage for color and depth information for the framebuffer tile
   * currently being rendered.
   *
-  * Shaded 2x2 pixel quads arrive from [[PixelShaderConductor]]. Each is
+  * Shaded 2x2 pixel quads arrive from [[FragmentShaderConductor]]. Each is
   * depth-tested and alpha-blended with the stored values, and the surviving
   * color and depth are written back. This data is stored entirely in on-chip
   * SRAM. When the tile is complete, a flush operation streams its contents

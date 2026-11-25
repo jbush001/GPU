@@ -33,10 +33,10 @@ class InterpolatedQuad(implicit val cfg: GpuConfig) extends Quad {
   val fence = Bool()
   val lambda = Vec(Consts.pixelsPerQuad, Vec(2, Float32()))
   val depths = Vec(Consts.pixelsPerQuad, Float32())
-  val shaderAddress = UInt(cfg.busAddressBits.W)
+  val fragShaderAddr = UInt(cfg.busAddressBits.W)
 }
 
-/** Sits between [[Rasterizer]] and [[PixelShaderConductor]] and computes
+/** Sits between [[Rasterizer]] and [[FragmentShaderConductor]] and computes
   * per-pixel depth and perspective corrected barycentric coordinates.
   *
   * @note Fully pipelined (1 quad/cycle, 17 cycles latency).

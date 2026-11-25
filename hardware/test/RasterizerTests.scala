@@ -87,7 +87,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.quad.ready.poke(true)
     dut.clock.step()
 
-    val shaderAddress = 0x1234567
+    val fragShaderAddr = 0x1234567
 
     dut.io.params.bits.offset.poke(bbLeft, bbTop)
     dut.io.params.bits.boundingBox.left.poke(bbLeft)
@@ -95,7 +95,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
     dut.io.params.bits.boundingBox.right.poke(bbRight)
     dut.io.params.bits.boundingBox.bottom.poke(bbBottom)
     dut.io.params.bits.triangleId.poke(3)
-    dut.io.params.bits.shaderAddress.poke(shaderAddress)
+    dut.io.params.bits.fragShaderAddr.poke(fragShaderAddr)
 
     // Edge 0->1
     dut.io.params.bits.edges(0).xStep.poke(params.xStep(0))
@@ -141,7 +141,7 @@ class RasterizerTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
         dut.io.params.ready.expect(0)
         dut.io.quad.bits.triangleId.expect(3)
-        dut.io.quad.bits.shaderAddress.expect(shaderAddress)
+        dut.io.quad.bits.fragShaderAddr.expect(fragShaderAddr)
 
         // Note: in the case where a triangle does not cover any pixels, it will issue a dummy
         // quad. That's the only time a zero mask is allowed to be sent.

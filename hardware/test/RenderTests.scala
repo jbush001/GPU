@@ -191,8 +191,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
     SimMemAccess.write(dut.clock, dut.io.dap, 0, programBytes)
 
     writeControlReg(dut, ControlRegisterIndex.NumVaryings, varyings.head.length)
-    writeControlReg(dut, ControlRegisterIndex.ShaderAddressL, 0) // XXX hardcoded for this test.
-    writeControlReg(dut, ControlRegisterIndex.ShaderAddressH, 0) // XXX hardcoded for this test.
+    writeControlReg(dut, ControlRegisterIndex.FragmentShaderAddrL, 0) // XXX hardcoded for this test.
+    writeControlReg(dut, ControlRegisterIndex.FragmentShaderAddrH, 0) // XXX hardcoded for this test.
 
     val fbSize = 128
     val framebufferAddress = 0x1000

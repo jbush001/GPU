@@ -24,7 +24,7 @@ import chisel3.util._
   *
   * Reads three vertices stored in [[VertexParameterMem]], sends edge equations
   * to the [[Rasterizer]] and per-varying interpolation coefficients to the
-  * [[PixelShaderConductor]]. The coefficients are set up for
+  * [[FragmentShaderConductor]]. The coefficients are set up for
   * perspective-correct interpolation using each vertex's 1/w.
   *
   * This module is not pipelined. Each triangle takes at least 12 cycles,
@@ -53,10 +53,10 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     // To Rasterizer
     val rasterizerParams = Decoupled(new RasterizerParams)
 
-    // From PixelShaderConductor
+    // From FragmentShaderConductor
     val triangleFinished = Flipped(Valid(UInt(cfg.triangleIdBits.W)))
 
-    // To PixelShaderConductor
+    // To FragmentShaderConductor
     val writeVaryingCoeff = Valid(new Bundle {
       val triangleId = UInt(cfg.triangleIdBits.W)
       val index = UInt(cfg.varyingCoeffIndexBits.W)
@@ -68,22 +68,22 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
 
   val numVaryingsReg = RegInit(0.U(5.W))
   val tileOffsetReg = RegInit(0.U.asTypeOf(Point2D()))
-  val shaderAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
+  val fragShaderAddrReg = RegInit(VecInit.fill(cfg.busAddressBits / 32)(0.U(32.W)))
 
   // XXX could use a set of staging registers so the next one can be setup
   // while the current one is processing.
   val fenceReg = RegInit(false.B)
-  val vertexBaseAddrReg = RegInit(VecInit(Seq.fill(Consts.triangleVertices)(0.U.asTypeOf(new VpmAddress()))))
+  val vertexBaseAddrReg = RegInit(VecInit.fill(Consts.triangleVertices)(0.U.asTypeOf(new VpmAddress())))
   val nextVertexIndexReg = RegInit(0.U(2.W))
   val startTriangleReg = RegInit(false.B)
 
   when (io.controlBus.regWrite.valid) {
     switch (io.controlBus.regWrite.bits.address) {
-      is (ControlRegisterIndex.ShaderAddressL) {
-        shaderAddressReg(0) := io.controlBus.regWrite.bits.data
+      is (ControlRegisterIndex.FragmentShaderAddrL) {
+        fragShaderAddrReg(0) := io.controlBus.regWrite.bits.data
       }
-      is (ControlRegisterIndex.ShaderAddressH) {
-        shaderAddressReg(1) := io.controlBus.regWrite.bits.data
+      is (ControlRegisterIndex.FragmentShaderAddrH) {
+        fragShaderAddrReg(1) := io.controlBus.regWrite.bits.data
       }
       is (ControlRegisterIndex.NumVaryings) {
         numVaryingsReg := io.controlBus.regWrite.bits.data
@@ -204,7 +204,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         rasterizerParamsReg.boundingBox.right := tileOffsetReg.x + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.boundingBox.bottom := tileOffsetReg.y + (cfg.tileSizePixels - 2).S
         rasterizerParamsReg.fence := fenceReg
-        rasterizerParamsReg.shaderAddress := shaderAddressReg.asUInt
+        rasterizerParamsReg.fragShaderAddr := fragShaderAddrReg.asUInt
         fenceReg := false.B
         startTriangleReg := false.B
         readParameterMem(0.U, 0.U) // read X0/Y0

@@ -47,7 +47,7 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   val vertexParameterMem      = Module(new VertexParameterMem)
   val depthInterpolator       = Module(new DepthInterpolator)
   val tileBuffer              = Module(new TileBuffer)
-  val pixelShaderConductor    = Module(new PixelShaderConductor)
+  val fragShaderConductor     = Module(new FragmentShaderConductor)
   val shaderCore              = Module(new ShaderCore)
   val memoryArbiter           = Module(new MemoryArbiter(1, 1))
   val tileWriter              = Module(new TileWriter)
@@ -58,14 +58,14 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   // Placeholder
   hostInterface.io.readScratchpadAddr := 0.U
 
-  io.triangleFinished <> pixelShaderConductor.io.triangleFinished
-  io.fence := pixelShaderConductor.io.fence
+  io.triangleFinished <> fragShaderConductor.io.triangleFinished
+  io.fence := fragShaderConductor.io.fence
 
   triangleSetup.io.controlBus <> io.controlBus
   vertexParameterMem.io.write0 <> io.writeVertexParam
   triangleSetup.io.paramReadAddr <> vertexParameterMem.io.readAddr1
   triangleSetup.io.readValue := vertexParameterMem.io.readValue1
-  triangleSetup.io.triangleFinished <> pixelShaderConductor.io.triangleFinished
+  triangleSetup.io.triangleFinished <> fragShaderConductor.io.triangleFinished
 
   // XXX placeholder. This will be used by the vertex shader.
   vertexParameterMem.io.readAddr0.valid := false.B
@@ -78,15 +78,15 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   hostInterface.io.writeScratchpad.bits := DontCare
 
   rasterizer.io.quad <> depthInterpolator.io.rasterizedQuad
-  depthInterpolator.io.interpolatedQuad <> pixelShaderConductor.io.sourceQuad
+  depthInterpolator.io.interpolatedQuad <> fragShaderConductor.io.sourceQuad
 
-  pixelShaderConductor.io.startJob <> shaderCore.io.startJob
-  shaderCore.io.jobFinished <> pixelShaderConductor.io.jobFinished
-  shaderCore.io.regRead <> pixelShaderConductor.io.shaderRegRead
-  pixelShaderConductor.io.shaderRegReadData <> shaderCore.io.regReadData
-  shaderCore.io.regWrite <> pixelShaderConductor.io.shaderRegWrite
-  shaderCore.io.ioWakeJob <> pixelShaderConductor.io.ioWakeJob
-  pixelShaderConductor.io.shadedQuad <> floatArrayToColor.io.shadedQuad
+  fragShaderConductor.io.startJob <> shaderCore.io.startJob
+  shaderCore.io.jobFinished <> fragShaderConductor.io.jobFinished
+  shaderCore.io.regRead <> fragShaderConductor.io.shaderRegRead
+  fragShaderConductor.io.shaderRegReadData <> shaderCore.io.regReadData
+  shaderCore.io.regWrite <> fragShaderConductor.io.shaderRegWrite
+  shaderCore.io.ioWakeJob <> fragShaderConductor.io.ioWakeJob
+  fragShaderConductor.io.shadedQuad <> floatArrayToColor.io.shadedQuad
   floatArrayToColor.io.colorQuad <> tileBuffer.io.colorQuad
   shaderCore.io.icacheReadPort <> memoryArbiter.io.readPorts(0)
   memoryArbiter.io.axiBus <> io.axiManager
@@ -99,8 +99,8 @@ class Gpu(implicit val cfg: GpuConfig) extends Module {
   io.triangleSetupReady := triangleSetup.io.ready
   tileBuffer.io.controlBus <> io.controlBus
   tileWriter.io.controlBus <> io.controlBus
-  pixelShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff
+  fragShaderConductor.io.writeVaryingCoeff <> triangleSetup.io.writeVaryingCoeff
 
-  pixelShaderConductor.io.textureFetchRequest <> texturePatternGenerator.io.textureFetchRequest
-  texturePatternGenerator.io.textureFetchResponse <> pixelShaderConductor.io.textureFetchResponse
+  fragShaderConductor.io.textureFetchRequest <> texturePatternGenerator.io.textureFetchRequest
+  texturePatternGenerator.io.textureFetchResponse <> fragShaderConductor.io.textureFetchResponse
 }

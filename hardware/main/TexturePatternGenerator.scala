@@ -22,10 +22,10 @@ import chisel3.util._
 /** Debug texture cache mock that generates a fixed pattern */
 class TexturePatternGenerator(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // From PixelShaderConductor
+    // From FragmentShaderConductor
     val textureFetchRequest = Flipped(Decoupled(new TextureFetchRequest()))
 
-    // To PixelShaderConductor
+    // To FragmentShaderConductor
     val textureFetchResponse = Valid(new TextureFetchResponse())
   })
 

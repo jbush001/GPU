@@ -80,7 +80,7 @@ class VertexParameterMem(implicit cfg: GpuConfig) extends Module {
   val writeColumn = Mux(io.write0.valid, io.write0.bits.column, io.write1.bits.address.column)
   val writeValue = Mux(io.write0.valid,
     io.write0.bits.value,
-    VecInit(Seq.fill(cfg.shaderVectorLanes)(io.write1.bits.value)))
+    VecInit.fill(cfg.shaderVectorLanes)(io.write1.bits.value))
   val writeMask = VecInit.tabulate(cfg.shaderVectorLanes) { i =>
     io.write0.valid || (io.write1.bits.address.row === i.U)
   }

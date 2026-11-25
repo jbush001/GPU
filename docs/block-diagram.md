@@ -29,7 +29,7 @@ This does not show binning blocks (not designed yet)
 │         │        │         │         └─────────┬──────────┘      │
 │         │        │         │◄───┐              ▼  Quad           │
 │         │        └─────────┘    │    ┌────────────────────┐      │
-│         │        ┌─────────┐    └───►│    PixelShader     │◄─────┘
+│         │        ┌─────────┐    └───►│   FragmentShader   │◄─────┘
 │         ├───────►│ Texture ├────────►│     Conductor      │
 │         │        │  Cache  │         └─────────┬──────────┘
 │         │        └─────────┘                   ▼  Quad

@@ -36,7 +36,7 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   val pixelsPerWord = cfg.busDataBits / 32
   val wordsPerRow = cfg.tileSizePixels / pixelsPerWord
 
-  val outputAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
+  val outputAddressReg = RegInit(VecInit.fill(cfg.busAddressBits / 32)(0.U(32.W)))
   val outputStrideReg = RegInit(0.U(32.W))
   val writeStart = WireInit(false.B)
   val clearStart = WireInit(false.B)

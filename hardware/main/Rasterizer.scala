@@ -32,7 +32,7 @@ class RasterizerParams(implicit cfg: GpuConfig) extends Bundle {
 
   // These are pass-throughs to later stages.
   val depthCoeffs = new DepthInterpolatorCoeffs()
-  val shaderAddress = UInt(cfg.busAddressBits.W)
+  val fragShaderAddr = UInt(cfg.busAddressBits.W)
 }
 
 trait Quad extends Bundle {
@@ -79,7 +79,7 @@ class RasterizedQuad(implicit val cfg: GpuConfig) extends Quad {
   val depthCoeffs = new DepthInterpolatorCoeffs()
 
   /** This is also a pass-through */
-  val shaderAddress = UInt(cfg.busAddressBits.W)
+  val fragShaderAddr = UInt(cfg.busAddressBits.W)
 }
 
 /** Determines pixel coverage for a triangle within the current tile.
@@ -166,7 +166,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   nextQuad.location := quadLocReg - activeParamsReg.offset
   nextQuad.triangleId := activeParamsReg.triangleId
   nextQuad.depthCoeffs := activeParamsReg.depthCoeffs
-  nextQuad.shaderAddress := activeParamsReg.shaderAddress
+  nextQuad.fragShaderAddr := activeParamsReg.fragShaderAddr
   nextQuad.mask := pixelInside
   nextQuad.lastQuad := false.B
   nextQuad.fence := false.B
@@ -215,7 +215,7 @@ class Rasterizer(implicit cfg: GpuConfig) extends Module {
   // Explictly assign so it is correct for the dummy quad.
   io.quad.bits.triangleId := activeParamsReg.triangleId
   io.quad.bits.depthCoeffs := activeParamsReg.depthCoeffs
-  io.quad.bits.shaderAddress := activeParamsReg.shaderAddress
+  io.quad.bits.fragShaderAddr := activeParamsReg.fragShaderAddr
 
   // Stepping state machine. This is fairly simplistic; it sweeps the entire
   // bounding box in a zig-zag pattern.

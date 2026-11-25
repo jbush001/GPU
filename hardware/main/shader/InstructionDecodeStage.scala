@@ -274,12 +274,12 @@ class InstructionDecodeStage(implicit val cfg: GpuConfig) extends Module {
   val operand2IndexStage2Reg = RegNext(operand2Index)
   val validCycle2Reg = RegNext(io.fetchedInstruction.valid, init = false.B)
 
-  /** Is this a register in the [[PixelShaderConductor]] */
+  /** Is this a register in the [[FragmentShaderConductor]] */
   def isInputReg(regId: UInt): Bool = {
     regId(7, 4) === "b1110".U
   }
 
-  /** Is this a register in the [[PixelShaderConductor]] */
+  /** Is this a register in the [[FragmentShaderConductor]] */
   def isOutputReg(regId: UInt): Bool = {
     regId(7, 4) === "b1111".U
   }

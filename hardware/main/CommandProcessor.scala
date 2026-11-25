@@ -22,22 +22,22 @@ import chisel3.util._
 object ControlRegisterIndex {
   val width = 8
 
-  val ClearColor        = 0.U
-  val ClearDepth        = 1.U
-  val TileWriteFlags    = 2.U
-  val ShaderAddressL    = 4.U
-  val ShaderAddressH    = 5.U
-  val NumVaryings       = 6.U
-  val TileOffsetX       = 7.U
-  val TileOffsetY       = 8.U
-  val TileWriteAddressL = 9.U
-  val TileWriteAddressH = 10.U
-  val TileWriteStride   = 11.U // bytes between the start of two adjacent rows
-  val TileWriteStart    = 12.U
-  val TileClearStart    = 13.U
-  val VertexVpmAddr     = 14.U
-  val Fence             = 15.U
-  val AttrBase          = 32.U // Each entry is 16 bytes, up to 16 entries (32-96)
+  val ClearColor          = 0.U
+  val ClearDepth          = 1.U
+  val TileWriteFlags      = 2.U
+  val FragmentShaderAddrL = 4.U
+  val FragmentShaderAddrH = 5.U
+  val NumVaryings         = 6.U
+  val TileOffsetX         = 7.U
+  val TileOffsetY         = 8.U
+  val TileWriteAddressL   = 9.U
+  val TileWriteAddressH   = 10.U
+  val TileWriteStride     = 11.U // bytes between the start of two adjacent rows
+  val TileWriteStart      = 12.U
+  val TileClearStart      = 13.U
+  val VertexVpmAddr       = 14.U
+  val Fence               = 15.U
+  val AttrBase            = 32.U // Each entry is 16 bytes, up to 16 entries (32-96)
 }
 
 /** This is driven by the CommandProcessor and fans out to all of the functional
@@ -110,7 +110,7 @@ class CommandProcessor(implicit cfg: GpuConfig) extends Module {
   val dma = Module(new CpDma)
   dma.io.memReadPort <> io.memReadPort
 
-  val dmaStartAddressReg = RegInit(VecInit(Seq.fill(cfg.busAddressBits / 32)(0.U(32.W))))
+  val dmaStartAddressReg = RegInit(VecInit.fill(cfg.busAddressBits / 32)(0.U(32.W)))
   dma.io.startTransfer.bits.startAddress := dmaStartAddressReg.asUInt
 
   // Since the length write kicks off the transfer, we can use the payload here.
@@ -289,7 +289,7 @@ class CpPipeline extends Module {
 
   val instructionMem = SyncReadMem(instructionMemSize, new Instruction)
   val dataMem = SyncReadMem(dataMemSize, UInt(dataWidth.W))
-  val registerFileReg = RegInit(VecInit(Seq.fill(numRegisters)(0.U(dataWidth.W))))
+  val registerFileReg = RegInit(VecInit.fill(numRegisters)(0.U(dataWidth.W)))
   val pcReg = RegInit(0.U(log2Up(instructionMemSize).W))
 
   // Load code into instruction memory

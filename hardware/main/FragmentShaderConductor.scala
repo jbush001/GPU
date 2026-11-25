@@ -34,7 +34,7 @@ class ShadedQuad(implicit val cfg: GpuConfig) extends Quad {
   val depths = Vec(Consts.pixelsPerQuad, Float32())
 }
 
-/** PixelShaderConductor handles dispatching requests to [[ShaderCore]],
+/** FragmentShaderConductor handles dispatching requests to [[ShaderCore]],
   *
   * Quads arrive from the [[DepthInterpolator]]. This collects them until
   * it has enough for a full batch, and then dispatches them to the shader
@@ -50,7 +50,7 @@ class ShadedQuad(implicit val cfg: GpuConfig) extends Quad {
   * `lastQuad` and `fence` signals are passed through in order as well,
   * and can be used to indicate when a batch is fully processed.
   */
-class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
+class FragmentShaderConductor(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
     // From [[DepthInterpolator]]. Incoming quad to be shaded.
     val sourceQuad = Flipped(Decoupled(new InterpolatedQuad))
@@ -136,7 +136,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     val fetchedTexels = Vec(Color.numChannels, Vec(cfg.shaderVectorLanes, Float32()))
     val threadNeedsWake = Bool()
     val returnedTexelBitmap = Bits(quadsPerJob.W)
-    val shaderAddress = UInt(cfg.busAddressBits.W)
+    val fragShaderAddr = UInt(cfg.busAddressBits.W)
   }
 
   // The jobRegs array is indexed by jobId.
@@ -160,7 +160,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
     assert(fillQuadCountReg === 0.U || fillJob.state === JobState.Filling)
     fillJob.sourceQuads(fillQuadCountReg) := io.sourceQuad.bits
     fillJob.validQuadCount := fillQuadCountReg +& 1.U
-    fillJob.shaderAddress := io.sourceQuad.bits.shaderAddress
+    fillJob.fragShaderAddr := io.sourceQuad.bits.fragShaderAddr
     when (fillQuadCountReg === (quadsPerJob - 1).U || io.sourceQuad.bits.lastQuad) {
       // Finished filling, ready for processing
       fillQuadCountReg := 0.U
@@ -176,7 +176,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
   val dispatchIndexReg = RegInit(0.U(cfg.shaderJobIdBits.W))
 
   io.startJob.valid := jobsReg(dispatchIndexReg).state === JobState.ReadyToProcess
-  io.startJob.bits.startPc := jobsReg(dispatchIndexReg).shaderAddress
+  io.startJob.bits.startPc := jobsReg(dispatchIndexReg).fragShaderAddr
   io.startJob.bits.jobId := dispatchIndexReg
 
   when (io.startJob.fire) {
@@ -267,7 +267,7 @@ class PixelShaderConductor(implicit cfg: GpuConfig) extends Module {
 
       // Read varying coefficient memory
       is (2.U) {
-        io.shaderRegReadData.bits := VecInit(Seq.fill(cfg.shaderVectorLanes)(varyingCoeffReadVal))
+        io.shaderRegReadData.bits := VecInit.fill(cfg.shaderVectorLanes)(varyingCoeffReadVal)
       }
 
       // Read fetched texel

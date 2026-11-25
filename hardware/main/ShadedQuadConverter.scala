@@ -20,12 +20,12 @@ import chisel3._
 import chisel3.util._
 
 /** Converts color from floating point representation to fixed point ARGB32.
-  * Adapts from the shader output from [[PixelShaderConductor]]to the native
+  * Adapts from the shader output from [[FragmentShaderConductor]]to the native
   * color format used by [[TileBuffer]].
   */
 class ShadedQuadConverter(implicit val cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {
-    // From PixelShaderConductor
+    // From FragmentShaderConductor
     val shadedQuad = Flipped(Valid(new ShadedQuad))
 
     // To TileBuffer

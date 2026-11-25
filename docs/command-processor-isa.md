@@ -10,7 +10,7 @@ coordinates activity across the GPU pipeline units.
 
 All instructions are 32 bits wide. The instruction format is highly regular,
 containing an 18-bit signed immediate, three 3-bit register identifiers
-(supporting 8 General Purpose Registers), and a 5-bit opcode.
+(supporting 8 general purpose registers), and a 5-bit opcode.
 
 ```
  31                                 14 13 12 11  9 8   5 4       0
@@ -68,7 +68,8 @@ actually encoded as other instruction types.
 ## Memory-Mapped Control Registers
 
 The processor communicates with the host and GPU control units via special registers
-that are memory-mapped into the command processor address space.
+that are memory-mapped into the command processor address space. Addresses are word
+indices, not bytes.
 
 | Address  | R/W | Description                                                      |
 | -------- | --- | ---------------------------------------------------------------- |
@@ -86,8 +87,8 @@ that are memory-mapped into the command processor address space.
 | ffffff00 |  w  | Clear color value (ARGB)                                         |
 | ffffff01 |  w  | Clear depth value (Float32)                                      |
 | ffffff02 |  w  | Configuration flags for tile writing                             |
-| ffffff04 |  w  | Vertex/Fragment Shader Base Address (Low)                        |
-| ffffff05 |  w  | Vertex/Fragment Shader Base Address (High)                       |
+| ffffff04 |  w  | Fragment Shader Base Address (Low)                               |
+| ffffff05 |  w  | Fragment Shader Base Address (High)                              |
 | ffffff06 |  w  | Number of varying variables passed to fragment shader            |
 | ffffff07 |  w  | X offset for the current tile                                    |
 | ffffff08 |  w  | Y offset for the current tile                                    |
@@ -99,7 +100,6 @@ that are memory-mapped into the command processor address space.
 | ffffff0e |  w  | Push vertex parameter memory address to triangle setup           |
 | ffffff0f |  w  | Set fence flag on next triangle                                  |
 | ffffff20 |  w  | Start of attribute arrays...                                     |
-
 
 Direct memory access (DMA) allows the Command Processor to fetch command
 packets and other data from host memory without stalling the CPU. To

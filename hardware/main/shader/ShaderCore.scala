@@ -30,7 +30,7 @@ import gpu._
   *
   * The core doesn't directly access fixed-function state. Shader inputs
   * and outputs, including texture results, are read and written through
-  * the shaderRegRead/shaderRegWrite ports, via[[PixelShaderConductor]].
+  * the shaderRegRead/shaderRegWrite ports, via[[FragmentShaderConductor]].
   *
   * Instructions are fetched from system memory through icacheReadPort.
   *
@@ -43,7 +43,7 @@ import gpu._
     val startJob = Flipped(Decoupled(new Bundle {
       val startPc = UInt(cfg.busAddressBits.W)
 
-      // Identifies this job to the [[PixelShaderConductor]]. Chosen by the
+      // Identifies this job to the [[FragmentShaderConductor]]. Chosen by the
       // conductor and unique among jobs in flight. The core attaches it to
       // shaderRegRead and shaderRegWrite requests.
       val jobId = UInt(cfg.shaderJobIdBits.W)
