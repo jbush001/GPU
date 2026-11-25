@@ -154,7 +154,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
   /** Read all data out of the tile buffer into a native Scala sequence. */
   def flush(dut: TileBuffer, select: RenderBufferId.Type): Either[Seq[Int], Seq[Float]] = {
-    writeControl(dut, ControlRegisterIndex.TileClearStart, select.asUInt)
+    writeControl(dut, ControlRegisterIndex.TileWriteStart, select.asUInt)
     dut.io.flushData.ready.poke(false)
     dut.io.flushData.valid.expect(0)
 
@@ -200,7 +200,7 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
   // For test setup, manually force framebuffer to a known state
   def clearBuffers(dut: TileBuffer) = {
     this.flush(dut, RenderBufferId.Color)
-    this.flush(dut, RenderBufferId.Depth)
+    // XXX should test the clear register
   }
 
   test("alpha blend") {
@@ -388,13 +388,13 @@ class TileBufferTests extends AnyFunSuite with ChiselSim with TestHelpers {
       // Flush pipeline
       dut.clock.step(4)
 
-      this.flush(dut, RenderBufferId.Color) match {
-        case Left(color) => reference.checkColor(color)
-        case Right(_) => fail("Unexpected depth data")
-      }
       this.flush(dut, RenderBufferId.Depth) match {
         case Right(depth) => reference.checkDepth(depth)
         case Left(_) => fail("Unexpected color data")
+      }
+      this.flush(dut, RenderBufferId.Color) match {
+        case Left(color) => reference.checkColor(color)
+        case Right(_) => fail("Unexpected depth data")
       }
     }
   }

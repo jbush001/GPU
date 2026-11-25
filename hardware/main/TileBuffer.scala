@@ -40,7 +40,8 @@ class ColorQuad(implicit val cfg: GpuConfig) extends Quad {
   *
   * Values are stored in a native formats ([[Color]] and [[Float32]]).
   * Conversion to the external-memory format happens downstream, during the
-  * flush.
+  * flush. The depth and color buffers are cleared as a side effect of flushing
+  * the color buffer.
   *
   * Constraints:
   *
@@ -88,9 +89,13 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
         enableDepthCheckReg := io.controlBus.regWrite.bits.data(1)
         enableBlendReg := io.controlBus.regWrite.bits.data(2)
       }
-      is (ControlRegisterIndex.TileWriteStart, ControlRegisterIndex.TileClearStart) {
+      is (ControlRegisterIndex.TileWriteStart) {
         startFlush := true.B
         flushBufferSelReg := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
+      }
+      is (ControlRegisterIndex.TileClearStart) {
+        startFlush := true.B
+        flushBufferSelReg := RenderBufferId.Color
       }
     }
   }
@@ -208,8 +213,11 @@ class TileBuffer(implicit cfg: GpuConfig) extends Module {
     colorWriteMask(pixel) := Mux(flushActiveReg, colorClearEnable, stage2.maskReg)
     colorWriteVal(pixel) := Mux(flushActiveReg, clearColorReg, blended)
 
+    // Note: all buffers are cleared when we flush the color buffer. We don't commonly
+    // flush the depth buffer, so this is an optimization. If there is a request to
+    // explicitly flush the depth buffer, that should be flushed first.
     val depthClearEnable = isClearLane &&
-      (flushBufferSelReg === RenderBufferId.Depth) &&
+      (flushBufferSelReg === RenderBufferId.Color) &&
       io.flushData.fire
     depthWriteMask(pixel) := Mux(flushActiveReg,
       depthClearEnable,

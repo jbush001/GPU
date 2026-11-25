@@ -60,11 +60,9 @@ class SimTop(implicit val cfg: GpuConfig) extends Module {
   when (gpu.io.fence) {
     completeReg := true.B
   }.elsewhen (io.controlBus.regWrite.valid
-    && (io.controlBus.regWrite.bits.address === ControlRegisterIndex.TileWriteStart
-      || io.controlBus.regWrite.bits.address === ControlRegisterIndex.TileClearStart)) {
-    // This is a hack: because the control processor isn't fully wired in,
-    // we need a way to check when the render is finished. The complete
-    // flag is cleared as a side effect when a new tile is started.
+    && io.controlBus.regWrite.bits.address === ControlRegisterIndex.Fence
+    && io.controlBus.regWrite.bits.data(0)) {
+    // Latch completion for the newly requested fence.
     completeReg := false.B
   }
 
@@ -202,7 +200,7 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
 
     val fbSize = 128
     val framebufferAddress = 0x1000
-    clearTileBuffer(dut)
+    clearTileBuffer(dut) // Initially clear both buffers
 
     for (tileRow <- 0 until fbSize / cfg.tileSizePixels) {
       for (tileColumn <- 0 until fbSize / cfg.tileSizePixels) {
@@ -236,7 +234,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
             (cfg.tileSizePixels * tileColumn)) * 4
         sendCommand(dut, 2, fbSize * 4, tileAddress)
         waitForCommandsComplete(dut)
-        clearTileBuffer(dut)
       }
     }
 
@@ -244,7 +241,6 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
       .flatMap(word => Seq(word.toInt | 0xff000000, (word >>> 32).toInt | 0xff000000))
       .toArray
   }
-
 
   def setUpTriangle(dut: SimTop, vertices: Seq[(Float, Float, Float)],
     fbWidth: Int, fbHeight: Int, varyings: Seq[Seq[Float]],
@@ -305,10 +301,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   }
 
   def clearTileBuffer(dut: SimTop): Unit = {
-    for (buffer <- Seq(RenderBufferId.Color, RenderBufferId.Depth)) {
-      writeControlReg(dut, ControlRegisterIndex.TileClearStart, buffer.litValue.toInt)
-      waitForTileWriter(dut)
-    }
+    writeControlReg(dut, ControlRegisterIndex.TileClearStart, 0)
+    waitForTileWriter(dut)
   }
 
   def assembleCommandProgram(): Seq[BigInt] = {

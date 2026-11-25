@@ -40,7 +40,6 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
   val outputStrideReg = RegInit(0.U(32.W))
   val writeStart = WireInit(false.B)
   val clearStart = WireInit(false.B)
-  val startBufferSel = WireInit(RenderBufferId.Color)
 
   when (io.controlBus.regWrite.valid) {
     switch(io.controlBus.regWrite.bits.address) {
@@ -55,11 +54,9 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
       }
       is (ControlRegisterIndex.TileWriteStart) {
         writeStart := true.B
-        startBufferSel := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
       }
       is (ControlRegisterIndex.TileClearStart) {
         clearStart := true.B
-        startBufferSel := io.controlBus.regWrite.bits.data(0).asTypeOf(RenderBufferId())
       }
     }
   }
@@ -100,8 +97,6 @@ class TileWriter(implicit cfg: GpuConfig) extends Module {
           "TileWriter output stride must be 8-byte aligned")
         assert(outputStrideReg >= (cfg.tileSizePixels * 4).U,
           "TileWriter output stride must fit a complete tile row")
-        assert(startBufferSel === RenderBufferId.Color,
-          "TileWriter currently supports only color buffer writes")
         rowReg := 0.U
         burstAddressReg := outputAddressReg.asUInt
         activeStrideReg := outputStrideReg

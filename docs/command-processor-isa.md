@@ -72,7 +72,7 @@ indices, not bytes.
 | -------- | --- | ---------------------------------------------------------------- |
 | fffffe00 |  w  | DMA Source Address (Lower 32-bits)                               |
 | fffffe01 |  w  | DMA Source Address (Upper 32-bits)                               |
-| fffffe02 |  w  | DMA length in 8-byte transfers minus one (0-7)                  |
+| fffffe02 |  w  | DMA length in 8-byte transfers minus one (0-7)                   |
 | fffffe03 |  r  | DMA Status                                                       |
 | fffffe04 |  r  | DMA data                                                         |
 | fffffe05 |  r  | Pipeline status flags                                            |
@@ -81,8 +81,8 @@ indices, not bytes.
 | fffffe09 | rw  | Scratchpad 1                                                     |
 | fffffe0a | rw  | Scratchpad 2                                                     |
 | fffffe0b | rw  | Scratchpad 3                                                     |
-| ffffff00 |  w  | Clear color value (ARGB)                                         |
-| ffffff01 |  w  | Clear depth value (Float32)                                      |
+| ffffff00 |  w  | Value to write to color buffer on clear (ARGB)                   |
+| ffffff01 |  w  | Value to write to depth buffer on clear (Float32)                |
 | ffffff02 |  w  | Configuration flags for tile writing                             |
 | ffffff04 |  w  | Fragment Shader Base Address (Low)                               |
 | ffffff05 |  w  | Fragment Shader Base Address (High)                              |
@@ -93,7 +93,7 @@ indices, not bytes.
 | ffffff0a |  w  | Tile Output Memory Address (High)                                |
 | ffffff0b |  w  | Tile output stride: bytes between the start of two adjacent rows |
 | ffffff0c |  w  | Trigger register to begin writing tile                           |
-| ffffff0d |  w  | Trigger register to begin clearing tile                          |
+| ffffff0d |  w  | Trigger register to begin clearing tile (depth + color)          |
 | ffffff0e |  w  | Push vertex parameter memory address to triangle setup           |
 | ffffff0f |  w  | Set fence flag on next triangle                                  |
 | ffffff20 |  w  | Start of attribute arrays...                                     |
