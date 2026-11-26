@@ -245,6 +245,56 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     }
   }
 
+  test("rpn calc") {
+    simulate(new CommandProcessor) { dut =>
+      loadProgram(dut, assembleProgram(
+        """
+          |         lea r1, prog
+          |         lea r2, stack_top
+          | eval:   lw r4, 0(r1)         ; fetch opcode
+          |         addi r1, r1, 1
+          |         lw r4, opcode_handler(r4)
+          |         jalr r0, r4          ; switch
+          |
+          | push:   lw r4, 0(r1)         ; fetch operand
+          |         addi r1, r1, 1
+          |         sw r4, 0(r2)
+          |         addi r2, r2, 1
+          |         b eval
+          |
+          | add:    lw r4, -2(r2)
+          |         lw r5, -1(r2)
+          |         add r4, r4, r5
+          |         b store
+          |
+          | sub:    lw r4, -2(r2)
+          |         lw r5, -1(r2)
+          |         sub r4, r4, r5
+          |         ; falls through
+          |
+          | store:  sw r4, -2(r2)
+          |         addi r2, r2, -1
+          |         b eval
+          |
+          | end:    clear r0
+          |         lw r4, -1(r2)
+          |         sw r4, -256(r0) ; save result
+          |         sw r2, -1(r0) ; terminate
+          |
+          | opcode_handler: .word end, push, add, sub
+          |
+          | prog: .word 1, 100,  1, 27,  3,  1, 9,  2,  0
+          | stack: .fill 8, 0
+          | stack_top: .word 0
+          |
+          |""".stripMargin
+        ))
+
+        assert(runProgram(dut) == Seq(ControlWrite(0, 82))
+      )
+    }
+  }
+
   test("DMA transfer") {
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(

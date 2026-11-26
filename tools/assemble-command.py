@@ -183,12 +183,19 @@ class Assembler:
 
         if lookahead == '.word':
             self.line_map.setdefault(lineno, []).append(len(self.code))
-            value = next_token()
-            if value[0].isdigit() or (value[0] == '-' and value[1:].isdigit()):
-                self.code.append(int(value, 0))
-            else:
-                self.add_fixup('data', value, lineno)
-                self.code.append(0)
+            while True:
+                value = next_token()
+                if value is None:
+                    raise AssembleError(lineno, 'Unexpected end of line in .word directive')
+
+                if value[0].isdigit() or (value[0] == '-' and value[1:].isdigit()):
+                    self.code.append(int(value, 0))
+                else:
+                    self.add_fixup('data', value, lineno)
+                    self.code.append(0)
+
+                if next_token() != ',':
+                    break
 
         elif lookahead == '.fill':
             self.line_map.setdefault(lineno, []).append(len(self.code))
