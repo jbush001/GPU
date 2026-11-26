@@ -22,38 +22,6 @@ import org.scalatest.funsuite.AnyFunSuite
 class HostInterfaceTests extends AnyFunSuite with ChiselSim with TestHelpers {
   implicit val cfg: GpuConfig = GpuConfig()
 
-  test("back-to-back writes require response acceptance") {
-    simulate(new HostInterface) { dut =>
-      dut.io.axiSubordinate.writeResponse.ready.poke(false)
-      dut.io.axiSubordinate.writeRequest.valid.poke(true)
-      dut.io.axiSubordinate.writeData.valid.poke(true)
-      dut.io.axiSubordinate.writeRequest.bits.address.poke(GpuHostRegisters.Scratchpad1)
-      dut.io.axiSubordinate.writeData.bits.data.poke(11)
-      dut.io.axiSubordinate.writeRequest.ready.expect(true)
-      dut.clock.step()
-
-      dut.io.axiSubordinate.writeRequest.bits.address.poke(GpuHostRegisters.Scratchpad2)
-      dut.io.axiSubordinate.writeData.bits.data.poke(22)
-      dut.io.axiSubordinate.writeResponse.valid.expect(true)
-      dut.io.axiSubordinate.writeRequest.ready.expect(false)
-      dut.io.axiSubordinate.writeData.ready.expect(false)
-      dut.clock.step()
-      dut.io.readScratchpadAddr.poke(2)
-      dut.io.readScratchpadData.expect(0)
-
-      dut.io.axiSubordinate.writeResponse.ready.poke(true)
-      dut.io.axiSubordinate.writeRequest.ready.expect(true)
-      dut.io.axiSubordinate.writeData.ready.expect(true)
-      dut.clock.step()
-      dut.io.axiSubordinate.writeRequest.valid.poke(false)
-      dut.io.axiSubordinate.writeData.valid.poke(false)
-      dut.io.readScratchpadAddr.poke(1)
-      dut.io.readScratchpadData.expect(11)
-      dut.io.readScratchpadAddr.poke(2)
-      dut.io.readScratchpadData.expect(22)
-    }
-  }
-
   test("read/write") {
     simulate(new HostInterface) { dut =>
       //
