@@ -113,14 +113,11 @@ class Assembler:
             if symbol not in self.labels:
                 raise AssembleError(lineno, f'Unknown label {symbol}')
 
-            # Note, this assumes the instruction at the source already has its
-            # branch offset zeroed out
-            # XXX does not do range checking, although it's unlikely you'd
-            # ever hit that.
             to_addr = self.labels[symbol]
-            offset = ((to_addr - from_addr) &
-                      ((1 << 18) - 1))
-            self.code[from_addr] |= offset << 14
+            if to_addr >= (1 << 18):
+                raise AssembleError(lineno, f'Data address {to_addr} out of range')
+
+            self.code[from_addr] |= to_addr << 14
 
     def write_list_file(self, source, output_filename):
         """Create an annotated listing file with source code and generated machine code."""
@@ -179,7 +176,17 @@ class Assembler:
         if lookahead is None: # End of line
             return
 
-        if lookahead == 'nop':
+        if lookahead == '.word':
+            self.line_map.setdefault(lineno, []).append(len(self.code))
+            self.code.append(int(next_token(), 0))
+        elif lookahead == '.fill':
+            self.line_map.setdefault(lineno, []).append(len(self.code))
+            count = int(next_token(), 0)
+            match(',')
+            value = int(next_token(), 0)
+            for _ in range(count):
+                self.code.append(value)
+        elif lookahead == 'nop':
             self.emit_inst(lineno, 1, 0, 0, 0, 0)  # addi r0, r0, 0
         elif lookahead == 'loadi':
             # Load constant. This is a pseudo-instruction that expands to two
@@ -189,6 +196,12 @@ class Assembler:
             raw_int = int(next_token(), 0)
             self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3fff)
             self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 14) & 0x3ffff)
+        elif lookahead == 'lea':
+            rd = parse_reg_operand(lineno, next_token())
+            match(',')
+            target_label = next_token()
+            self.add_fixup(target_label, lineno)
+            self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, 0)
         elif lookahead == 'move':
             # Pseudo-instruction that expands to addi rd, rs, 0
             rd = parse_reg_operand(lineno, next_token())
@@ -202,7 +215,7 @@ class Assembler:
         elif lookahead == 'b':
             # Unconditional branch. This is a pseudo-instruction that expands to beq r0, r0, target
             target = next_token()
-            self.add_branch_fixup(target, lineno)
+            self.add_fixup(target, lineno)
             self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0)
         else:
             if lookahead in INSTRS:
@@ -257,19 +270,19 @@ class Assembler:
                 rs2 = parse_reg_operand(lineno, next_token())
                 match(',')
                 target = next_token()
-                self.add_branch_fixup(target, lineno)
+                self.add_fixup(target, lineno)
                 self.emit_inst(lineno, opcode, 0, rs1, rs2)
             elif format == FMT_ZERO_BRANCH:
                 rs1 = parse_reg_operand(lineno, next_token())
                 match(',')
                 target = next_token()
-                self.add_branch_fixup(target, lineno)
+                self.add_fixup(target, lineno)
                 self.emit_inst(lineno, opcode, 0, rs1, 0)
             elif format == FMT_JAL:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
                 target = next_token()
-                self.add_branch_fixup(target, lineno)
+                self.add_fixup(target, lineno)
                 self.emit_inst(lineno, opcode, rd, 0, 0)
             elif format == FMT_JALR:
                 rd = parse_reg_operand(lineno, next_token())
@@ -282,10 +295,7 @@ class Assembler:
     def get_current_addr(self):
         return len(self.code)
 
-    def add_branch_fixup(self, symbol, lineno):
-        """Create a fixup at the current address for a branch to a label that
-        may not yet be defined.
-        """
+    def add_fixup(self, symbol, lineno):
         self.fixups.append((self.get_current_addr(), symbol, lineno))
 
     def emit_label(self, name, lineno):

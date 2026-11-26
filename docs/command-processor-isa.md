@@ -21,34 +21,34 @@ containing an 18-bit signed immediate, three 3-bit register identifiers
 
 ## Instruction Set (Opcodes)
 
-| Opcode | Mnemonic              | Description                                              |
-| ------ | --------------------- | -------------------------------------------------------- |
-|    0   |   AND rd, rs0, rs1    | Bitwise AND                                              |
-|    1   |   OR rd, rs0, rs1     | Bitwise OR                                               |
-|    2   |   XOR rd, rs0, rs1    | Bitwise XOR                                              |
-|    3   |   ADD rd, rs0, rs1    | Integer Addition                                         |
-|    4   |   SUB rd, rs0, rs1    | Integer Subtraction                                      |
-|    5   |   SLTU rd, rs0, rs1   | Set Less Than Unsigned                                   |
-|    6   |   SLL rd, rs0, rs1    | Shift Left Logical                                       |
-|    7   |   SRL rd, rs0, rs1    | Shift Right Logical                                      |
-|    8   |   BEQ rs1, rs2, offs  | Branch if Equal: `if (rs1 == rs2) PC = PC + imm`         |
-|    9   |   BNE rs1, rs2, offs  | Branch if Not Equal: `if (rs1 != rs2) PC = PC + imm`     |
-|   10   |   BZ rs1, offs        | Branch if `rs1` equals zero                              |
-|   11   |   BNZ rs1, offs       | Branch if `rs1` is nonzero                               |
-|   16   |   ANDI rd, rs0, rs1   | Bitwise AND immediate                                    |
-|   17   |   ORI rd, rs0, rs1    | Bitwise OR immediate                                     |
-|   18   |   XORI rd, rs0, rs1   | Bitwise XOR immediate                                    |
-|   19   |   ADDI rd, rs0, rs1   | Integer Addition immediate                               |
-|   20   |   SUBI rd, rs0, rs1   | Integer Subtraction immediate                            |
-|   21   |   SLTUI rd, rs0, rs1  | Set Less Than Unsigned immediate                         |
-|   22   |   SLLI rd, rs0, rs1   | Shift Left Logical immediate                             |
-|   23   |   SRLI rd, rs0, rs1   | Shift Right Logical immediate                            |
-|   26   |   LW rd, imm(rs0)     | Load Word.<sup>1</sup>                                   |
-|   27   |   SW rs1, imm(rs0)    | Store Word                                               |
-|   28   |   MOVEHI rd, rs1, imm | Move High Immediate `rd = (imm << 14) + (rs1 & 0x3fff)`  |
-|   29   |   MOVEI rd, imm       | Move Immediate: `rd = imm`                               |
-|   30   |   JAL rd, offs        | Jump and Link: `rd = PC + 4; PC = PC + imm`              |
-|   31   |   JALR rd, rs1, offs  | Jump and Link Register: `rd = PC + 4; PC = rs1 + imm`    |
+| Opc | Mnemonic            | Description                                            |
+| --- | ------------------- | -------------------------------------------------------|
+|  0  | AND rd, rs0, rs1    | Bitwise AND                                            |
+|  1  | OR rd, rs0, rs1     | Bitwise OR                                             |
+|  2  | XOR rd, rs0, rs1    | Bitwise XOR                                            |
+|  3  | ADD rd, rs0, rs1    | Integer Addition                                       |
+|  4  | SUB rd, rs0, rs1    | Integer Subtraction                                    |
+|  5  | SLTU rd, rs0, rs1   | Set Less Than Unsigned                                 |
+|  6  | SLL rd, rs0, rs1    | Shift Left Logical                                     |
+|  7  | SRL rd, rs0, rs1    | Shift Right Logical                                    |
+|  8  | BEQ rs1, rs2, offs  | Branch if Equal: `if (rs1 == rs2) PC = imm`            |
+|  9  | BNE rs1, rs2, offs  | Branch if Not Equal: `if (rs1 != rs2) PC = imm`        |
+| 10  | BZ rs1, offs        | Branch if `rs1` equals zero                            |
+| 11  | BNZ rs1, offs       | Branch if `rs1` is nonzero                             |
+| 16  | ANDI rd, rs0, rs1   | Bitwise AND immediate                                  |
+| 17  | ORI rd, rs0, rs1    | Bitwise OR immediate                                   |
+| 18  | XORI rd, rs0, rs1   | Bitwise XOR immediate                                  |
+| 19  | ADDI rd, rs0, rs1   | Integer Addition immediate                             |
+| 20  | SUBI rd, rs0, rs1   | Integer Subtraction immediate                          |
+| 21  | SLTUI rd, rs0, rs1  | Set Less Than Unsigned immediate                       |
+| 22  | SLLI rd, rs0, rs1   | Shift Left Logical immediate                           |
+| 23  | SRLI rd, rs0, rs1   | Shift Right Logical immediate                          |
+| 26  | LW rd, imm(rs0)     | Load Word.<sup>1</sup>                                 |
+| 27  | SW rs1, imm(rs0)    | Store Word                                             |
+| 28  | MOVEHI rd, rs1, imm | Move High Immediate `rd = (imm << 14) + (rs1 & 0x3fff)`|
+| 29  | MOVEI rd, imm       | Move Immediate: `rd = imm`                             |
+| 30  | JAL rd, offs        | Jump and Link: `rd = PC + 4; PC = imm`                 |
+| 31  | JALR rd, rs1, offs  | Jump and Link Register: `rd = PC + 4; PC = rs1 + imm`  |
 
 1. Loads require a one-cycle delay slot before the loaded value can be safely used by a subsequent instruction.
 

@@ -122,21 +122,13 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
       loadProgram(dut, assembleProgram(
         """
           |; Initialize list
-          |           clear r0 ; this is always zero
-          |           movei r1, 17
-          |           sw r1, (r0)
-          |           movei r1, 5
-          |           sw r1, 1(r0)
-          |           movei r1, 13
-          |           sw r1, 2(r0)
-          |           movei r1, 8
-          |           sw r1, 3(r0)
-          |           movei r1, 22
-          |           sw r1, 4(r0)
+          |           clear r0            ; this is always zero
+          |           lea r2, data_end
           |
           |; Sort loop
-          |           movei r2, 4 ; End address
-          |outer:     clear r1    ; r1 is the current index
+          |outer:     lea r1, data
+          |           addi r4, r1, 1
+          |           beq r4, r2, sort_done
           |inner:     lw r3, 0(r1)
           |           lw r4, 1(r1)
           |           nop
@@ -146,28 +138,40 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |           sw r3, 1(r1)
           |           sw r4, 0(r1)
           |noswap:    addi r1, r1, 1
-          |           bne r1, r2, inner
+          |           addi r4, r1, 1
+          |           bne r4, r2, inner
           |           addi r2, r2, -1
-          |           bnz r2, outer
+          |           b outer
+          |sort_done:
           |
           |; Copy out
-          |           clear r1      ; source pointer
-          |           movei r2, 5   ; end pointer
+          |           lea r1, data        ; source pointer
+          |           lea r2, data_end    ; end pointer
           |out_loop:  lw r3, (r1)
           |           nop
-          |           sw r3, -256(r0) ; write out
+          |           sw r3, -256(r0)     ; write out
           |           addi r1, r1, 1
           |           bne r1, r2, out_loop
-          |           sw r4, -1(r0) ; Write end reigster
+          |           sw r4, -1(r0)       ; Write end reigster
+          |data:      .word 17
+          |           .word 5
+          |           .word 13
+          |           .word 8
+          |           .word 22
+          |           .word 23
+          |           .word 7
+          |data_end:  .word 0
           |""".stripMargin
       ))
 
       assert(runProgram(dut) == Seq(
         ControlWrite(0, 5),
+        ControlWrite(0, 7),
         ControlWrite(0, 8),
         ControlWrite(0, 13),
         ControlWrite(0, 17),
         ControlWrite(0, 22),
+        ControlWrite(0, 23),
       ))
     }
   }
@@ -177,36 +181,38 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
-          |           clear r0     ; r0 is always zero
-          |           loadi r6, 64 ; Stack pointer
+          |           clear r0          ; r0 is always zero
+          |           lea r6, stack_top ; Stack pointer
           |           loadi r1, 10
-          |           jal r7, fib  ; Call fib(10)
-          |           sw r1, -256(r0) ; return result
-          |           sw r1, -1(r0) ; signal completion
+          |           jal r7, fib       ; Call fib(10)
+          |           sw r1, -256(r0)   ; return result
+          |           sw r1, -1(r0)     ; signal completion
           |
           |; r1 is argument and result. r6 is the pointer to the base of the
           |; current stack frame. r7 holds the return address.
           |fib:       sltui r2, r1, 2
           |           bnz r2, return
-          |           addi r6, r6, -3 ; Allocate stack frame
-          |           sw r7, 0(r6)    ; Save return address
-          |           sw r1, 1(r6)    ; Save original argument
+          |           addi r6, r6, -3   ; Allocate stack frame
+          |           sw r7, 0(r6)      ; Save return address
+          |           sw r1, 1(r6)      ; Save original argument
           |
           |           addi r1, r1, -1
-          |           jal r7, fib     ; Call fib(n - 1)
-          |           sw r1, 2(r6)    ; Save this return value
+          |           jal r7, fib       ; Call fib(n - 1)
+          |           sw r1, 2(r6)      ; Save this return value
           |
-          |           lw r1, 1(r6)    ; Restore original argument
+          |           lw r1, 1(r6)      ; Restore original argument
           |           nop
           |           addi r1, r1, -2
-          |           jal r7, fib     ; Call fib(n - 2)
+          |           jal r7, fib       ; Call fib(n - 2)
           |
-          |           lw r2, 2(r6)    ; Load first result
+          |           lw r2, 2(r6)      ; Load first result
           |           nop
-          |           add r1, r1, r2  ; Add two results together
-          |           lw r7, (r6)     ; restore return address
-          |           addi r6, r6, 3  ; Deallocate stack frame
+          |           add r1, r1, r2    ; Add two results together
+          |           lw r7, (r6)       ; restore return address
+          |           addi r6, r6, 3    ; Deallocate stack frame
           |return:    jalr r7, r7
+          |stack:     .fill 63, 0
+          |stack_top: .word 0
           |""".stripMargin
       ))
 
@@ -218,10 +224,10 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
     simulate(new CommandProcessor) { dut =>
       loadProgram(dut, assembleProgram(
         """
-          |           clear r0 ; this is always 0
+          |           clear r0              ; this is always 0
           |           loadi r1, 0xf00d1234
-          |           movei r2, 0 ; result
-          |           movei r3, 32 ; loop counter
+          |           movei r2, 0           ; result
+          |           movei r3, 32          ; loop counter
           |           movei r4, 1 ; mask
           |loop:      slli r2, r2, 1
           |           and r5, r1, r4
@@ -257,7 +263,7 @@ class CommandProcessorTests extends AnyFunSuite with ChiselSim with TestHelpers 
           |             sw r1, -256(r0)   ; store to output
           |             addi r2, r2, -1
           |             bnz r2, read_loop
-          |             sw r2, -1(r0)    ; terminate
+          |             sw r2, -1(r0)     ; terminate
           |""".stripMargin
       ))
 

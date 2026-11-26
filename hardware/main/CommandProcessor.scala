@@ -271,12 +271,11 @@ class CpPipeline extends Module {
     val mmio = new CpMmio
   })
 
+  val enableTrace = false
   val dataWidth:          Int = 32
-  val instructionMemSize: Int = 1024 // words
-  val dataMemSize:        Int = 1024 // words
+  val memorySize:         Int = 1024 // words
   val numRegisters:       Int = 8
-
-  require(isPow2(dataMemSize))
+  val imemAddressWidth:   Int = log2Up(memorySize)
 
   class Instruction extends Bundle {
     val imm = SInt(18.W)   // 31-14
@@ -286,16 +285,26 @@ class CpPipeline extends Module {
     val opcode = UInt(5.W) // 4-0
   }
 
-  val instructionMem = SyncReadMem(instructionMemSize, new Instruction)
-  val dataMem = SyncReadMem(dataMemSize, UInt(dataWidth.W))
+  val internalMem = SyncReadMem(memorySize, UInt(dataWidth.W))
   val registerFileReg = RegInit(VecInit.fill(numRegisters)(0.U(dataWidth.W)))
-  val pcReg = RegInit(0.U(log2Up(instructionMemSize).W))
+  val pcReg = RegInit(0.U(imemAddressWidth.W))
 
-  // Load code into instruction memory
-  val imLoadAddressReg = RegInit(0.U(log2Up(instructionMemSize).W))
+  val memoryWriteback = Wire(Valid(new Bundle {
+    val address = UInt(imemAddressWidth.W)
+    val data = UInt(dataWidth.W)
+  }))
+
+  val imLoadAddressReg = RegInit(0.U(imemAddressWidth.W))
+  val internalLoad = io.halt && io.loadProgram.valid
+  when (internalLoad || memoryWriteback.valid) {
+    internalMem.write(
+      Mux(internalLoad, imLoadAddressReg, memoryWriteback.bits.address),
+      Mux(internalLoad, io.loadProgram.bits, memoryWriteback.bits.data)
+    )
+  }
+
   when (io.halt) {
     when (io.loadProgram.valid) {
-      instructionMem.write(imLoadAddressReg, io.loadProgram.bits.asTypeOf(new Instruction))
       imLoadAddressReg := imLoadAddressReg + 1.U
     }
 
@@ -305,7 +314,7 @@ class CpPipeline extends Module {
   }
 
   val branchTaken = WireInit(false.B)
-  val branchPc = WireInit(0.U(log2Up(instructionMemSize).W))
+  val branchPc = WireInit(0.U(imemAddressWidth.W))
   val writebackIndex = WireInit(0.U(3.W))
   val writebackData = WireInit(0.U(dataWidth.W))
   val writebackValid = WireInit(false.B)
@@ -319,13 +328,13 @@ class CpPipeline extends Module {
   ///////////////////////////////////////////////////////////////////
   val ifNextPc = WireInit(pcReg + 1.U)
   when (io.halt) {
-    ifNextPc := ~0.U(log2Up(instructionMemSize).W)
+    ifNextPc := ~0.U(imemAddressWidth.W)
   }.elsewhen(branchTaken) {
     ifNextPc := branchPc
   }
 
   val ifValidReg = RegNext(!io.halt, init = false.B)
-  val ifInstruction = instructionMem.read(ifNextPc)
+  val ifInstruction = internalMem.read(ifNextPc).asTypeOf(new Instruction)
   pcReg := ifNextPc
 
   ///////////////////////////////////////////////////////////////////
@@ -343,7 +352,7 @@ class CpPipeline extends Module {
   ///////////////////////////////////////////////////////////////////
   // Stage 3: Execute/data memory access
   ///////////////////////////////////////////////////////////////////
-  branchPc := (idPcReg + idInstructionReg.imm.asUInt)(log2Up(instructionMemSize) - 1, 0)
+  branchPc := idInstructionReg.imm.asUInt(imemAddressWidth - 1, 0)
   val exAluOp1 = bypassOperand(idInstructionReg.rs1, idOperand1Reg)
   val exOp2IsImm = (idInstructionReg.opcode === CpOpcode.ADDI
     || idInstructionReg.opcode === CpOpcode.SRLI
@@ -359,12 +368,16 @@ class CpPipeline extends Module {
   )
 
   val exMemoryAddress = exAluOp1 + idInstructionReg.imm.pad(dataWidth).asUInt
-  val addrIsMmio = exMemoryAddress(31, log2Up(dataMemSize)).orR
+  val addrIsMmio = exMemoryAddress(31, imemAddressWidth).orR
   io.mmio.regWrite.bits.address := exMemoryAddress
   io.mmio.regWrite.bits.data := exAluOp2
   io.mmio.regWrite.valid := false.B
   io.mmio.regReadAddr.bits := exMemoryAddress
   io.mmio.regReadAddr.valid := false.B
+
+  memoryWriteback.bits.address := exMemoryAddress
+  memoryWriteback.bits.data := exAluOp2
+  memoryWriteback.valid := false.B
 
   val exAluResult = WireInit(0.U(dataWidth.W))
   val exWritebackMmio = WireInit(false.B)
@@ -408,7 +421,7 @@ class CpPipeline extends Module {
         when (addrIsMmio) {
           io.mmio.regWrite.valid := true.B
         }.otherwise {
-          dataMem.write(exMemoryAddress, exAluOp2)
+          memoryWriteback.valid := true.B
         }
       }
       is (CpOpcode.MOVEHI) { exAluResult := idInstructionReg.imm.asUInt ## exAluOp1(13, 0) }
@@ -418,7 +431,7 @@ class CpPipeline extends Module {
       }
       is (CpOpcode.JALR) {
         branchTaken := true.B
-        branchPc := exMemoryAddress(log2Up(instructionMemSize) - 1, 0)
+        branchPc := exMemoryAddress(imemAddressWidth - 1, 0)
       }
     }
   }
@@ -426,7 +439,7 @@ class CpPipeline extends Module {
   val exValidReg = RegNext(idValidReg, init = false.B)
   val exPcReg = RegNext(idPcReg)
   val exInstructionReg = RegNext(idInstructionReg)
-  val exMemoryResult = dataMem.read(exMemoryAddress)
+  val exMemoryResult = internalMem.read(exMemoryAddress)
   val exAluResultReg = RegNext(exAluResult)
   val exWritebackMmioReg = RegNext(exWritebackMmio)
 
@@ -459,10 +472,13 @@ class CpPipeline extends Module {
     }
   }
 
-  if (false) {
-    // Debug tracing
+  if (enableTrace) {
     when (writebackValid) {
       printf(cf"${exPcReg}%x: r${writebackIndex} = ${writebackData}\n")
+    }
+
+    when (io.mmio.regWrite.valid || memoryWriteback.valid) {
+      printf(cf"mem[${exMemoryAddress}%x] = ${exAluOp2}\n")
     }
   }
 }
