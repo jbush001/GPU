@@ -44,8 +44,7 @@
 .define TILE_WRITE_STRIDE 11
 .define TILE_WRITE_START 12
 
-.define CMD_FLUSH_TILE 2
-.define CMD_LOAD_SHADER_STATE 3
+.define CMD_LAST 3
 
 _start:         loadi r1, 0xfffffe00        ; DMA registers
                 loadi r6, 1024              ; Load stack pointer
@@ -70,20 +69,19 @@ wait_dma:       lw r2, DMA_STATUS(r1)       ; DMA status
 
                 ; Dispatch on packet type (low byte of word 0)
                 andi r4, r2, 255
-                movei r7, CMD_FLUSH_TILE
-                bne r4, r7, check_load_shader
-                jal r7, flush_tile
-                b next_packet
-check_load_shader:
-                movei r7, CMD_LOAD_SHADER_STATE
-                bne r4, r7, not_load_shader
-                jal r7, load_shader_state
-                b next_packet
-not_load_shader:
-
+                sltui r0, r4, CMD_LAST
+                bz r0, next_packet          ; Out of bounds
+                lw r0, command_table(r4)
+                jalr r7, r0
 next_packet:    addi r5, r5, 8
                 sw r5, SCRATCHPAD_0(r1)     ; Advance start pointer
                 b main_loop
+
+command_table:  .word no_op
+                .word flush_tile
+                .word load_shader_state
+
+no_op:          jalr r7, r7
 
 ; Write the color tile buffer to memory and wait for it to complete.
 ;   r2 = packet word 0, r6 = packet word 1
@@ -98,7 +96,7 @@ wait_flush:     lw r2, PIPELINE_FLAGS(r1)   ; Pipeline flags
                 nop
                 andi r2, r2, 2              ; Bit 1 is tile writer done
                 bz r2, wait_flush
-                jalr r4, r7
+                jalr r7, r7
 
 ; Load fragment shader address and varying count.
 ;   r2 = packet word 0, r6 = packet word 1
@@ -109,4 +107,4 @@ load_shader_state:
                 sw r0, 5(r4)                ; FragmentShaderAddrH
                 srli r2, r2, 8
                 sw r2, 6(r4)                ; NumVaryings
-                jalr r4, r7
+                jalr r7, r7

@@ -109,15 +109,20 @@ class Assembler:
         for lineno, line in enumerate(source.split('\n'), 1):
             self.assemble_line(lineno, line)
 
-        for from_addr, symbol, lineno in self.fixups:
+        for from_addr, kind, symbol, lineno in self.fixups:
             if symbol not in self.labels:
                 raise AssembleError(lineno, f'Unknown label {symbol}')
 
             to_addr = self.labels[symbol]
-            if to_addr >= (1 << 18):
-                raise AssembleError(lineno, f'Data address {to_addr} out of range')
+            if kind == 'imm':
+                if to_addr >= (1 << 18):
+                    raise AssembleError(lineno, f'Data address {to_addr} out of range')
 
-            self.code[from_addr] |= to_addr << 14
+                self.code[from_addr] |= to_addr << 14
+            else:
+                # Direct data fixup
+                self.code[from_addr] = to_addr
+
 
     def write_list_file(self, source, output_filename):
         """Create an annotated listing file with source code and generated machine code."""
@@ -128,11 +133,11 @@ class Assembler:
                 if instructions is not None:
                     for i, addr in enumerate(instructions):
                         if i == 0:
-                            list_file.write(f'{lineno:>4}   {addr:04x}   {self.code[addr]:08x}   {source_line}\n')
+                            list_file.write(f'{addr:04x}   {self.code[addr]:08x}   {source_line}\n')
                         else:
-                            list_file.write(f'{"":4}   {addr * 4:04x}   {self.code[addr]:08x}\n')
+                            list_file.write(f'{addr * 4:04x}   {self.code[addr]:08x}\n')
                 else:
-                    list_file.write(f'{lineno:>4}   {"":15}   {source_line}\n')
+                    list_file.write(f'{"":15}   {source_line}\n')
 
         print(f'wrote {output_filename}')
 
@@ -178,7 +183,13 @@ class Assembler:
 
         if lookahead == '.word':
             self.line_map.setdefault(lineno, []).append(len(self.code))
-            self.code.append(int(next_token(), 0))
+            value = next_token()
+            if value[0].isdigit() or (value[0] == '-' and value[1:].isdigit()):
+                self.code.append(int(value, 0))
+            else:
+                self.add_fixup('data', value, lineno)
+                self.code.append(0)
+
         elif lookahead == '.fill':
             self.line_map.setdefault(lineno, []).append(len(self.code))
             count = int(next_token(), 0)
@@ -200,7 +211,7 @@ class Assembler:
             rd = parse_reg_operand(lineno, next_token())
             match(',')
             target_label = next_token()
-            self.add_fixup(target_label, lineno)
+            self.add_fixup('imm', target_label, lineno)
             self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, 0)
         elif lookahead == 'move':
             # Pseudo-instruction that expands to addi rd, rs, 0
@@ -215,7 +226,7 @@ class Assembler:
         elif lookahead == 'b':
             # Unconditional branch. This is a pseudo-instruction that expands to beq r0, r0, target
             target = next_token()
-            self.add_fixup(target, lineno)
+            self.add_fixup('imm', target, lineno)
             self.emit_inst(lineno, INSTRS['beq'][0], 0, 0, 0)
         else:
             if lookahead in INSTRS:
@@ -246,15 +257,17 @@ class Assembler:
                 op0 = parse_reg_operand(lineno, next_token())
                 match(',')
                 lookahead = next_token()
-                # Check if the lookahead is a number
                 if lookahead[0].isdigit() or (lookahead[0] == '-' and lookahead[1:].isdigit()):
+                    # Offset
                     imm = parse_imm_operand(lineno, lookahead)
 
                     match('(')
+                elif lookahead == '(':
+                    imm = 0
                 else:
-                    if lookahead != '(':
-                        raise AssembleError(lineno, f'Expected immediate or "(" but got {lookahead}')
-
+                    # Identifier, use label
+                    self.add_fixup('imm', lookahead, lineno)
+                    match('(')
                     imm = 0
 
                 ptr_op = parse_reg_operand(lineno, next_token())
@@ -270,19 +283,19 @@ class Assembler:
                 rs2 = parse_reg_operand(lineno, next_token())
                 match(',')
                 target = next_token()
-                self.add_fixup(target, lineno)
+                self.add_fixup('imm', target, lineno)
                 self.emit_inst(lineno, opcode, 0, rs1, rs2)
             elif format == FMT_ZERO_BRANCH:
                 rs1 = parse_reg_operand(lineno, next_token())
                 match(',')
                 target = next_token()
-                self.add_fixup(target, lineno)
+                self.add_fixup('imm', target, lineno)
                 self.emit_inst(lineno, opcode, 0, rs1, 0)
             elif format == FMT_JAL:
                 rd = parse_reg_operand(lineno, next_token())
                 match(',')
                 target = next_token()
-                self.add_fixup(target, lineno)
+                self.add_fixup('imm', target, lineno)
                 self.emit_inst(lineno, opcode, rd, 0, 0)
             elif format == FMT_JALR:
                 rd = parse_reg_operand(lineno, next_token())
@@ -295,8 +308,8 @@ class Assembler:
     def get_current_addr(self):
         return len(self.code)
 
-    def add_fixup(self, symbol, lineno):
-        self.fixups.append((self.get_current_addr(), symbol, lineno))
+    def add_fixup(self, kind, symbol, lineno):
+        self.fixups.append((self.get_current_addr(), kind, symbol, lineno))
 
     def emit_label(self, name, lineno):
         """Assign a label to the current address."""

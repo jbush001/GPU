@@ -478,7 +478,7 @@ class CpPipeline extends Module {
     }
 
     when (io.mmio.regWrite.valid || memoryWriteback.valid) {
-      printf(cf"mem[${exMemoryAddress}%x] = ${exAluOp2}\n")
+      printf(cf"${idPcReg}%x: mem[${exMemoryAddress}%x] = ${exAluOp2}\n")
     }
   }
 }

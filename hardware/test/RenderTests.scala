@@ -79,8 +79,8 @@ class RenderTests extends AnyFunSuite with ChiselSim with TestHelpers {
   val commandProgram = assembleCommandProgram()
 
   object CommandId {
-    val Flush = 2
-    val LoadShaderState = 3
+    val Flush = 1
+    val LoadShaderState = 2
   }
 
   test("texture") {
