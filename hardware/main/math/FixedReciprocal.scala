@@ -24,8 +24,8 @@ import chisel3.util._
   *
   * Used by [[TriangleSetup]] to normalize by the triangle's area.
   *
-  * @note Not pipelined. The result arrives 5 cycles after `divisor` is valid,
-  *       and a new request may be issued only every 5 cycles.
+  * @note Not pipelined. The result arrives 6 cycles after `divisor` is valid,
+  *       and a new request may be issued only every 6 cycles.
   * @note The result is undefined for an input of zero.
   */
 class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
@@ -49,7 +49,7 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val leadingZeros = PriorityEncoder(Reverse(io.divisor.bits))
   val normalizedDivisor = (io.divisor.bits << leadingZeros)(cfg.edgeFunctionBits - 1, cfg.edgeFunctionBits - 33)
 
-  // Client must ensure it only enqueues a new request every 5 cycles.
+  // Client must ensure it only enqueues a new request every 6 cycles.
   assert(!io.divisor.valid || cycleReg === 0.U)
 
   when(io.divisor.valid) {
@@ -99,17 +99,17 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val adjustedEstimate = estimateReg - (estimateReg >> 24)
   val shiftOffset = fractionalBits + cfg.edgeFunctionBits - 49
 
-  io.result := Mux(
+  io.result := RegNext(Mux(
     shiftCountReg >= shiftOffset.U,
     adjustedEstimate.pad(48) << (shiftCountReg - shiftOffset.U),
     adjustedEstimate >> (shiftOffset.U - shiftCountReg)
-  )
+  ))
 
   io.done := (cycleReg === 4.U)
 }
 
 object FixedReciprocal {
-  val latency = 5
+  val latency = 6
 }
 
 object FixedReciprocalLut {

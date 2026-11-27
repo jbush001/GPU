@@ -148,7 +148,7 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
   fpAdd.io.addend1 := DontCare
   fpAdd.io.addend2 := DontCare
 
-  val recip = Module(new FixedReciprocal) // 5 cycles of latency
+  val recip = Module(new FixedReciprocal) // 6 cycles of latency
 
   val a = tileOffsetReg.y
   val b = WireInit(0.S(16.W))
@@ -329,6 +329,10 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
     }
 
     is (10.U) {
+      stateReg := 11.U
+    }
+
+    is (11.U) {
       // Pull the result that was enqueued in the reciprocal pipeline in cycle 5
       val multiplier = recip.io.result.asSInt
       for (edge <- 0 until 3) {
@@ -337,10 +341,10 @@ class TriangleSetup(implicit cfg: GpuConfig) extends Module {
         rasterizerParamsReg.edges(edge).initialValue := normalizeAndRound(rasterizerParamsReg.edges(edge).initialValue, multiplier)
       }
 
-      stateReg := 11.U
+      stateReg := 12.U
     }
 
-    is (11.U) {
+    is (12.U) {
       // Finish
       when (!varyingSetupActiveReg && !varyingStage1ValidReg && !varyingStage2ValidReg && !varyingStage3ValidReg && !varyingStage4ValidReg) {
         io.rasterizerParams.valid := true.B
