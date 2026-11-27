@@ -74,7 +74,7 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
 
   val product = multOp1 * multOp2
   val productTop = product(fractionalBits * 2, fractionalBits)
-  val error = ~productTop
+  val error = ~productTop // This is equivalent to 2 - productTop
   val estimate = productTop
 
   switch(cycleReg) {

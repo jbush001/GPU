@@ -140,6 +140,9 @@ class FragmentShaderConductor(implicit cfg: GpuConfig) extends Module {
   }
 
   // The jobRegs array is indexed by jobId.
+  // @todo This is atrociously inefficient creates a huge array of registers and
+  // multiplexers. Need to break JobInfo into a small number of tag registers with
+  // SyncReadMem for the contents.
   val jobsReg = RegInit(VecInit.fill(totalPendingJobs)(0.U.asTypeOf(new JobInfo)))
 
   // We support multiple triangles in-flight at once. This array stores

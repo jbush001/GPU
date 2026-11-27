@@ -95,7 +95,10 @@ class RasterizedQuad(implicit val cfg: GpuConfig) extends Quad {
   *      `lastQuad` flag set to signal completion.
   * @todo Support MSAA, which would return an N-bit mask for each of the quads.
   * @todo Optimize the sweep algorithm; it currently scans the entire tile, which
-  *       results in a lot of idle output cycles.
+  *       results in a lot of idle output cycles. The challenge of a lot of
+  *       traditional sweep algorithms is they assume a full triangle, where this
+  *       often is rastering a clipped portion of a triangle that overlaps the
+  *       tile.
   */
 class Rasterizer(implicit cfg: GpuConfig) extends Module {
   val io = IO(new Bundle {

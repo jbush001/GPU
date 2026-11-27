@@ -28,6 +28,8 @@ import chisel3.util._
   *     `length` are latched by the arbiter. The client MAY issue the next
   *     request while a burst is active, but MUST NOT issue more than one
   *     outstanding request ahead of the active burst.
+  *   - `address` SHOULD be aligned to the data bus width (the underlying
+  *      protocol does support splitting, but it has a performance penalty).
   *   - `length` is the number of transfer cycles in the burst minus one
   *     (0 = one transfer).
   *   - A data word is consumed iff both `data.valid` and `data.ready` are
@@ -64,6 +66,9 @@ class MemWritePort(implicit cfg: GpuConfig) extends Bundle {
 /** Multiplexes [[numReadPorts]] read clients and [[numWritePorts]] write
   * clients onto a single memory, using the burst protocol documented on
   * [[MemReadPort]] and [[MemWritePort]].
+  * @todo The AXI spec mandates a burst can't cross a 4k boundary. This
+  * module should handle that transparently to clients, splitting bursts
+  * as necessary. It currently ignores that.
   */
 class MemoryArbiter(
   val numReadPorts: Int = 2,

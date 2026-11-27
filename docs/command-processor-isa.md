@@ -6,6 +6,10 @@ The Command Processor contains a small RISC pipeline running firmware loaded
 from the host CPU. This program parses command streams from shared memory and
 coordinates activity across the GPU pipeline units.
 
+The processor has a few kilobytes of local SRAM for instructions and data. The
+command program is uploaded from the host via a dedicated write port.
+It only accesses system memory via programmed DMA.
+
 ## Instruction Format
 
 All instructions are 32 bits wide. The instruction format is highly regular,
@@ -99,15 +103,14 @@ indices, not bytes.
 | ffffff20 |  w  | Start of attribute arrays...                                     |
 
 Direct memory access (DMA) allows the Command Processor to fetch command
-packets and other data from host memory without stalling the CPU. To
-initiate a DMA transfer, the firmware writes the 64-bit host memory
-source address into the DmaAddrL and DmaAddrH registers, followed by
-the transfer length in 8-byte bus transfers minus one. For example, write 0
-for 8 bytes, or 15 for 128 bytes. The source address must be 8-byte aligned.
-Writing the DMA length starts the transfer. Bit 0 of the DmaStatus register
-will be zero until the next 32-bit word is available. The processor reads
-each 8-byte transfer as two 32-bit words, low word first, waiting for data
-availability before each read.
+packets and other data from host memory. To initiate a DMA transfer, the
+firmware writes the 64-bit host memory source address into the DmaAddrL and
+DmaAddrH registers, followed by the transfer length in 8-byte bus transfers
+minus one. For example, write 0 for 8 bytes, or 15 for 128 bytes. The source
+address must be 8-byte aligned. Writing the DMA length starts the transfer.
+Bit 0 of the DmaStatus register will be zero until the next 32-bit word is
+available. The processor reads each 8-byte transfer as two 32-bit words,
+low word first, waiting for data availability before each read.
 
 It is illegal for the processor to start another transaction until it has
 fully read all words that were requested.

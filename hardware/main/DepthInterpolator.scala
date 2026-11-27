@@ -39,6 +39,8 @@ class InterpolatedQuad(implicit val cfg: GpuConfig) extends Quad {
 /** Sits between [[Rasterizer]] and [[FragmentShaderConductor]] and computes
   * per-pixel depth and perspective corrected barycentric coordinates.
   *
+  * @todo This takes a lot of area and could probably be optimized if it used
+  *       fixed-point arithmetic.
   * @note Fully pipelined (1 quad/cycle, 17 cycles latency).
   * @note Stalls when the interpolated quad output deasserts its ready flag.
   * @see [[docs/maths.md]] for details of the interpolation math.
