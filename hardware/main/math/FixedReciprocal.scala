@@ -35,19 +35,24 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
     val done = Output(Bool())
   })
 
-  val fractionalBits = 40
+  val fractionalBits = 34
 
   val cycleReg = RegInit(0.U(3.W))
 
   // Shared Registers
   val shiftCountReg = Reg(UInt(log2Ceil(cfg.edgeFunctionBits).W))
-  val divisorReg = Reg(UInt(33.W))
+  val divisorReg = Reg(UInt((fractionalBits + 1).W))
   val estimateReg = Reg(UInt((fractionalBits + 1).W))
   val errorReg = Reg(UInt((fractionalBits + 1).W))
 
   // Normalization/Initial estimateReg
   val leadingZeros = PriorityEncoder(Reverse(io.divisor.bits))
-  val normalizedDivisor = (io.divisor.bits << leadingZeros)(cfg.edgeFunctionBits - 1, cfg.edgeFunctionBits - 33)
+  val shiftedDivisor = io.divisor.bits << leadingZeros
+  val normalizedDivisor = if (cfg.edgeFunctionBits >= fractionalBits + 1) {
+    shiftedDivisor(cfg.edgeFunctionBits - 1, cfg.edgeFunctionBits - (fractionalBits + 1))
+  } else {
+    shiftedDivisor ## 0.U((fractionalBits + 1 - cfg.edgeFunctionBits).W)
+  }
 
   // Client must ensure it only enqueues a new request every 6 cycles.
   assert(!io.divisor.valid || cycleReg === 0.U)
@@ -56,7 +61,7 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
     shiftCountReg := leadingZeros
     divisorReg := normalizedDivisor
     estimateReg := ("b01".U ##
-      FixedReciprocalLut(normalizedDivisor(31, 24)) ##
+      FixedReciprocalLut(normalizedDivisor(fractionalBits - 1, fractionalBits - 8)) ##
       0.U((fractionalBits - 9).W)
     )
 
@@ -68,13 +73,9 @@ class FixedReciprocal(implicit cfg: GpuConfig) extends Module {
   val multOp2 = Mux(cycleReg === 1.U || cycleReg === 3.U, estimateReg, errorReg)
 
   val product = multOp1 * multOp2
-  val productRounded = Mux(
-    cycleReg === 1.U || cycleReg === 3.U,
-    product(72, 32) + product(31),
-    product((fractionalBits * 2), fractionalBits) + product(fractionalBits - 1)
-  )
-  val error = ((BigInt(1) << (fractionalBits + 1)).U - productRounded)(fractionalBits, 0)
-  val estimate = productRounded
+  val productTop = product(fractionalBits * 2, fractionalBits)
+  val error = ~productTop
+  val estimate = productTop
 
   switch(cycleReg) {
     is(1.U) { // Compute Error 1 (Divisor * Estimate)
