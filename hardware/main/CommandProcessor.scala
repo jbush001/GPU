@@ -285,24 +285,12 @@ class CpPipeline extends Module {
     val opcode = UInt(5.W) // 4-0
   }
 
-  val internalMem = SyncReadMem(memorySize, UInt(dataWidth.W))
+  val internalMem = SyncReadMem(memorySize, UInt(dataWidth.W), SyncReadMem.Undefined)
   val registerFileReg = RegInit(VecInit.fill(numRegisters)(0.U(dataWidth.W)))
   val pcReg = RegInit(0.U(imemAddressWidth.W))
 
-  val memoryWriteback = Wire(Valid(new Bundle {
-    val address = UInt(imemAddressWidth.W)
-    val data = UInt(dataWidth.W)
-  }))
-
+    // This logic handles when the host is loading a program into instruction memory
   val imLoadAddressReg = RegInit(0.U(imemAddressWidth.W))
-  val internalLoad = io.halt && io.loadProgram.valid
-  when (internalLoad || memoryWriteback.valid) {
-    internalMem.write(
-      Mux(internalLoad, imLoadAddressReg, memoryWriteback.bits.address),
-      Mux(internalLoad, io.loadProgram.bits, memoryWriteback.bits.data)
-    )
-  }
-
   when (io.halt) {
     when (io.loadProgram.valid) {
       imLoadAddressReg := imLoadAddressReg + 1.U
@@ -375,12 +363,11 @@ class CpPipeline extends Module {
   io.mmio.regReadAddr.bits := exMemoryAddress
   io.mmio.regReadAddr.valid := false.B
 
-  memoryWriteback.bits.address := exMemoryAddress
-  memoryWriteback.bits.data := exAluOp2
-  memoryWriteback.valid := false.B
 
   val exAluResult = WireInit(0.U(dataWidth.W))
   val exWritebackMmio = WireInit(false.B)
+  val isLocalStore = WireInit(false.B)
+  val isLocalLoad = WireInit(false.B)
   when (idValidReg) {
     switch (idInstructionReg.opcode) {
       is (CpOpcode.AND, CpOpcode.ANDI) { exAluResult := exAluOp1 & exAluOp2 }
@@ -415,13 +402,15 @@ class CpPipeline extends Module {
         when (addrIsMmio) {
           io.mmio.regReadAddr.valid := true.B
           exWritebackMmio := true.B
+        }.otherwise {
+          isLocalLoad := true.B
         }
       }
       is (CpOpcode.SW) {
         when (addrIsMmio) {
           io.mmio.regWrite.valid := true.B
         }.otherwise {
-          memoryWriteback.valid := true.B
+          isLocalStore := true.B
         }
       }
       is (CpOpcode.MOVEHI) { exAluResult := idInstructionReg.imm.asUInt ## exAluOp1(13, 0) }
@@ -436,10 +425,19 @@ class CpPipeline extends Module {
     }
   }
 
+  // Pipeline read/write report, for local load and stores, as well as for the
+  // host to write into instruction memory
+  val memWriteEn = (io.halt && io.loadProgram.valid) || isLocalStore
+  val exMemoryResult = internalMem.readWrite(
+    Mux(io.halt, imLoadAddressReg, exMemoryAddress),
+    Mux(io.halt, io.loadProgram.bits, exAluOp2),
+    isLocalLoad || memWriteEn,
+    memWriteEn
+  )
+
   val exValidReg = RegNext(idValidReg, init = false.B)
   val exPcReg = RegNext(idPcReg)
   val exInstructionReg = RegNext(idInstructionReg)
-  val exMemoryResult = internalMem.read(exMemoryAddress)
   val exAluResultReg = RegNext(exAluResult)
   val exWritebackMmioReg = RegNext(exWritebackMmio)
 
@@ -477,7 +475,7 @@ class CpPipeline extends Module {
       printf(cf"${exPcReg}%x: r${writebackIndex} = ${writebackData}\n")
     }
 
-    when (io.mmio.regWrite.valid || memoryWriteback.valid) {
+    when (io.mmio.regWrite.valid || isLocalStore) {
       printf(cf"${idPcReg}%x: mem[${exMemoryAddress}%x] = ${exAluOp2}\n")
     }
   }
