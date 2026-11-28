@@ -16,15 +16,16 @@
 
 """Assembler for CommandProcessor firmware"""
 
-import sys
+import argparse
 from pathlib import Path
 import re
+import sys
 
 #
 # Instructions have a single format:
 #  31                               14 13 11 10  8 7   5 4       0
 # +-----------------------------------+-----+-----+-----+---------+
-# |             imm (18)              | rs1 | rs2 |  rd | opcode  |
+# |             imm (18)              | rs2 | rs1 |  rd | opcode  |
 # +-----------------------------------+-----+-----+-----+---------+
 #
 
@@ -79,24 +80,41 @@ class AssembleError(Exception):
 
 
 def parse_reg_operand(lineno, token):
-    if token.startswith('r'):
-        index = int(token[1:])
-        if index > 7:
-            raise AssembleError(lineno, f'Invalid register index {index}')
-
-        return index
-    else:
+    if token is None or not re.fullmatch(r'r[0-9]+', token):
         raise AssembleError(lineno, f'Invalid register {token}')
 
-def parse_imm_operand(lineno, token):
-    try:
-        imm = int(token, 0)
-        if imm < 0:
-            imm = (1 << 18) + imm
+    index = int(token[1:])
+    if index > 7:
+        raise AssembleError(lineno, f'Invalid register index {index}')
 
-        return imm
-    except ValueError:
-        raise AssembleError(lineno, f'Invalid immediate {token}')
+    return index
+
+
+def parse_int_operand(lineno, token):
+    try:
+        return int(token, 0)
+    except (TypeError, ValueError):
+        raise AssembleError(lineno, f'Invalid integer {token}') from None
+
+
+def is_int_operand(token):
+    return token is not None and (token[0].isdigit() or token[0] in '+-')
+
+
+def parse_imm_operand(lineno, token):
+    imm = parse_int_operand(lineno, token)
+    if not -(1 << 17) <= imm < (1 << 18):
+        raise AssembleError(lineno, f'Immediate {token} out of range')
+
+    return imm & ((1 << 18) - 1)
+
+
+def parse_word_operand(lineno, token):
+    value = parse_int_operand(lineno, token)
+    if not -(1 << 31) <= value < (1 << 32):
+        raise AssembleError(lineno, f'Value {token} out of range for 32 bits')
+
+    return value & 0xffffffff
 
 class Assembler:
     def __init__(self):
@@ -135,7 +153,7 @@ class Assembler:
                         if i == 0:
                             list_file.write(f'{addr:04x}   {self.code[addr]:08x}   {source_line}\n')
                         else:
-                            list_file.write(f'{addr * 4:04x}   {self.code[addr]:08x}\n')
+                            list_file.write(f'{addr:04x}   {self.code[addr]:08x}\n')
                 else:
                     list_file.write(f'{"":15}   {source_line}\n')
 
@@ -182,27 +200,30 @@ class Assembler:
             return
 
         if lookahead == '.word':
-            self.line_map.setdefault(lineno, []).append(len(self.code))
             while True:
                 value = next_token()
                 if value is None:
                     raise AssembleError(lineno, 'Unexpected end of line in .word directive')
 
-                if value[0].isdigit() or (value[0] == '-' and value[1:].isdigit()):
-                    self.code.append(int(value, 0))
+                self.line_map.setdefault(lineno, []).append(len(self.code))
+                if is_int_operand(value):
+                    self.code.append(parse_word_operand(lineno, value))
                 else:
                     self.add_fixup('data', value, lineno)
                     self.code.append(0)
 
-                if next_token() != ',':
+                if index == len(tokens):
                     break
+                match(',')
 
         elif lookahead == '.fill':
-            self.line_map.setdefault(lineno, []).append(len(self.code))
-            count = int(next_token(), 0)
+            count = parse_int_operand(lineno, next_token())
+            if count < 0:
+                raise AssembleError(lineno, 'Negative .fill count')
             match(',')
-            value = int(next_token(), 0)
+            value = parse_word_operand(lineno, next_token())
             for _ in range(count):
+                self.line_map.setdefault(lineno, []).append(len(self.code))
                 self.code.append(value)
         elif lookahead == 'nop':
             self.emit_inst(lineno, 1, 0, 0, 0, 0)  # addi r0, r0, 0
@@ -211,7 +232,7 @@ class Assembler:
             # instructions: movei and movehi.
             rd = parse_reg_operand(lineno, next_token())
             match(',')
-            raw_int = int(next_token(), 0)
+            raw_int = parse_word_operand(lineno, next_token())
             self.emit_inst(lineno, INSTRS['movei'][0], rd, 0, 0, raw_int & 0x3fff)
             self.emit_inst(lineno, INSTRS['movehi'][0], rd, rd, 0, (raw_int >> 14) & 0x3ffff)
         elif lookahead == 'lea':
@@ -264,7 +285,7 @@ class Assembler:
                 op0 = parse_reg_operand(lineno, next_token())
                 match(',')
                 lookahead = next_token()
-                if lookahead[0].isdigit() or (lookahead[0] == '-' and lookahead[1:].isdigit()):
+                if is_int_operand(lookahead):
                     # Offset
                     imm = parse_imm_operand(lineno, lookahead)
 
@@ -272,6 +293,8 @@ class Assembler:
                 elif lookahead == '(':
                     imm = 0
                 else:
+                    if lookahead is None:
+                        raise AssembleError(lineno, 'Expected load/store offset or base register')
                     # Identifier, use label
                     self.add_fixup('imm', lookahead, lineno)
                     match('(')
@@ -311,6 +334,9 @@ class Assembler:
                 self.emit_inst(lineno, opcode, rd, rs, 0, 0)
             else:
                 raise Exception('Internal error: unknown format')
+
+        if index != len(tokens):
+            raise AssembleError(lineno, f'Unexpected token {tokens[index]}')
 
     def get_current_addr(self):
         return len(self.code)
@@ -359,14 +385,16 @@ def preprocess(source: str) -> str:
     return result
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('source', type=Path, help='assembly source file')
+    args = parser.parse_args()
     asm = Assembler()
 
     try:
-        source = open(sys.argv[1], 'r').read()
+        source = args.source.read_text()
         asm.assemble(preprocess(source))
-        path = Path(sys.argv[1])
-        asm.write_list_file(source, path.with_suffix('.lst'))
-        asm.write_hex_file(path.with_suffix('.hex'))
-    except AssembleError as exc:
-        print(str(exc))
+        asm.write_list_file(source, args.source.with_suffix('.lst'))
+        asm.write_hex_file(args.source.with_suffix('.hex'))
+    except (AssembleError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
         sys.exit(1)
